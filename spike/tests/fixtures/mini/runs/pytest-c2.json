@@ -1,0 +1,142 @@
+{
+  "created": 1790602836.753181,
+  "duration": 0.0042209625244140625,
+  "exitcode": 0,
+  "root": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo",
+  "environment": {},
+  "summary": {
+    "passed": 2,
+    "total": 2,
+    "collected": 2
+  },
+  "collectors": [
+    {
+      "nodeid": "",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": ".",
+          "type": "Dir"
+        }
+      ]
+    },
+    {
+      "nodeid": "dispatch/test",
+      "outcome": "passed",
+      "result": []
+    },
+    {
+      "nodeid": "dispatch",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": "dispatch/test",
+          "type": "Dir"
+        }
+      ]
+    },
+    {
+      "nodeid": "farebox",
+      "outcome": "passed",
+      "result": []
+    },
+    {
+      "nodeid": "tests/test_pricing.py",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": "tests/test_pricing.py::test_free_minutes_matches_constant",
+          "type": "Function",
+          "lineno": 5
+        },
+        {
+          "nodeid": "tests/test_pricing.py::test_free_minutes_matches_expected",
+          "type": "Function",
+          "lineno": 9
+        }
+      ]
+    },
+    {
+      "nodeid": "tests",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": "tests/test_pricing.py",
+          "type": "Module"
+        }
+      ]
+    },
+    {
+      "nodeid": ".",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": "dispatch",
+          "type": "Dir"
+        },
+        {
+          "nodeid": "farebox",
+          "type": "Package"
+        },
+        {
+          "nodeid": "tests",
+          "type": "Dir"
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "nodeid": "tests/test_pricing.py::test_free_minutes_matches_constant",
+      "lineno": 5,
+      "outcome": "passed",
+      "keywords": [
+        "test_free_minutes_matches_constant",
+        "test_pricing.py",
+        "tests",
+        "repo",
+        ""
+      ],
+      "setup": {
+        "duration": 5.9125013649463654e-05,
+        "outcome": "passed"
+      },
+      "call": {
+        "duration": 4.7625042498111725e-05,
+        "outcome": "passed"
+      },
+      "teardown": {
+        "duration": 3.708386793732643e-05,
+        "outcome": "passed"
+      }
+    },
+    {
+      "nodeid": "tests/test_pricing.py::test_free_minutes_matches_expected",
+      "lineno": 9,
+      "outcome": "passed",
+      "keywords": [
+        "test_free_minutes_matches_expected",
+        "test_pricing.py",
+        "tests",
+        "repo",
+        ""
+      ],
+      "setup": {
+        "duration": 3.5624951124191284e-05,
+        "outcome": "passed"
+      },
+      "call": {
+        "duration": 3.633275628089905e-05,
+        "outcome": "passed"
+      },
+      "teardown": {
+        "duration": 3.220885992050171e-05,
+        "outcome": "passed"
+      }
+    }
+  ],
+  "metadata": {
+    "commit": "254fcc327fdec5b38287122a163c016a8ccab16b",
+    "step": "c2"
+  }
+}

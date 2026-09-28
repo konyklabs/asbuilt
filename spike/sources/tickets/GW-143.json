@@ -1,0 +1,30 @@
+{
+  "id": "ticket/GW-143",
+  "key": "GW-143",
+  "summary": "Flag changes take minutes to show up",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-04-08T15:30:00-04:00",
+  "updated": "2026-04-14T09:00:00-04:00",
+  "labels": [
+    "support",
+    "bug"
+  ],
+  "description": "Support flipped a feature flag for a rider during a call and the change didn't seem to take effect right away -- the rider said the behaviour only changed a little while later.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "lev.anand",
+      "created": "2026-04-08T16:00:00-04:00",
+      "body": "Which flag was this, and roughly how long was the delay you saw?"
+    },
+    {
+      "id": "comment-2",
+      "author": "ren.okafor",
+      "created": "2026-04-09T10:20:00-04:00",
+      "body": "Checked with the team -- the cache on flags in each service holds for 5 minutes, so that lines up with the delay the rider saw."
+    }
+  ]
+}

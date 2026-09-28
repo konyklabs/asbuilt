@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-123",
+  "key": "GW-123",
+  "summary": "Invoice page is slow for riders with many rides",
+  "status": "In Progress",
+  "type": "bug",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2026-01-08T09:21:00-05:00",
+  "updated": "2026-01-15T12:21:00-05:00",
+  "labels": [
+    "product",
+    "bug"
+  ],
+  "description": "Riders with a long ride history say the invoice page takes a noticeable moment to load, probably because it renders every past ride line rather than paging them.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-01-09T09:21:00-05:00",
+      "body": "Seeing the same complaint in support tickets this week -- worth prioritizing."
+    }
+  ]
+}

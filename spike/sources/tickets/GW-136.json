@@ -1,0 +1,30 @@
+{
+  "id": "ticket/GW-136",
+  "key": "GW-136",
+  "summary": "Members lapse when their card expires",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-03-05T09:00:00-05:00",
+  "updated": "2026-04-03T11:30:00-04:00",
+  "labels": [
+    "support",
+    "bug"
+  ],
+  "description": "Support kept seeing members lapse right after their card on file expired, before they'd had a chance to update payment details. Their renewal never even got a second attempt before the account fell over, which is the case for moving grace from 3 days out to 7.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "kasia.brandt",
+      "created": "2026-03-09T13:15:00-04:00",
+      "body": "For context, a failed renewal isn't something we have to poll for. Tollbooth Pay already fires a webhook at farebox the moment a membership renewal charge fails, so we know about it in real time."
+    },
+    {
+      "id": "comment-2",
+      "author": "mara.voss",
+      "created": "2026-03-27T10:05:00-04:00",
+      "body": "Decision: grace moves to 7 days out from a failed renewal, up from the current 3. Kasia's opening a PR for it."
+    }
+  ]
+}

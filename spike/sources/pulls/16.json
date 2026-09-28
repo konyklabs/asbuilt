@@ -1,0 +1,30 @@
+{
+  "id": "pull/16",
+  "number": 16,
+  "title": "Retry Tollbooth Pay calls five times",
+  "state": "closed",
+  "author": "kasia.brandt",
+  "opened": "2026-07-28T15:00:00-04:00",
+  "closed": "2026-08-04T10:00:00-04:00",
+  "merged_step": null,
+  "head_ref": "feat/tollbooth-retry-five-times",
+  "body": "## Proposal\n\nRaises how many times a failed Tollbooth Pay capture gets retried before we give up on it, aimed at riding out longer brownouts like the one in GW-167. Not merged -- see discussion below.",
+  "files": [
+    "farebox/clients/tollbooth.py",
+    "tests/unit/test_tollbooth_client.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "lev.anand",
+      "created": "2026-07-29T10:00:00-04:00",
+      "body": "Does Tollbooth Pay mind us hammering it with more retries on a single capture?"
+    },
+    {
+      "id": "comment-2",
+      "author": "mara.voss",
+      "created": "2026-08-03T17:20:00-04:00",
+      "body": "Checked with their integration docs, and this would backfire: 3 is already the ceiling, not 5, because Tollbooth Pay starts rate-limiting a merchant once it sees more than 3 retries on one failed capture inside a minute. Going to 5 would get us throttled during exactly the brownouts we're trying to ride out. Closing this."
+    }
+  ]
+}

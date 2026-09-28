@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-171",
+  "key": "GW-171",
+  "summary": "Auto-approve small refunds",
+  "status": "Done",
+  "type": "story",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-08-06T09:30:00-04:00",
+  "updated": "2026-08-30T16:30:00-04:00",
+  "labels": [
+    "support",
+    "story"
+  ],
+  "description": "Support spends a disproportionate amount of time manually approving small refunds that are clearly not worth reviewing case by case. The ask: behind a refund_auto_approve flag, anything under $5.00 clears automatically, no review needed.",
+  "comments": []
+}

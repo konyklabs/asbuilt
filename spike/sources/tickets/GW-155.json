@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-155",
+  "key": "GW-155",
+  "summary": "End the spring promotion",
+  "status": "Done",
+  "type": "task",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2026-06-01T10:00:00-04:00",
+  "updated": "2026-06-10T10:00:00-04:00",
+  "labels": [
+    "product",
+    "task"
+  ],
+  "description": "The spring promotion has run its course; time to wind it back to the standard offer -- 30 free minutes at the start of every member ride, same as before the promotion.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2026-06-10T10:00:00-04:00",
+      "body": "Closing this out -- the promotion ran from 2026-02-20 through 2026-06-10, and the standard free-minutes rule is back in effect as of today."
+    }
+  ]
+}

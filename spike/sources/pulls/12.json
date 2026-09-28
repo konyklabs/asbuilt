@@ -1,0 +1,24 @@
+{
+  "id": "pull/12",
+  "number": 12,
+  "title": "End the spring promotion: member free minutes back to 30",
+  "state": "merged",
+  "author": "kasia.brandt",
+  "opened": "2026-06-08T11:00:00-04:00",
+  "closed": "2026-06-10T09:45:00-04:00",
+  "merged_step": "c4",
+  "head_ref": "chore/end-spring-promo-30-free-minutes",
+  "body": "## Change\n\nReverts the promotional free-minutes window back to the standard 30 minutes at the front of a member's ride.\n\n## Testing\n\nPricing e2e case for the standard window re-enabled and passing.",
+  "files": [
+    "farebox/pricing.py",
+    "tests/e2e/test_pricing.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2026-06-09T16:00:00-04:00",
+      "body": "For the record, the promotion itself ran 2026-02-20 through 2026-06-10."
+    }
+  ]
+}

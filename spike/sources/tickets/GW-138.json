@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-138",
+  "key": "GW-138",
+  "summary": "Staging seed data is missing e-bikes",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "joel.ferraz",
+  "assignee": null,
+  "created": "2026-03-16T21:06:00-04:00",
+  "updated": "2026-03-21T00:06:00-04:00",
+  "labels": [
+    "support",
+    "task"
+  ],
+  "description": "The staging seed data only creates classic bikes, so anyone testing e-bike-specific behaviour locally has to add fixtures by hand first.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2026-03-17T21:06:00-04:00",
+      "body": "Ran into this myself last week -- would save a lot of time."
+    }
+  ]
+}

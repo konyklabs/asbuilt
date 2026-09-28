@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-109",
+  "key": "GW-109",
+  "summary": "Bike photos missing on the maintenance ticket view",
+  "status": "Won't Do",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": null,
+  "created": "2025-11-06T09:43:00-05:00",
+  "updated": "2025-11-08T12:43:00-05:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Mechanics asked for a bike's last few maintenance photos to show up on the ticket view so they don't have to dig through the shared drive. Closing as won't-do -- the photo archive lives outside dockyard's data model and isn't worth wiring up right now.",
+  "comments": []
+}

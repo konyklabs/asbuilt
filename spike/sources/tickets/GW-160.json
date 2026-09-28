@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-160",
+  "key": "GW-160",
+  "summary": "Clean up old maintenance tickets from the 2025 pilot",
+  "status": "Done",
+  "type": "task",
+  "reporter": "sami.haddad",
+  "assignee": "sami.haddad",
+  "created": "2026-06-23T21:40:00-04:00",
+  "updated": "2026-07-02T00:40:00-04:00",
+  "labels": [
+    "fleet",
+    "task"
+  ],
+  "description": "There's a batch of old maintenance tickets left over from the original pilot program a couple of years back that are cluttering up search results in the ops console.",
+  "comments": []
+}

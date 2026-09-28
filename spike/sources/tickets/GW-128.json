@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-128",
+  "key": "GW-128",
+  "summary": "Duplicate rider accounts from double taps on sign-up",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "priya.lund",
+  "assignee": "priya.lund",
+  "created": "2026-01-30T21:56:00-05:00",
+  "updated": "2026-02-03T00:56:00-05:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "A handful of rider accounts turned out to be exact duplicates, apparently created when someone double-tapped the sign-up button on a slow connection.",
+  "comments": []
+}

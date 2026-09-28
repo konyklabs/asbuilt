@@ -1,0 +1,30 @@
+{
+  "id": "ticket/GW-116",
+  "key": "GW-116",
+  "summary": "Let riders take a third bike for group rides",
+  "status": "Won't Do",
+  "type": "story",
+  "reporter": "joel.ferraz",
+  "assignee": null,
+  "created": "2025-12-09T13:00:00-05:00",
+  "updated": "2026-01-05T10:45:00-05:00",
+  "labels": [
+    "support",
+    "story"
+  ],
+  "description": "A group of riders on a team outing asked whether one person could check out a third bike to carry a friend's bag and jacket for the ride. Support wants to know if we should relax the per-rider bike limit for cases like this.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2025-12-10T09:30:00-05:00",
+      "body": "Curious what fleet thinks -- is there an operational reason to keep it tight, or is this just how the check-out flow happened to be built?"
+    },
+    {
+      "id": "comment-2",
+      "author": "priya.lund",
+      "created": "2026-01-05T10:45:00-05:00",
+      "body": "Declining this one. The cap stays at 2 bikes per rider -- try to check out a third and the system already refuses it -- because letting one rider walk off with three bikes makes it too easy to starve a station."
+    }
+  ]
+}

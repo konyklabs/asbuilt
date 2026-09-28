@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-175",
+  "key": "GW-175",
+  "summary": "Update the fares team's contact card",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "kasia.brandt",
+  "assignee": null,
+  "created": "2026-08-30T09:25:00-04:00",
+  "updated": "2026-09-04T12:25:00-04:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "The fares team's contact card in the internal directory still lists a manager who moved teams last quarter.",
+  "comments": []
+}

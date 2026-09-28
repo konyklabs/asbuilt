@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-174",
+  "key": "GW-174",
+  "summary": "Charity ride event: help desk staffing",
+  "status": "Done",
+  "type": "task",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-08-25T21:18:00-04:00",
+  "updated": "2026-08-30T00:18:00-04:00",
+  "labels": [
+    "support",
+    "task"
+  ],
+  "description": "A charity ride event is expected to bring a spike in support calls over the weekend, so the help desk wants extra staffing scheduled.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2026-08-26T21:18:00-04:00",
+      "body": "Approved the extra shift -- thanks for flagging early."
+    }
+  ]
+}

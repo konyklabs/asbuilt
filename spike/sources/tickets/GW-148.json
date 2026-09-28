@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-148",
+  "key": "GW-148",
+  "summary": "Should the ops console live in its own repository?",
+  "status": "Done",
+  "type": "task",
+  "reporter": "kasia.brandt",
+  "assignee": "kasia.brandt",
+  "created": "2026-04-30T21:16:00-04:00",
+  "updated": "2026-05-06T00:16:00-04:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "There's been some debate about whether the ops console should be split out into its own repository now that it's grown past a side project. Closing this out with a decision to keep it where it is for now, alongside the three services.",
+  "comments": []
+}

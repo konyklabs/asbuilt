@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-137",
+  "key": "GW-137",
+  "summary": "Weekly report of bikes out of service",
+  "status": "Done",
+  "type": "task",
+  "reporter": "priya.lund",
+  "assignee": "priya.lund",
+  "created": "2026-03-12T09:59:00-04:00",
+  "updated": "2026-03-15T12:59:00-04:00",
+  "labels": [
+    "fleet",
+    "task"
+  ],
+  "description": "Fleet asked for a weekly rollup of how many bikes were out of service and for how long, mostly to spot stations with a chronic maintenance problem.",
+  "comments": []
+}

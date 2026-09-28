@@ -1,0 +1,46 @@
+{
+  "id": "pull/19",
+  "number": 19,
+  "title": "Pause rebalancing in storms; add the refund_auto_approve flag",
+  "state": "merged",
+  "author": "ren.okafor",
+  "opened": "2026-08-24T10:30:00-04:00",
+  "closed": "2026-08-30T16:20:00-04:00",
+  "merged_step": "c6",
+  "head_ref": "feat/storm-pause-and-refund-auto-approve",
+  "body": "## Change\n\n- Rebalancing now holds off any time the latest Skyglass reading comes back at severity 3 or above.\n- Behind a new refund_auto_approve flag, a refund under $5.00 clears without anyone reviewing it.\n- feature_flags picks up a fourth row for the new flag, alongside dynamic_pricing, ebike_surcharge and overflow_parking.\n\nLinks GW-170 and GW-171.\n\n## Testing\n\nNew storm-pause unit tests and the refund e2e case for the auto-approve path both pass.",
+  "files": [
+    "dispatch/src/rules/stormPause.ts",
+    "dispatch/src/jobs/nightlyRebalance.ts",
+    "dispatch/test/stormPause.test.ts",
+    "farebox/services/refunds.py",
+    "farebox/flags.py",
+    "tests/e2e/test_refunds.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "tobin.achebe",
+      "created": "2026-08-25T09:00:00-04:00",
+      "body": "Why severity 3 specifically: that's the exact level ops was already calling vans back at by hand, before this pause existed to do it for us. This just codifies what the team was doing manually."
+    },
+    {
+      "id": "comment-2",
+      "author": "kasia.brandt",
+      "created": "2026-08-25T14:30:00-04:00",
+      "body": "Reviewed the refund half -- couple of naming nits, nothing blocking."
+    },
+    {
+      "id": "comment-3",
+      "author": "mara.voss",
+      "created": "2026-08-26T10:00:00-04:00",
+      "body": "Refund half looks good to me, approving that side."
+    },
+    {
+      "id": "comment-4",
+      "author": "tobin.achebe",
+      "created": "2026-08-28T11:15:00-04:00",
+      "body": "One more note for the record: as of PR 19, ops is taking over ownership of the Skyglass integration from fleet, since ops is the team actually acting on the severity reading day to day now."
+    }
+  ]
+}

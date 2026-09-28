@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-178",
+  "key": "GW-178",
+  "summary": "Broken link in the engineer onboarding page",
+  "status": "To Do",
+  "type": "bug",
+  "reporter": "sami.haddad",
+  "assignee": null,
+  "created": "2026-09-12T21:46:00-04:00",
+  "updated": "2026-09-21T00:46:00-04:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "A link on the engineer onboarding page points at a page that's since moved, giving new hires a 404 on their first day.",
+  "comments": []
+}

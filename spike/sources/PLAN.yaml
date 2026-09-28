@@ -1,0 +1,3379 @@
+# Authoring spec for every source document, the system code, its tests and the
+# test runs. Derived from truth/facts.yaml; truth/validate.py checks the two agree.
+# Document ids: wiki/<slug>, doc/<id>, ticket/<key>, pull/<number>, code/<path>, run/<id>.
+authoring_rules:
+- Everything is invented. The only proper names allowed are Gearwell, Tollbooth Pay, Skyglass, the three service
+  names and the people listed here. No real company, product, vendor or system names.
+- Each document states exactly the facts listed at each anchor (wiki, doc) or location (ticket description/comment,
+  PR body/comment), in natural prose, with the same numbers, units, names and qualifiers as `states`. Do not add
+  qualifiers the statement lacks.
+- 'Anything else a document says is noise: it must not state a value for any rule, flag, schedule, threshold, timeout,
+  retry count, column name, endpoint, owner or date that appears in truth/facts.yaml.'
+- 'A stale page (role: stale) states `old_value` as current and must not mention the change that superseded it.'
+- A contradiction loser states its value as plain fact; the author must not hedge it or point at the other source.
+- 'PR-only facts (role: PR-only) appear only in their PR comment. No code comment, docstring, test, commit message,
+  ticket, wiki page or document may state that rationale.'
+- Code states only code and executed facts. Docstrings may restate the code facts of the same symbol; no code comment
+  may state a documented-tier fact.
+- Wiki anchors are the heading slugs of the page (`## Free minutes` gives `#free-minutes`). Docs use the same convention.
+- Times are America/New_York with their UTC offset; money is USD with two decimals in prose.
+- A test exists in the repository exactly at the steps in its passes_in, and passes there; a symbol with per-step
+  values takes each value from that step until the next listed one.
+- 'Noise tickets and noise PRs (noise: true) are written like the others, about their summary only.'
+wiki:
+- slug: gearwell-overview
+  title: Gearwell platform overview
+  version: 7
+  lastmodified: '2026-01-20T09:40:00-05:00'
+  author: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#data'
+    facts:
+    - id: F-086
+      states: Each service has its own database user that can write only its own tables.
+  - anchor: '#services'
+    facts:
+    - id: F-118
+      states: dockyard, farebox and dispatch have lived in one repository since 2026-01-12.
+- slug: member-pricing
+  title: Member pricing
+  version: 3
+  lastmodified: '2026-03-02T14:12:00-05:00'
+  author: mara.voss
+  stale: true
+  anchors:
+  - anchor: '#per-minute'
+    facts:
+    - id: F-005
+      states: A member pays $0.15 per minute for every minute after the free minutes.
+  - anchor: '#free-minutes'
+    facts:
+    - id: F-036
+      states: Members ride free for the first 45 minutes of every ride.
+      role: stale
+      old_value: 45 free minutes per ride (the value from c2 to c4; must not mention 30 or the promotion ending)
+- slug: casual-pricing
+  title: Casual rider pricing
+  version: 4
+  lastmodified: '2026-07-30T11:05:00-04:00'
+  author: mara.voss
+  stale: false
+  anchors:
+  - anchor: '#unlock'
+    facts:
+    - id: F-004
+      states: A rider without a membership pays a $1.00 unlock fee for every ride.
+  - anchor: '#per-minute'
+    facts:
+    - id: F-006
+      states: A rider without a membership pays $0.25 per minute from the first minute of the ride.
+  - anchor: '#cap'
+    facts:
+    - id: F-009
+      states: A single ride costs at most $30.00.
+- slug: fares-overview
+  title: Fares overview
+  version: 5
+  lastmodified: '2026-05-14T16:30:00-04:00'
+  author: kasia.brandt
+  stale: true
+  anchors:
+  - anchor: '#ebike'
+    facts:
+    - id: F-007
+      states: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  - anchor: '#cap'
+    facts:
+    - id: F-038
+      states: The most a single ride can cost is $25.00.
+      role: stale
+      old_value: a $25.00 single-ride cap (must not mention $30.00)
+- slug: membership-faq
+  title: Membership FAQ
+  version: 2
+  lastmodified: '2026-01-28T10:20:00-05:00'
+  author: joel.ferraz
+  stale: true
+  anchors:
+  - anchor: '#plans'
+    facts:
+    - id: F-030
+      states: The monthly plan costs $15.00 per month and the annual plan costs $120.00 per year.
+  - anchor: '#grace'
+    facts:
+    - id: F-037
+      states: A member has a 3-day grace period after a failed renewal before the membership lapses.
+      role: stale
+      old_value: a 3-day grace period (must not mention 7)
+- slug: membership-lifecycle
+  title: Membership lifecycle
+  version: 6
+  lastmodified: '2026-04-10T13:45:00-04:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#grace'
+    facts:
+    - id: F-016
+      states: A membership lapses 7 days after a failed renewal.
+  - anchor: '#pricing'
+    facts:
+    - id: F-029
+      states: A rider whose membership is in grace is priced as a member, and a rider whose membership has lapsed
+        is priced as a casual rider.
+  - anchor: '#statuses'
+    facts:
+    - id: F-074
+      states: 'A membership has one of three statuses: active, grace or lapsed.'
+  - anchor: '#renewal-failures'
+    facts:
+    - id: F-075
+      states: A failed renewal reported by the Tollbooth Pay webhook moves the membership to status grace and sets
+        grace_ends_at.
+- slug: lost-and-stolen-bikes
+  title: Lost and stolen bikes
+  version: 2
+  lastmodified: '2026-02-11T15:00:00-05:00'
+  author: joel.ferraz
+  stale: true
+  anchors:
+  - anchor: '#detection'
+    facts:
+    - id: F-010
+      states: A ride whose bike is not docked within 24 hours of check-out is closed as lost.
+  - anchor: '#charges'
+    facts:
+    - id: F-026
+      states: The lost-bike fee is added on top of the capped ride charge.
+  - anchor: '#lost-fee'
+    facts:
+    - id: F-039
+      states: A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee.
+      role: stale
+      old_value: a $100.00 lost-bike fee (must not mention $150.00)
+- slug: refunds-process
+  title: Refunds process
+  version: 3
+  lastmodified: '2026-04-22T09:15:00-04:00'
+  author: joel.ferraz
+  stale: true
+  anchors:
+  - anchor: '#window'
+    facts:
+    - id: F-013
+      states: A refund requested more than 14 days after the ride ended is rejected.
+  - anchor: '#limits'
+    facts:
+    - id: F-028
+      states: A refund cannot exceed the amount charged for the ride.
+  - anchor: '#review'
+    facts:
+    - id: F-040
+      states: Every refund is reviewed by a fares agent before it is paid.
+      role: stale
+      old_value: every refund is reviewed by a fares agent (must not mention auto-approval)
+- slug: refunds-auto-approval
+  title: Refund auto-approval
+  version: 1
+  lastmodified: '2026-09-02T10:30:00-04:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#rule'
+    facts:
+    - id: F-014
+      states: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+  - anchor: '#flag'
+    facts:
+    - id: F-065
+      states: 'The feature_flags table holds four flags: dynamic_pricing, ebike_surcharge, overflow_parking and
+        refund_auto_approve.'
+- slug: feature-flags
+  title: Feature flags
+  version: 4
+  lastmodified: '2026-03-18T12:00:00-04:00'
+  author: lev.anand
+  stale: true
+  anchors:
+  - anchor: '#defaults'
+    facts:
+    - id: F-064
+      states: A flag with no row in the feature_flags table is treated as off.
+  - anchor: '#flags'
+    facts:
+    - id: F-081
+      states: 'Gearwell has three feature flags: dynamic_pricing, ebike_surcharge and overflow_parking.'
+      role: stale
+      old_value: 'exactly three flags: dynamic_pricing, ebike_surcharge, overflow_parking (must not mention refund_auto_approve)'
+- slug: runbook-nightly-rebalance
+  title: 'Runbook: nightly rebalance'
+  version: 5
+  lastmodified: '2026-05-20T08:50:00-04:00'
+  author: ren.okafor
+  stale: true
+  anchors:
+  - anchor: '#weather'
+    facts:
+    - id: F-041
+      states: The nightly rebalance runs in all weather.
+      role: stale
+      old_value: the nightly rebalance runs in all weather, with no weather check (must not mention a storm pause)
+  - anchor: '#rerun'
+    facts:
+    - id: F-092
+      states: If the nightly rebalance fails, the ops on-call engineer re-runs it by hand before 06:00.
+  - anchor: '#schedule'
+    facts:
+    - id: F-093
+      states: The nightly rebalance runs at 02:00.
+      role: contradiction-loser (page-vs-page); deliberately disagrees with F-087
+- slug: dispatch-jobs
+  title: Dispatch scheduled jobs
+  version: 3
+  lastmodified: '2026-09-05T14:25:00-04:00'
+  author: ren.okafor
+  stale: false
+  anchors:
+  - anchor: '#schedules'
+    facts:
+    - id: F-087
+      states: The nightly-rebalance job runs every day at 03:00 America/New_York time.
+    - id: F-088
+      states: The maintenance-sweep job runs every hour on the hour.
+    - id: F-089
+      states: The weather-poll job runs every 15 minutes.
+  - anchor: '#locking'
+    facts:
+    - id: F-090
+      states: Each dispatch job holds a database lock named after the job while it runs, so only one instance runs
+        it at a time.
+- slug: runbook-maintenance-sweep
+  title: 'Runbook: maintenance sweep'
+  version: 2
+  lastmodified: '2026-03-25T11:40:00-04:00'
+  author: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#threshold'
+    facts:
+    - id: F-020
+      states: A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket.
+  - anchor: '#lost-rides'
+    facts:
+    - id: F-069
+      states: The maintenance-sweep job asks farebox to close lost rides through POST /internal/rides/close-lost
+        on every run.
+  - anchor: '#returning-bikes'
+    facts:
+    - id: F-094
+      states: A mechanic returns a locked bike to service by closing its maintenance ticket and then unlocking the
+        bike in dockyard.
+- slug: runbook-weather-poll
+  title: 'Runbook: weather poll'
+  version: 2
+  lastmodified: '2026-09-10T09:05:00-04:00'
+  author: ren.okafor
+  stale: false
+  anchors:
+  - anchor: '#stale-readings'
+    facts:
+    - id: F-091
+      states: When the latest Skyglass reading is more than 60 minutes old, the storm pause does not pause rebalancing.
+  - anchor: '#alert'
+    facts:
+    - id: F-097
+      states: Four consecutive weather-poll failures raise a warning alert for the ops team.
+- slug: storm-pause
+  title: Storm pause
+  version: 1
+  lastmodified: '2026-09-01T15:10:00-04:00'
+  author: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#rule'
+    facts:
+    - id: F-022
+      states: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  - anchor: '#scope'
+    facts:
+    - id: F-034
+      states: The storm pause applies only to rebalancing, and the maintenance sweep keeps running in a storm.
+  - anchor: '#vans'
+    facts:
+    - id: F-109
+      states: During a storm pause, van drivers return to the depot and wait for the pause to lift.
+- slug: rebalancing-overview
+  title: Rebalancing
+  version: 4
+  lastmodified: '2026-02-26T10:00:00-05:00'
+  author: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#target'
+    facts:
+    - id: F-032
+      states: A rebalance order moves enough bikes to bring the station to 50% full.
+  - anchor: '#trigger'
+    facts:
+    - id: F-047
+      states: A station under 25% full gets a rebalance order.
+      role: contradiction-loser (wiki-vs-test); deliberately disagrees with F-021
+  - anchor: '#vans'
+    facts:
+    - id: F-107
+      states: Rebalancing vans start their shift at 06:00.
+      role: contradiction-loser (page-vs-page); deliberately disagrees with F-108
+- slug: van-operations
+  title: Van operations
+  version: 3
+  lastmodified: '2026-08-12T07:30:00-04:00'
+  author: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#shift'
+    facts:
+    - id: F-108
+      states: Rebalancing vans start their shift at 05:30.
+- slug: checkout-rules
+  title: Check-out rules
+  version: 2
+  lastmodified: '2025-12-15T14:00:00-05:00'
+  author: sami.haddad
+  stale: false
+  anchors:
+  - anchor: '#locked-bikes'
+    facts:
+    - id: F-031
+      states: A bike with status locked cannot be checked out.
+  - anchor: '#limit'
+    facts:
+    - id: F-042
+      states: A rider can hold up to 3 bikes at once.
+      role: contradiction-loser (wiki-vs-test); deliberately disagrees with F-019
+- slug: station-capacity
+  title: Station capacity and overflow parking
+  version: 3
+  lastmodified: '2026-03-01T16:20:00-05:00'
+  author: priya.lund
+  stale: false
+  anchors:
+  - anchor: '#full-station'
+    facts:
+    - id: F-017
+      states: A check-in at a full station is refused when the overflow_parking flag is off.
+  - anchor: '#overflow'
+    facts:
+    - id: F-018
+      states: When the overflow_parking flag is on, a bike can be checked in at a full station.
+  - anchor: '#error'
+    facts:
+    - id: F-051
+      states: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+- slug: dockyard-api
+  title: Dockyard API
+  version: 5
+  lastmodified: '2026-02-02T11:10:00-05:00'
+  author: sami.haddad
+  stale: false
+  anchors:
+  - anchor: '#checkin'
+    facts:
+    - id: F-051
+      states: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  - anchor: '#station-status'
+    facts:
+    - id: F-052
+      states: GET /stations/{id}/status returns the station's available bikes, empty docks and fill ratio.
+  - anchor: '#checkout'
+    facts:
+    - id: F-070
+      states: POST /rides/checkout returns HTTP 409 with error code checkout_limit_reached when the rider already
+        holds 2 bikes.
+- slug: farebox-api
+  title: Farebox API
+  version: 4
+  lastmodified: '2026-09-08T13:35:00-04:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#close-ride'
+    facts:
+    - id: F-055
+      states: At check-in, dockyard calls farebox's POST /internal/rides/{id}/close to price and close the ride.
+  - anchor: '#refunds'
+    facts:
+    - id: F-071
+      states: POST /refunds returns HTTP 422 with error code refund_window_expired when the ride ended more than
+        14 days ago.
+- slug: ride-events
+  title: The ride.events queue
+  version: 3
+  lastmodified: '2026-03-12T10:45:00-04:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#producers'
+    facts:
+    - id: F-050
+      states: farebox publishes a ride.completed event to the ride.events queue when it closes a ride.
+    - id: F-056
+      states: farebox publishes a ride.refunded event to the ride.events queue when a refund is paid.
+  - anchor: '#consumers'
+    facts:
+    - id: F-053
+      states: dispatch counts each ride.completed event toward the demand of the ride's return station.
+    - id: F-058
+      states: dispatch consumes the ride.events queue in the consumer group dispatch-demand.
+  - anchor: '#payload'
+    facts:
+    - id: F-057
+      states: A ride.completed event carries ride_id, rider_id, bike_id, return_station_id, ended_at and amount_cents.
+  - anchor: '#retention'
+    facts:
+    - id: F-083
+      states: The ride.events queue keeps messages for 7 days.
+- slug: tollbooth-pay
+  title: Tollbooth Pay integration
+  version: 4
+  lastmodified: '2026-06-02T15:55:00-04:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#retries'
+    facts:
+    - id: F-023
+      states: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+  - anchor: '#idempotency'
+    facts:
+    - id: F-059
+      states: Every Tollbooth Pay capture sends the ride id as its idempotency key.
+  - anchor: '#timeouts'
+    facts:
+    - id: F-060
+      states: Each Tollbooth Pay call times out after 5 seconds.
+- slug: skyglass
+  title: Skyglass weather integration
+  version: 3
+  lastmodified: '2026-09-04T12:15:00-04:00'
+  author: ren.okafor
+  stale: false
+  anchors:
+  - anchor: '#endpoint'
+    facts:
+    - id: F-068
+      states: The Skyglass client calls GET /v2/severity with the station's latitude and longitude and times out
+        after 3 seconds.
+  - anchor: '#scale'
+    facts:
+    - id: F-084
+      states: Skyglass reports severity on a scale from 0, clear, to 5, a severe storm warning.
+- slug: data-model
+  title: Data model
+  version: 6
+  lastmodified: '2026-02-18T09:30:00-05:00'
+  author: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#rides'
+    facts:
+    - id: F-054
+      states: The rides table stores the check-in station in the column return_station_id.
+  - anchor: '#money'
+    facts:
+    - id: F-072
+      states: farebox stores money as integer cents in amount_cents columns.
+  - anchor: '#access'
+    facts:
+    - id: F-086
+      states: Each service has its own database user that can write only its own tables.
+- slug: database-backups
+  title: Database backups
+  version: 2
+  lastmodified: '2026-02-05T17:00:00-05:00'
+  author: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#schedule'
+    facts:
+    - id: F-102
+      states: A snapshot of the shared database is taken every night at 01:00.
+  - anchor: '#retention'
+    facts:
+    - id: F-103
+      states: Database snapshots are kept for 14 days.
+      role: contradiction-loser (page-vs-page); deliberately disagrees with F-104
+- slug: deploys
+  title: Deploying Gearwell
+  version: 5
+  lastmodified: '2026-05-06T10:10:00-04:00'
+  author: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#windows'
+    facts:
+    - id: F-105
+      states: Deploys are allowed Monday to Thursday, and on Friday only before 12:00.
+  - anchor: '#rollback'
+    facts:
+    - id: F-106
+      states: A bad deploy is rolled back by redeploying the previous release, because database migrations are forward-only.
+- slug: alerts-farebox
+  title: Farebox alerts
+  version: 3
+  lastmodified: '2026-07-08T14:40:00-04:00'
+  author: mara.voss
+  stale: false
+  anchors:
+  - anchor: '#payment-failures'
+    facts:
+    - id: F-099
+      states: A payment failure rate above 5% over 10 minutes pages the fares on-call engineer.
+- slug: alerts-dispatch
+  title: Dispatch alerts
+  version: 2
+  lastmodified: '2026-04-29T16:05:00-04:00'
+  author: ren.okafor
+  stale: false
+  anchors:
+  - anchor: '#weather'
+    facts:
+    - id: F-097
+      states: Four consecutive weather-poll failures raise a warning alert for the ops team.
+  - anchor: '#job-failures'
+    facts:
+    - id: F-098
+      states: A failed nightly rebalance pages the ops on-call engineer.
+- slug: oncall
+  title: On-call handbook
+  version: 4
+  lastmodified: '2026-05-27T09:00:00-04:00'
+  author: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#handover'
+    facts:
+    - id: F-101
+      states: The on-call handover happens on Monday at 09:00.
+      role: contradiction-loser (page-vs-page); deliberately disagrees with F-100
+- slug: support-playbook
+  title: Support playbook
+  version: 6
+  lastmodified: '2026-03-10T11:25:00-04:00'
+  author: joel.ferraz
+  stale: true
+  anchors:
+  - anchor: '#free-minutes'
+    facts:
+    - id: F-036
+      states: Members ride free for the first 45 minutes of every ride.
+      role: stale
+      old_value: 45 free minutes per ride (the value from c2 to c4; must not mention 30 or the promotion ending)
+  - anchor: '#lost-bike-waiver'
+    facts:
+    - id: F-048
+      states: Support may waive the lost-bike fee when the bike is found within 72 hours.
+- slug: spring-promotion
+  title: Spring promotion 2026
+  version: 2
+  lastmodified: '2026-06-12T10:00:00-04:00'
+  author: dana.whitlock
+  stale: false
+  anchors:
+  - anchor: '#free-minutes'
+    facts:
+    - id: F-003
+      states: A member's first 30 minutes of every ride are free.
+  - anchor: '#dates'
+    facts:
+    - id: F-111
+      states: The spring promotion's dates are 2026-02-20 to 2026-06-10.
+- slug: invoicing
+  title: Invoicing
+  version: 3
+  lastmodified: '2026-01-30T15:20:00-05:00'
+  author: mara.voss
+  stale: false
+  anchors:
+  - anchor: '#monthly'
+    facts:
+    - id: F-035
+      states: A member receives one invoice per calendar month with one invoice line per ride.
+  - anchor: '#casual'
+    facts:
+    - id: F-076
+      states: A casual ride is charged to the rider's card through Tollbooth Pay when the ride closes.
+- slug: dynamic-pricing
+  title: Dynamic pricing
+  version: 2
+  lastmodified: '2026-04-15T13:00:00-04:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#surge'
+    facts:
+    - id: F-024
+      states: When the dynamic_pricing flag is on and the latest Skyglass severity is 2 or more, per-minute rates
+        are multiplied by 1.25.
+  - anchor: '#status'
+    facts:
+    - id: F-049
+      states: The dynamic_pricing flag is off by default.
+  - anchor: '#weather-source'
+    facts:
+    - id: F-066
+      states: farebox reads the weather_readings table, which dispatch owns, to compute the surge multiplier.
+- slug: ebike-surcharge
+  title: E-bike surcharge
+  version: 2
+  lastmodified: '2026-02-24T12:35:00-05:00'
+  author: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#rule'
+    facts:
+    - id: F-007
+      states: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  - anchor: '#cap'
+    facts:
+    - id: F-025
+      states: The single-ride cap applies to the ride charge including the e-bike surcharge.
+- slug: glossary
+  title: Glossary
+  version: 8
+  lastmodified: '2026-08-20T09:50:00-04:00'
+  author: dana.whitlock
+  stale: false
+  anchors:
+  - anchor: '#grace-period'
+    facts:
+    - id: F-016
+      states: A membership lapses 7 days after a failed renewal.
+  - anchor: '#rebalance-order'
+    facts:
+    - id: F-032
+      states: A rebalance order moves enough bikes to bring the station to 50% full.
+  - anchor: '#fault-report'
+    facts:
+    - id: F-073
+      states: A rider's fault report is stored as a maintenance_tickets row of kind fault_report.
+  - anchor: '#dock'
+    facts:
+    - id: F-120
+      states: A dock is a single bike slot at a station.
+- slug: dispatch-history
+  title: Dispatch service history
+  version: 1
+  lastmodified: '2026-01-15T16:00:00-05:00'
+  author: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#rewrite'
+    facts:
+    - id: F-119
+      states: dispatch has been written in TypeScript since a 2025 rewrite from Python.
+- slug: farebox-architecture
+  title: Farebox architecture
+  version: 4
+  lastmodified: '2026-03-20T14:15:00-04:00'
+  author: mara.voss
+  stale: false
+  anchors:
+  - anchor: '#close-ride'
+    facts:
+    - id: F-055
+      states: At check-in, dockyard calls farebox's POST /internal/rides/{id}/close to price and close the ride.
+  - anchor: '#flags-cache'
+    facts:
+    - id: F-063
+      states: farebox and dockyard cache feature_flags rows for 60 seconds.
+  - anchor: '#weather-readings'
+    facts:
+    - id: F-066
+      states: farebox reads the weather_readings table, which dispatch owns, to compute the surge multiplier.
+- slug: incident-2026-08-12-weather-poll
+  title: 'Incident: weather poll outage, 2026-08-12'
+  version: 1
+  lastmodified: '2026-08-14T11:00:00-04:00'
+  author: ren.okafor
+  stale: false
+  anchors:
+  - anchor: '#summary'
+    facts:
+    - id: F-110
+      states: The weather poll was down for 6 hours on 2026-08-12 because the Skyglass API key was rotated without
+        updating dispatch's configuration.
+- slug: onboarding-engineers
+  title: Engineer onboarding
+  version: 9
+  lastmodified: '2026-09-12T10:40:00-04:00'
+  author: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#repository'
+    facts:
+    - id: F-118
+      states: dockyard, farebox and dispatch have lived in one repository since 2026-01-12.
+docs:
+- id: fares-price-sheet
+  title: Fares price sheet
+  headRevisionId: 1Qm4Vr12
+  modifiedTime: '2026-03-05T10:30:00-05:00'
+  owner: mara.voss
+  stale: true
+  anchors:
+  - anchor: '#member-rates'
+    facts:
+    - id: F-005
+      states: A member pays $0.15 per minute for every minute after the free minutes.
+  - anchor: '#casual-rates'
+    facts:
+    - id: F-006
+      states: A rider without a membership pays $0.25 per minute from the first minute of the ride.
+    - id: F-046
+      states: A rider without a membership pays a $2.00 unlock fee.
+      role: contradiction-loser (doc-vs-code); deliberately disagrees with F-004
+  - anchor: '#ebike'
+    facts:
+    - id: F-007
+      states: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  - anchor: '#caps-and-fees'
+    facts:
+    - id: F-038
+      states: The most a single ride can cost is $25.00.
+      role: stale
+      old_value: a $25.00 single-ride cap (must not mention $30.00)
+    - id: F-039
+      states: A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee.
+      role: stale
+      old_value: a $100.00 lost-bike fee (must not mention $150.00)
+- id: dockyard-design
+  title: Dockyard design
+  headRevisionId: 7Hc2Xr31
+  modifiedTime: '2025-11-03T14:00:00-05:00'
+  owner: priya.lund
+  stale: false
+  anchors:
+  - anchor: '#capacity'
+    facts:
+    - id: F-017
+      states: A check-in at a full station is refused when the overflow_parking flag is off.
+  - anchor: '#checkout'
+    facts:
+    - id: F-019
+      states: A rider can hold at most 2 bikes at once, so a third check-out is refused.
+  - anchor: '#rides-table'
+    facts:
+    - id: F-079
+      states: The rides table stores the return station in a column named end_station.
+      role: contradiction-loser (doc-vs-code); deliberately disagrees with F-054
+  - anchor: '#events'
+    facts:
+    - id: F-080
+      states: dockyard publishes ride.completed when a bike is checked in.
+      role: contradiction-loser (doc-vs-code); deliberately disagrees with F-050
+- id: dispatch-design
+  title: Dispatch design
+  headRevisionId: 3Tz9Kr18
+  modifiedTime: '2025-12-01T11:00:00-05:00'
+  owner: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#rebalance'
+    facts:
+    - id: F-021
+      states: A station that is under 20% or over 90% full gets a rebalance order.
+    - id: F-032
+      states: A rebalance order moves enough bikes to bring the station to 50% full.
+  - anchor: '#jobs'
+    facts:
+    - id: F-095
+      states: The maintenance sweep runs every 30 minutes.
+      role: contradiction-loser (doc-vs-code); deliberately disagrees with F-088
+    - id: F-096
+      states: The weather poll runs every 5 minutes.
+      role: contradiction-loser (doc-vs-code); deliberately disagrees with F-089
+- id: oncall-rota
+  title: On-call rota
+  headRevisionId: 9Kd1Mr57
+  modifiedTime: '2026-09-01T09:30:00-04:00'
+  owner: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#escalation'
+    facts:
+    - id: F-098
+      states: A failed nightly rebalance pages the ops on-call engineer.
+  - anchor: '#rotation'
+    facts:
+    - id: F-100
+      states: On-call rotates weekly, with the handover on Monday at 10:00.
+- id: data-retention-policy
+  title: Data retention policy
+  headRevisionId: 5Wb7Nr06
+  modifiedTime: '2026-06-15T15:00:00-04:00'
+  owner: lev.anand
+  stale: false
+  anchors:
+  - anchor: '#backups'
+    facts:
+    - id: F-104
+      states: Database snapshots are kept for 30 days.
+- id: spring-promotion-retro
+  title: Spring promotion retrospective
+  headRevisionId: 2Lp8Qr04
+  modifiedTime: '2026-06-20T13:20:00-04:00'
+  owner: dana.whitlock
+  stale: false
+  anchors:
+  - anchor: '#dates'
+    facts:
+    - id: F-111
+      states: The spring promotion's dates are 2026-02-20 to 2026-06-10.
+- id: storm-policy
+  title: Severe weather operations policy
+  headRevisionId: 8Fx3Sr09
+  modifiedTime: '2026-09-02T16:45:00-04:00'
+  owner: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#pause'
+    facts:
+    - id: F-022
+      states: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  - anchor: '#vans'
+    facts:
+    - id: F-109
+      states: During a storm pause, van drivers return to the depot and wait for the pause to lift.
+- id: refund-policy
+  title: Refund policy
+  headRevisionId: 4Nr6Tr11
+  modifiedTime: '2026-09-03T10:10:00-04:00'
+  owner: mara.voss
+  stale: false
+  anchors:
+  - anchor: '#window'
+    facts:
+    - id: F-013
+      states: A refund requested more than 14 days after the ride ended is rejected.
+  - anchor: '#auto-approval'
+    facts:
+    - id: F-014
+      states: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+  - anchor: '#limits'
+    facts:
+    - id: F-028
+      states: A refund cannot exceed the amount charged for the ride.
+- id: tollbooth-integration
+  title: Tollbooth Pay integration notes
+  headRevisionId: 6Gv5Ur22
+  modifiedTime: '2025-12-10T14:30:00-05:00'
+  owner: kasia.brandt
+  stale: false
+  anchors:
+  - anchor: '#retries'
+    facts:
+    - id: F-023
+      states: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+    - id: F-061
+      states: The Tollbooth Pay client waits 0.5, 1 and 2 seconds before its three retries.
+  - anchor: '#idempotency'
+    facts:
+    - id: F-059
+      states: Every Tollbooth Pay capture sends the ride id as its idempotency key.
+  - anchor: '#timeouts'
+    facts:
+    - id: F-077
+      states: Each Tollbooth Pay call times out after 10 seconds.
+      role: contradiction-loser (doc-vs-code); deliberately disagrees with F-060
+  - anchor: '#settlement'
+    facts:
+    - id: F-082
+      states: Tollbooth Pay pays captured amounts out to Gearwell two business days after capture.
+  - anchor: '#webhooks'
+    facts:
+    - id: F-085
+      states: Tollbooth Pay sends farebox a webhook for every failed membership renewal charge.
+- id: q3-ops-review
+  title: Q3 operations review
+  headRevisionId: 0Ya2Wr03
+  modifiedTime: '2026-09-15T11:30:00-04:00'
+  owner: tobin.achebe
+  stale: false
+  anchors:
+  - anchor: '#paging'
+    facts:
+    - id: F-099
+      states: A payment failure rate above 5% over 10 minutes pages the fares on-call engineer.
+  - anchor: '#incidents'
+    facts:
+    - id: F-110
+      states: The weather poll was down for 6 hours on 2026-08-12 because the Skyglass API key was rotated without
+        updating dispatch's configuration.
+tickets:
+- key: GW-101
+  summary: Station map pins drift on the rider app at high zoom
+  status: Won't Do
+  created: '2025-10-01T14:47:00-04:00'
+  updated: '2025-10-04T17:47:00-04:00'
+  reporter: priya.lund
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-102
+  summary: Receipt email shows the ride date in UTC
+  status: Done
+  created: '2025-10-05T21:54:00-04:00'
+  updated: '2025-10-10T00:54:00-04:00'
+  reporter: joel.ferraz
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2025-10-06T21:54:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-103
+  summary: Typo on the membership sign-up page
+  status: To Do
+  created: '2025-10-10T09:01:00-04:00'
+  updated: '2025-10-15T12:01:00-04:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-104
+  summary: Add a dark mode to the ops console
+  status: Done
+  created: '2025-10-14T21:08:00-04:00'
+  updated: '2025-10-21T00:08:00-04:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-105
+  summary: E-bike surcharge behind a flag
+  status: Done
+  created: '2025-10-20T10:00:00-04:00'
+  updated: '2025-11-30T16:00:00-05:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-007
+      states: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+    note: Asks for an e-bike per-minute surcharge controlled by the ebike_surcharge flag.
+  comments: []
+- key: GW-106
+  summary: 'Flaky test: station status under parallel runs'
+  status: To Do
+  created: '2025-10-23T21:22:00-04:00'
+  updated: '2025-11-01T00:22:00-04:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-107
+  summary: Monthly invoices should list every ride
+  status: Done
+  created: '2025-10-28T09:15:00-04:00'
+  updated: '2025-12-01T12:00:00-05:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-035
+      states: A member receives one invoice per calendar month with one invoice line per ride.
+    note: States the invoicing rule as the requirement.
+  comments: []
+- key: GW-108
+  summary: Upgrade the Python test runner
+  status: Done
+  created: '2025-11-01T21:36:00-04:00'
+  updated: '2025-11-03T00:36:00-05:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2025-11-02T21:36:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-109
+  summary: Bike photos missing on the maintenance ticket view
+  status: Won't Do
+  created: '2025-11-06T09:43:00-05:00'
+  updated: '2025-11-08T12:43:00-05:00'
+  reporter: tobin.achebe
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-110
+  summary: Plan prices for 2026
+  status: Done
+  created: '2025-11-10T11:00:00-05:00'
+  updated: '2025-12-15T10:00:00-05:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-030
+      states: The monthly plan costs $15.00 per month and the annual plan costs $120.00 per year.
+    note: Lists the two plan prices.
+  comments: []
+- key: GW-111
+  summary: 'Rider app: accessibility labels on the unlock button'
+  status: To Do
+  created: '2025-11-15T09:57:00-05:00'
+  updated: '2025-11-19T12:57:00-05:00'
+  reporter: joel.ferraz
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2025-11-16T09:57:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-112
+  summary: Surge pricing in rain
+  status: Done
+  created: '2025-11-18T14:20:00-05:00'
+  updated: '2026-01-09T09:00:00-05:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-045
+      states: Dynamic pricing multiplies per-minute rates by 1.5 in rain.
+      role: contradiction-loser (ticket-vs-code); deliberately disagrees with F-024
+    note: Asks for a 1.5 multiplier in rain; deliberately disagrees with the 1.25 the code ships.
+  comments: []
+- key: GW-113
+  summary: Ops console times out when listing more than 500 tickets
+  status: Done
+  created: '2025-11-24T09:11:00-05:00'
+  updated: '2025-11-30T12:11:00-05:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-114
+  summary: Add CSV export for monthly invoices
+  status: To Do
+  created: '2025-11-28T21:18:00-05:00'
+  updated: '2025-12-06T00:18:00-05:00'
+  reporter: dana.whitlock
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2025-11-29T21:18:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-115
+  summary: Allow check-in at the full stadium station on event nights
+  status: Done
+  created: '2025-12-02T10:30:00-05:00'
+  updated: '2026-01-08T15:00:00-05:00'
+  reporter: priya.lund
+  noise: false
+  description:
+    facts: []
+    note: Request from fleet; no rule values.
+  comments:
+  - id: comment-1
+    author: sami.haddad
+    created: '2025-12-04T11:10:00-05:00'
+    facts:
+    - id: F-018
+      states: When the overflow_parking flag is on, a bike can be checked in at a full station.
+    note: Points out that overflow_parking already allows it.
+- key: GW-116
+  summary: Let riders take a third bike for group rides
+  status: Won't Do
+  created: '2025-12-09T13:00:00-05:00'
+  updated: '2026-01-05T10:45:00-05:00'
+  reporter: joel.ferraz
+  noise: false
+  description:
+    facts: []
+    note: Customer request; must not state a limit.
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2025-12-10T09:30:00-05:00'
+    facts: []
+    note: Asks fleet for an opinion.
+  - id: comment-2
+    author: priya.lund
+    created: '2026-01-05T10:45:00-05:00'
+    facts:
+    - id: F-019
+      states: A rider can hold at most 2 bikes at once, so a third check-out is refused.
+    note: 'Declines: the limit stays at 2.'
+- key: GW-117
+  summary: Support macro for lost-card questions
+  status: Won't Do
+  created: '2025-12-12T09:39:00-05:00'
+  updated: '2025-12-13T12:39:00-05:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2025-12-13T09:39:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-118
+  summary: 'Dashboard: rides per hour by station'
+  status: Done
+  created: '2025-12-16T21:46:00-05:00'
+  updated: '2025-12-19T00:46:00-05:00'
+  reporter: tobin.achebe
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-119
+  summary: Remove dead code in the station seeder
+  status: To Do
+  created: '2025-12-21T09:53:00-05:00'
+  updated: '2025-12-24T12:53:00-05:00'
+  reporter: priya.lund
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-120
+  summary: Van route sheet prints off the page
+  status: Done
+  created: '2025-12-25T21:00:00-05:00'
+  updated: '2025-12-30T00:00:00-05:00'
+  reporter: joel.ferraz
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2025-12-26T21:00:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-121
+  summary: Log lines from dispatch lack the job name
+  status: Done
+  created: '2025-12-30T09:07:00-05:00'
+  updated: '2026-01-04T12:07:00-05:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-122
+  summary: Rider app shows the old station name after a rename
+  status: To Do
+  created: '2026-01-03T21:14:00-05:00'
+  updated: '2026-01-10T00:14:00-05:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-123
+  summary: Invoice page is slow for riders with many rides
+  status: In Progress
+  created: '2026-01-08T09:21:00-05:00'
+  updated: '2026-01-15T12:21:00-05:00'
+  reporter: dana.whitlock
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-01-09T09:21:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-124
+  summary: Onboarding checklist for new fares engineers
+  status: Done
+  created: '2026-01-12T21:28:00-05:00'
+  updated: '2026-01-21T00:28:00-05:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-125
+  summary: Update the privacy notice link in receipts
+  status: Won't Do
+  created: '2026-01-17T09:35:00-05:00'
+  updated: '2026-01-26T12:35:00-05:00'
+  reporter: lev.anand
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-126
+  summary: Add station photos to the rider app
+  status: Done
+  created: '2026-01-21T21:42:00-05:00'
+  updated: '2026-01-23T00:42:00-05:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2026-01-22T21:42:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-127
+  summary: 'Ops console: filter maintenance tickets by station'
+  status: To Do
+  created: '2026-01-26T09:49:00-05:00'
+  updated: '2026-01-28T12:49:00-05:00'
+  reporter: tobin.achebe
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-128
+  summary: Duplicate rider accounts from double taps on sign-up
+  status: Done
+  created: '2026-01-30T21:56:00-05:00'
+  updated: '2026-02-03T00:56:00-05:00'
+  reporter: priya.lund
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-129
+  summary: 'Spring promotion: 45 free minutes for members'
+  status: Done
+  created: '2026-02-02T10:00:00-05:00'
+  updated: '2026-02-20T15:40:00-05:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-002
+      states: A member's first 45 minutes of every ride are free.
+    note: The promotion request; must not state the planned end date.
+  comments:
+  - id: comment-1
+    author: kasia.brandt
+    created: '2026-02-17T10:10:00-05:00'
+    facts: []
+    note: Links PR 9.
+- key: GW-130
+  summary: Rotate the staging database password
+  status: To Do
+  created: '2026-02-08T21:10:00-05:00'
+  updated: '2026-02-14T00:10:00-05:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-131
+  summary: Winter tyres for the classic fleet
+  status: In Progress
+  created: '2026-02-13T09:17:00-05:00'
+  updated: '2026-02-19T12:17:00-05:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-132
+  summary: 'Docs: explain how to run the services locally'
+  status: Done
+  created: '2026-02-17T21:24:00-05:00'
+  updated: '2026-02-25T00:24:00-05:00'
+  reporter: dana.whitlock
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-02-18T21:24:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-133
+  summary: Stations imported with swapped latitude and longitude
+  status: Won't Do
+  created: '2026-02-22T09:31:00-05:00'
+  updated: '2026-03-02T12:31:00-05:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-134
+  summary: Lock bikes with repeated fault reports sooner
+  status: Done
+  created: '2026-02-25T09:40:00-05:00'
+  updated: '2026-03-12T16:20:00-04:00'
+  reporter: tobin.achebe
+  noise: false
+  description:
+    facts: []
+    note: Mechanics complain about bikes staying in service; no numbers.
+  comments:
+  - id: comment-1
+    author: ren.okafor
+    created: '2026-02-26T10:00:00-05:00'
+    facts: []
+    note: Asks what the new threshold should be.
+  - id: comment-2
+    author: priya.lund
+    created: '2026-03-03T14:30:00-05:00'
+    facts: []
+    note: Worries about false locks; no numbers.
+  - id: comment-3
+    author: tobin.achebe
+    created: '2026-03-12T16:20:00-04:00'
+    facts:
+    - id: F-043
+      states: A bike is locked after 2 fault reports within 7 days.
+      role: contradiction-loser (ticket-vs-code); deliberately disagrees with F-020
+    note: Says it was agreed at 2 fault reports in 7 days (never implemented; the code keeps 3).
+- key: GW-135
+  summary: Rider app crashes on older phones when opening the map
+  status: To Do
+  created: '2026-03-03T09:45:00-05:00'
+  updated: '2026-03-04T12:45:00-05:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2026-03-04T09:45:00-05:00'
+    facts: []
+    note: Noise.
+- key: GW-136
+  summary: Members lapse when their card expires
+  status: Done
+  created: '2026-03-05T09:00:00-05:00'
+  updated: '2026-04-03T11:30:00-04:00'
+  reporter: joel.ferraz
+  noise: false
+  description:
+    facts:
+    - id: F-112
+      states: Membership grace is 7 days rather than 3 because members whose cards expired were lapsing before their
+        renewal could be retried.
+    note: 'Support''s problem statement: card expiry makes members lapse before the renewal is retried.'
+  comments:
+  - id: comment-1
+    author: kasia.brandt
+    created: '2026-03-09T13:15:00-04:00'
+    facts:
+    - id: F-085
+      states: Tollbooth Pay sends farebox a webhook for every failed membership renewal charge.
+    note: Explains the failed-renewal webhook.
+  - id: comment-2
+    author: mara.voss
+    created: '2026-03-27T10:05:00-04:00'
+    facts:
+    - id: F-016
+      states: A membership lapses 7 days after a failed renewal.
+    note: 'Decision: grace goes to 7 days.'
+- key: GW-137
+  summary: Weekly report of bikes out of service
+  status: Done
+  created: '2026-03-12T09:59:00-04:00'
+  updated: '2026-03-15T12:59:00-04:00'
+  reporter: priya.lund
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-138
+  summary: Staging seed data is missing e-bikes
+  status: To Do
+  created: '2026-03-16T21:06:00-04:00'
+  updated: '2026-03-21T00:06:00-04:00'
+  reporter: joel.ferraz
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2026-03-17T21:06:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-139
+  summary: Clearer error message when a card is declined
+  status: In Progress
+  created: '2026-03-21T09:13:00-04:00'
+  updated: '2026-03-26T12:13:00-04:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-140
+  summary: Translate the rider app into Spanish
+  status: Done
+  created: '2026-03-25T21:20:00-04:00'
+  updated: '2026-04-01T00:20:00-04:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-141
+  summary: Customer asked for a paper invoice
+  status: Won't Do
+  created: '2026-03-30T09:27:00-04:00'
+  updated: '2026-04-06T12:27:00-04:00'
+  reporter: dana.whitlock
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-03-31T09:27:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-142
+  summary: Van 7 GPS tracker offline
+  status: Done
+  created: '2026-04-03T21:34:00-04:00'
+  updated: '2026-04-12T00:34:00-04:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-143
+  summary: Flag changes take minutes to show up
+  status: Done
+  created: '2026-04-08T15:30:00-04:00'
+  updated: '2026-04-14T09:00:00-04:00'
+  reporter: joel.ferraz
+  noise: false
+  description:
+    facts: []
+    note: Support flipped a flag and did not see the change at once.
+  comments:
+  - id: comment-1
+    author: lev.anand
+    created: '2026-04-08T16:00:00-04:00'
+    facts: []
+    note: Asks which flag.
+  - id: comment-2
+    author: ren.okafor
+    created: '2026-04-09T10:20:00-04:00'
+    facts:
+    - id: F-078
+      states: Each service caches feature flags for 5 minutes.
+      role: contradiction-loser (ticket-vs-code); deliberately disagrees with F-063
+    note: Claims each service caches flags for 5 minutes (wrong; the code says 60 seconds).
+- key: GW-144
+  summary: Paint touch-up for the riverside station
+  status: Done
+  created: '2026-04-12T21:48:00-04:00'
+  updated: '2026-04-14T00:48:00-04:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2026-04-13T21:48:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-145
+  summary: 'Support: canned reply for full-station complaints'
+  status: Done
+  created: '2026-04-17T09:55:00-04:00'
+  updated: '2026-04-19T12:55:00-04:00'
+  reporter: tobin.achebe
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-146
+  summary: Waive the lost-bike fee when the bike turns up
+  status: Done
+  created: '2026-04-20T11:00:00-04:00'
+  updated: '2026-05-02T14:00:00-04:00'
+  reporter: joel.ferraz
+  noise: false
+  description:
+    facts:
+    - id: F-048
+      states: Support may waive the lost-bike fee when the bike is found within 72 hours.
+    note: The support policy; must not state the fee amount.
+  comments: []
+- key: GW-147
+  summary: Upgrade the TypeScript compiler in dispatch
+  status: In Progress
+  created: '2026-04-26T09:09:00-04:00'
+  updated: '2026-04-30T12:09:00-04:00'
+  reporter: joel.ferraz
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2026-04-27T09:09:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-148
+  summary: Should the ops console live in its own repository?
+  status: Done
+  created: '2026-04-30T21:16:00-04:00'
+  updated: '2026-05-06T00:16:00-04:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-149
+  summary: Refund request from an annual member for a ride three weeks ago
+  status: Done
+  created: '2026-05-04T09:20:00-04:00'
+  updated: '2026-05-06T17:00:00-04:00'
+  reporter: joel.ferraz
+  noise: false
+  description:
+    facts: []
+    note: Customer case; no policy numbers.
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2026-05-04T09:40:00-04:00'
+    facts:
+    - id: F-044
+      states: A refund can be requested up to 30 days after the ride.
+      role: contradiction-loser (ticket-vs-code); deliberately disagrees with F-013
+    note: Claims refunds can be requested up to 30 days after the ride (wrong; 14).
+- key: GW-150
+  summary: 'Rider app: show the ride timer on the lock screen'
+  status: Done
+  created: '2026-05-09T21:30:00-04:00'
+  updated: '2026-05-17T00:30:00-04:00'
+  reporter: dana.whitlock
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-05-10T21:30:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-151
+  summary: Add alt text to station photos
+  status: To Do
+  created: '2026-05-14T09:37:00-04:00'
+  updated: '2026-05-22T12:37:00-04:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-152
+  summary: 'Monthly board report: ridership by plan'
+  status: Done
+  created: '2026-05-18T21:44:00-04:00'
+  updated: '2026-05-28T00:44:00-04:00'
+  reporter: lev.anand
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-153
+  summary: Investigate memory growth in the ride events consumer
+  status: Done
+  created: '2026-05-23T09:51:00-04:00'
+  updated: '2026-05-24T12:51:00-04:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2026-05-24T09:51:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-154
+  summary: Replace the pager escalation spreadsheet
+  status: To Do
+  created: '2026-05-27T21:58:00-04:00'
+  updated: '2026-05-30T00:58:00-04:00'
+  reporter: tobin.achebe
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-155
+  summary: End the spring promotion
+  status: Done
+  created: '2026-06-01T10:00:00-04:00'
+  updated: '2026-06-10T10:00:00-04:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-003
+      states: A member's first 30 minutes of every ride are free.
+    note: Member free minutes go back to 30.
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2026-06-10T10:00:00-04:00'
+    facts:
+    - id: F-111
+      states: The spring promotion's dates are 2026-02-20 to 2026-06-10.
+    note: Closing note with the promotion's dates.
+- key: GW-156
+  summary: Keep database snapshots for 30 days
+  status: Done
+  created: '2026-06-02T13:00:00-04:00'
+  updated: '2026-06-15T15:10:00-04:00'
+  reporter: lev.anand
+  noise: false
+  description:
+    facts:
+    - id: F-104
+      states: Database snapshots are kept for 30 days.
+    note: The retention requirement.
+  comments: []
+- key: GW-157
+  summary: Station naming guidelines
+  status: Won't Do
+  created: '2026-06-10T09:19:00-04:00'
+  updated: '2026-06-15T12:19:00-04:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-158
+  summary: Bike serial numbers with leading zeros are truncated
+  status: Done
+  created: '2026-06-14T21:26:00-04:00'
+  updated: '2026-06-21T00:26:00-04:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-159
+  summary: 'Rider app: remember the last payment card'
+  status: To Do
+  created: '2026-06-19T09:33:00-04:00'
+  updated: '2026-06-26T12:33:00-04:00'
+  reporter: dana.whitlock
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-06-20T09:33:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-160
+  summary: Clean up old maintenance tickets from the 2025 pilot
+  status: Done
+  created: '2026-06-23T21:40:00-04:00'
+  updated: '2026-07-02T00:40:00-04:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-161
+  summary: Van driver feedback form
+  status: Done
+  created: '2026-06-28T09:47:00-04:00'
+  updated: '2026-07-07T12:47:00-04:00'
+  reporter: lev.anand
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-162
+  summary: Raise the single-ride cap to $30
+  status: Done
+  created: '2026-07-01T10:30:00-04:00'
+  updated: '2026-07-22T14:10:00-04:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-009
+      states: A single ride costs at most $30.00.
+    note: The requirement only; must NOT give the reason (that lives only in PR 14).
+  comments: []
+- key: GW-163
+  summary: Raise the lost-bike fee to $150
+  status: Done
+  created: '2026-07-02T09:00:00-04:00'
+  updated: '2026-07-22T14:10:00-04:00'
+  reporter: dana.whitlock
+  noise: false
+  description:
+    facts:
+    - id: F-012
+      states: A ride closed as lost is charged a $150.00 lost-bike fee.
+    note: The requirement only.
+  comments: []
+- key: GW-164
+  summary: Ops console loses filters on refresh
+  status: Done
+  created: '2026-07-11T21:08:00-04:00'
+  updated: '2026-07-15T00:08:00-04:00'
+  reporter: priya.lund
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-165
+  summary: Nightly rebalance failed on 2026-07-14
+  status: Done
+  created: '2026-07-14T06:40:00-04:00'
+  updated: '2026-07-15T09:00:00-04:00'
+  reporter: ren.okafor
+  noise: false
+  description:
+    facts: []
+    note: What failed; no schedule time.
+  comments:
+  - id: comment-1
+    author: ren.okafor
+    created: '2026-07-14T07:05:00-04:00'
+    facts:
+    - id: F-098
+      states: A failed nightly rebalance pages the ops on-call engineer.
+    - id: F-092
+      states: If the nightly rebalance fails, the ops on-call engineer re-runs it by hand before 06:00.
+    note: I was paged and re-ran it by hand before 06:00, per the runbook.
+- key: GW-166
+  summary: Add a status page for riders
+  status: Done
+  created: '2026-07-20T21:22:00-04:00'
+  updated: '2026-07-26T00:22:00-04:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-167
+  summary: Payment captures failing during Tollbooth Pay brownouts
+  status: Done
+  created: '2026-07-25T11:20:00-04:00'
+  updated: '2026-08-04T16:00:00-04:00'
+  reporter: kasia.brandt
+  noise: false
+  description:
+    facts:
+    - id: F-023
+      states: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+    note: Describes current retry behaviour; must NOT say why 3 (PR 16 only).
+  comments: []
+- key: GW-168
+  summary: Van shifts start at 05:30 from August
+  status: Done
+  created: '2026-07-27T08:00:00-04:00'
+  updated: '2026-08-03T09:00:00-04:00'
+  reporter: tobin.achebe
+  noise: false
+  description:
+    facts:
+    - id: F-108
+      states: Rebalancing vans start their shift at 05:30.
+    note: The new shift start.
+  comments: []
+- key: GW-169
+  summary: Load test the check-out endpoint before the summer
+  status: Done
+  created: '2026-08-03T09:43:00-04:00'
+  updated: '2026-08-11T12:43:00-04:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-170
+  summary: Pause rebalancing in storms
+  status: Done
+  created: '2026-08-05T10:00:00-04:00'
+  updated: '2026-08-30T16:30:00-04:00'
+  reporter: tobin.achebe
+  noise: false
+  description:
+    facts:
+    - id: F-022
+      states: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+    note: The requirement; must NOT say why severity 3 (PR 19 only) nor who owns Skyglass.
+  comments: []
+- key: GW-171
+  summary: Auto-approve small refunds
+  status: Done
+  created: '2026-08-06T09:30:00-04:00'
+  updated: '2026-08-30T16:30:00-04:00'
+  reporter: joel.ferraz
+  noise: false
+  description:
+    facts:
+    - id: F-014
+      states: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+    note: The requirement.
+  comments: []
+- key: GW-172
+  summary: Holiday opening hours banner
+  status: Done
+  created: '2026-08-12T08:04:00-04:00'
+  updated: '2026-08-14T11:04:00-04:00'
+  reporter: tobin.achebe
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-173
+  summary: Weather poll down for 6 hours
+  status: Done
+  created: '2026-08-12T13:00:00-04:00'
+  updated: '2026-08-14T11:00:00-04:00'
+  reporter: ren.okafor
+  noise: false
+  description:
+    facts:
+    - id: F-110
+      states: The weather poll was down for 6 hours on 2026-08-12 because the Skyglass API key was rotated without
+        updating dispatch's configuration.
+    note: Incident ticket.
+  comments: []
+- key: GW-174
+  summary: 'Charity ride event: help desk staffing'
+  status: Done
+  created: '2026-08-25T21:18:00-04:00'
+  updated: '2026-08-30T00:18:00-04:00'
+  reporter: joel.ferraz
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2026-08-26T21:18:00-04:00'
+    facts: []
+    note: Noise.
+- key: GW-175
+  summary: Update the fares team's contact card
+  status: To Do
+  created: '2026-08-30T09:25:00-04:00'
+  updated: '2026-09-04T12:25:00-04:00'
+  reporter: kasia.brandt
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-176
+  summary: 'Mechanic tablet app: offline mode'
+  status: Done
+  created: '2026-09-03T03:32:00-04:00'
+  updated: '2026-09-09T06:32:00-04:00'
+  reporter: ren.okafor
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-177
+  summary: Rebalancing ran during the 2026-09-02 storm
+  status: Done
+  created: '2026-09-03T08:15:00-04:00'
+  updated: '2026-09-09T10:00:00-04:00'
+  reporter: tobin.achebe
+  noise: false
+  description:
+    facts: []
+    note: Ops asks why vans were sent out during a storm.
+  comments:
+  - id: comment-1
+    author: tobin.achebe
+    created: '2026-09-03T09:00:00-04:00'
+    facts: []
+    note: Attaches the van log.
+  - id: comment-2
+    author: ren.okafor
+    created: '2026-09-04T11:30:00-04:00'
+    facts:
+    - id: F-091
+      states: When the latest Skyglass reading is more than 60 minutes old, the storm pause does not pause rebalancing.
+    note: The latest reading was too old, and the storm pause does not pause on a reading more than 60 minutes old.
+- key: GW-178
+  summary: Broken link in the engineer onboarding page
+  status: To Do
+  created: '2026-09-12T21:46:00-04:00'
+  updated: '2026-09-21T00:46:00-04:00'
+  reporter: sami.haddad
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-179
+  summary: Retire the old station kiosk screens
+  status: In Progress
+  created: '2026-09-17T09:53:00-04:00'
+  updated: '2026-09-26T12:53:00-04:00'
+  reporter: lev.anand
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments: []
+- key: GW-180
+  summary: 'Rider app: larger tap targets on the station list'
+  status: Done
+  created: '2026-09-21T21:00:00-04:00'
+  updated: '2026-09-23T00:00:00-04:00'
+  reporter: mara.voss
+  noise: true
+  description:
+    facts: []
+    note: 'Noise: one short paragraph about the summary; no rule values.'
+  comments:
+  - id: comment-1
+    author: joel.ferraz
+    created: '2026-09-22T21:00:00-04:00'
+    facts: []
+    note: Noise.
+pulls:
+- number: 9
+  title: Raise member free minutes to 45 for the spring promotion
+  state: merged
+  merged_step: c2
+  author: kasia.brandt
+  opened: '2026-02-17T10:05:00-05:00'
+  closed: '2026-02-20T15:30:00-05:00'
+  noise: false
+  body:
+    facts:
+    - id: F-002
+      states: A member's first 45 minutes of every ride are free.
+    note: What the change does. No planned end date.
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-02-18T09:20:00-05:00'
+    facts: []
+    note: Approves; asks for the promotion copy link.
+- number: 11
+  title: Extend membership grace from 3 to 7 days
+  state: merged
+  merged_step: c3
+  author: kasia.brandt
+  opened: '2026-03-30T14:00:00-04:00'
+  closed: '2026-04-03T11:15:00-04:00'
+  noise: false
+  body:
+    facts:
+    - id: F-016
+      states: A membership lapses 7 days after a failed renewal.
+    note: What the change does; links GW-136.
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-03-31T10:30:00-04:00'
+    facts:
+    - id: F-112
+      states: Membership grace is 7 days rather than 3 because members whose cards expired were lapsing before their
+        renewal could be retried.
+    note: Restates why, from GW-136.
+- number: 12
+  title: 'End the spring promotion: member free minutes back to 30'
+  state: merged
+  merged_step: c4
+  author: kasia.brandt
+  opened: '2026-06-08T11:00:00-04:00'
+  closed: '2026-06-10T09:45:00-04:00'
+  noise: false
+  body:
+    facts:
+    - id: F-003
+      states: A member's first 30 minutes of every ride are free.
+    note: What the change does.
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2026-06-09T16:00:00-04:00'
+    facts:
+    - id: F-111
+      states: The spring promotion's dates are 2026-02-20 to 2026-06-10.
+    note: Confirms the promotion's dates for the record.
+- number: 14
+  title: Raise the single-ride cap to $30 and the lost-bike fee to $150
+  state: merged
+  merged_step: c5
+  author: kasia.brandt
+  opened: '2026-07-16T10:00:00-04:00'
+  closed: '2026-07-22T14:00:00-04:00'
+  noise: false
+  body:
+    facts:
+    - id: F-009
+      states: A single ride costs at most $30.00.
+    - id: F-012
+      states: A ride closed as lost is charged a $150.00 lost-bike fee.
+    note: What the change does; links GW-162 and GW-163. No reasons in the body.
+  comments:
+  - id: comment-1
+    author: mara.voss
+    created: '2026-07-17T09:10:00-04:00'
+    facts: []
+    note: Asks why $30 and not $35.
+  - id: comment-2
+    author: dana.whitlock
+    created: '2026-07-17T13:40:00-04:00'
+    facts:
+    - id: F-113
+      states: The single-ride cap is $30.00 rather than $25.00 because a $25.00 cap let casual riders keep bikes
+        all day and empty the busiest stations by noon.
+      role: 'PR-only: this rationale appears here and nowhere else'
+    note: PR-ONLY rationale for the $30 cap. Nowhere else.
+- number: 16
+  title: Retry Tollbooth Pay calls five times
+  state: closed
+  merged_step: null
+  author: kasia.brandt
+  opened: '2026-07-28T15:00:00-04:00'
+  closed: '2026-08-04T10:00:00-04:00'
+  noise: false
+  body:
+    facts: []
+    note: 'PROPOSAL only, clearly worded as one: raise retries from 3 to 5 after the brownouts in GW-167. Not merged.'
+  comments:
+  - id: comment-1
+    author: lev.anand
+    created: '2026-07-29T10:00:00-04:00'
+    facts: []
+    note: Asks whether Tollbooth Pay minds more retries.
+  - id: comment-2
+    author: mara.voss
+    created: '2026-08-03T17:20:00-04:00'
+    facts:
+    - id: F-116
+      states: The Tollbooth Pay client retries 3 times, not 5, because Tollbooth Pay rate-limits a merchant that
+        retries one failed capture more than 3 times within a minute.
+      role: 'PR-only: this rationale appears here and nowhere else'
+    note: PR-ONLY rationale for keeping 3; closes the PR.
+- number: 17
+  title: Bump test dependencies
+  state: closed
+  merged_step: null
+  author: lev.anand
+  opened: '2026-08-06T09:00:00-04:00'
+  closed: '2026-08-07T12:00:00-04:00'
+  noise: true
+  body:
+    facts: []
+    note: 'Noise: dependency bump, superseded by a later one.'
+  comments:
+  - id: comment-1
+    author: ren.okafor
+    created: '2026-08-07T12:00:00-04:00'
+    facts: []
+    note: Closing in favour of the next bump.
+- number: 19
+  title: Pause rebalancing in storms; add the refund_auto_approve flag
+  state: merged
+  merged_step: c6
+  author: ren.okafor
+  opened: '2026-08-24T10:30:00-04:00'
+  closed: '2026-08-30T16:20:00-04:00'
+  noise: false
+  body:
+    facts:
+    - id: F-022
+      states: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+    - id: F-014
+      states: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+    - id: F-065
+      states: 'The feature_flags table holds four flags: dynamic_pricing, ebike_surcharge, overflow_parking and
+        refund_auto_approve.'
+    note: What the change does, in three bullet points; links GW-170 and GW-171. No reasons.
+  comments:
+  - id: comment-1
+    author: tobin.achebe
+    created: '2026-08-25T09:00:00-04:00'
+    facts:
+    - id: F-114
+      states: The storm pause starts at severity 3 because that is the level at which ops already recalled vans
+        by hand before the pause existed.
+      role: 'PR-only: this rationale appears here and nowhere else'
+    note: PR-ONLY rationale for severity 3.
+  - id: comment-2
+    author: kasia.brandt
+    created: '2026-08-25T14:30:00-04:00'
+    facts: []
+    note: Reviews the refund half; nits only.
+  - id: comment-3
+    author: mara.voss
+    created: '2026-08-26T10:00:00-04:00'
+    facts: []
+    note: Approves the refund half.
+  - id: comment-4
+    author: tobin.achebe
+    created: '2026-08-28T11:15:00-04:00'
+    facts:
+    - id: F-117
+      states: The ops team has owned the Skyglass integration since PR 19, taking it over from the fleet team.
+      role: 'PR-only: this rationale appears here and nowhere else'
+    note: 'PR-ONLY: ops takes the Skyglass integration over from fleet with this PR.'
+- number: 21
+  title: Turn on dynamic_pricing
+  state: open
+  merged_step: null
+  author: kasia.brandt
+  opened: '2026-09-08T10:00:00-04:00'
+  closed: null
+  noise: false
+  body:
+    facts: []
+    note: 'PROPOSAL only: flip the dynamic_pricing default. Must not restate the multiplier.'
+  comments:
+  - id: comment-1
+    author: dana.whitlock
+    created: '2026-09-08T15:00:00-04:00'
+    facts: []
+    note: Product is keen.
+  - id: comment-2
+    author: kasia.brandt
+    created: '2026-09-09T09:30:00-04:00'
+    facts: []
+    note: Asks for a review date.
+  - id: comment-3
+    author: mara.voss
+    created: '2026-09-10T11:00:00-04:00'
+    facts:
+    - id: F-115
+      states: The dynamic_pricing flag stays off in production until legal review of rain surge pricing is complete.
+      role: 'PR-only: this rationale appears here and nowhere else'
+    note: 'PR-ONLY: the flag stays off until legal review finishes; blocks the PR.'
+code:
+- path: dockyard/app.py
+  language: python
+  added_in: c1
+  purpose: Application factory; mounts the routers.
+  symbols:
+  - name: create_app
+- path: dockyard/config.py
+  language: python
+  added_in: c1
+  purpose: Settings from the environment.
+  symbols:
+  - name: Settings
+- path: dockyard/db.py
+  language: python
+  added_in: c1
+  purpose: Database session helper.
+  symbols:
+  - name: session_scope
+- path: dockyard/flags.py
+  language: python
+  added_in: c1
+  purpose: Reads feature_flags with a cache.
+  symbols:
+  - name: CACHE_TTL_SECONDS
+    value: 60
+    facts:
+    - fact: F-063
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: is_enabled
+- path: dockyard/models/station.py
+  language: python
+  added_in: c1
+  purpose: Station model.
+  symbols:
+  - name: Station
+    note: id, name, capacity, lat, lon
+- path: dockyard/models/dock.py
+  language: python
+  added_in: c1
+  purpose: Dock model.
+  symbols:
+  - name: Dock
+    note: station_id, bike_id, state
+- path: dockyard/models/bike.py
+  language: python
+  added_in: c1
+  purpose: Bike model.
+  symbols:
+  - name: Bike
+  - name: BikeKind
+    value: classic | ebike
+  - name: BikeStatus
+    value: available | in_ride | locked | lost
+- path: dockyard/models/ride.py
+  language: python
+  added_in: c1
+  purpose: Ride model on the rides table.
+  symbols:
+  - name: Ride
+    note: rider_id, bike_id, start_station_id, return_station_id, started_at, ended_at, status
+    facts:
+    - fact: F-054
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/repositories/stations.py
+  language: python
+  added_in: c1
+  purpose: Station queries.
+  symbols:
+  - name: StationRepository
+- path: dockyard/repositories/docks.py
+  language: python
+  added_in: c1
+  purpose: Dock queries.
+  symbols:
+  - name: DockRepository
+- path: dockyard/repositories/bikes.py
+  language: python
+  added_in: c1
+  purpose: Bike queries.
+  symbols:
+  - name: BikeRepository
+- path: dockyard/repositories/rides.py
+  language: python
+  added_in: c1
+  purpose: Ride queries.
+  symbols:
+  - name: RideRepository
+  - name: open_rides_for_rider
+- path: dockyard/services/checkout.py
+  language: python
+  added_in: c1
+  purpose: Check-out.
+  symbols:
+  - name: CHECKOUT_LIMIT
+    value: 2
+    facts:
+    - fact: F-019
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: check_out
+    facts:
+    - fact: F-031
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/services/checkin.py
+  language: python
+  added_in: c1
+  purpose: Check-in.
+  symbols:
+  - name: check_in
+  - name: StationFullError
+- path: dockyard/services/capacity.py
+  language: python
+  added_in: c1
+  purpose: Station capacity rule.
+  symbols:
+  - name: can_accept_bike
+    facts:
+    - fact: F-017
+      steps: [c1, c2, c3, c4, c5, c6]
+    - fact: F-018
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/services/station_status.py
+  language: python
+  added_in: c1
+  purpose: Station status read model.
+  symbols:
+  - name: station_status
+    facts:
+    - fact: F-052
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/services/locks.py
+  language: python
+  added_in: c1
+  purpose: Bike locking.
+  symbols:
+  - name: lock_bike
+- path: dockyard/api/rides.py
+  language: python
+  added_in: c1
+  purpose: POST /rides/checkout and POST /rides/{id}/checkin.
+  symbols:
+  - name: checkout_endpoint
+    facts:
+    - fact: F-070
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: checkin_endpoint
+    facts:
+    - fact: F-051
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/api/stations.py
+  language: python
+  added_in: c1
+  purpose: GET /stations/{id}/status.
+  symbols:
+  - name: station_status_endpoint
+- path: dockyard/api/bikes.py
+  language: python
+  added_in: c1
+  purpose: POST /bikes/{id}/lock.
+  symbols:
+  - name: lock_bike_endpoint
+    facts:
+    - fact: F-067
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/api/errors.py
+  language: python
+  added_in: c1
+  purpose: Error codes to HTTP statuses.
+  symbols:
+  - name: ERROR_CODES
+    note: 'station_full: 409, checkout_limit_reached: 409'
+- path: dockyard/clients/farebox.py
+  language: python
+  added_in: c1
+  purpose: HTTP client for farebox.
+  symbols:
+  - name: FAREBOX_TIMEOUT_SECONDS
+    value: 2
+  - name: FareboxClient
+  - name: FareboxClient.close_ride
+    facts:
+    - fact: F-055
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dockyard/migrations/0001_initial.py
+  language: python
+  added_in: c1
+  purpose: Creates stations, docks, bikes, rides.
+  symbols:
+  - name: upgrade
+- path: dockyard/cli.py
+  language: python
+  added_in: c1
+  purpose: Seeds stations for local development.
+  symbols:
+  - name: main
+- path: farebox/app.py
+  language: python
+  added_in: c1
+  purpose: Application factory.
+  symbols:
+  - name: create_app
+- path: farebox/config.py
+  language: python
+  added_in: c1
+  purpose: Settings from the environment.
+  symbols:
+  - name: Settings
+  - name: TOLLBOOTH_TIMEOUT_SECONDS
+    value: 5
+    facts:
+    - fact: F-060
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/db.py
+  language: python
+  added_in: c1
+  purpose: Database session helper.
+  symbols:
+  - name: session_scope
+- path: farebox/flags.py
+  language: python
+  added_in: c1
+  purpose: Flag registry and cached reads.
+  symbols:
+  - name: FLAGS
+    value:
+      c1: dynamic_pricing, ebike_surcharge, overflow_parking (all default off)
+      c6: adds refund_auto_approve (default off)
+    facts:
+    - fact: F-049
+      steps: [c1, c2, c3, c4, c5, c6]
+    - fact: F-065
+      steps: [c6]
+  - name: CACHE_TTL_SECONDS
+    value: 60
+    facts:
+    - fact: F-063
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: is_enabled
+    note: a missing row reads as off
+    facts:
+    - fact: F-064
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/pricing.py
+  language: python
+  added_in: c1
+  purpose: Ride pricing.
+  symbols:
+  - name: MEMBER_FREE_MINUTES
+    value:
+      c1: 30
+      c2: 45
+      c4: 30
+    facts:
+    - fact: F-001
+      steps: [c1]
+    - fact: F-002
+      steps: [c2, c3]
+    - fact: F-003
+      steps: [c4, c5, c6]
+  - name: MEMBER_RATE
+    value: '0.15'
+    facts:
+    - fact: F-005
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: CASUAL_RATE
+    value: '0.25'
+    facts:
+    - fact: F-006
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: CASUAL_UNLOCK_FEE
+    value: '1.00'
+    facts:
+    - fact: F-004
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: EBIKE_SURCHARGE
+    value: '0.10'
+    note: per charged minute of an e-bike ride; a member's free minutes are not charged, so carry no surcharge
+    facts:
+    - fact: F-007
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: SINGLE_RIDE_CAP
+    value:
+      c1: '25.00'
+      c5: '30.00'
+    facts:
+    - fact: F-008
+      steps: [c1, c2, c3, c4]
+    - fact: F-009
+      steps: [c5, c6]
+  - name: LOST_BIKE_FEE
+    value:
+      c1: '100.00'
+      c5: '150.00'
+    facts:
+    - fact: F-011
+      steps: [c1, c2, c3, c4]
+    - fact: F-012
+      steps: [c5, c6]
+  - name: price_ride
+    note: min(unlock fee (casual only) + charged minutes x rate x surge multiplier + charged e-bike minutes x surcharge,
+      SINGLE_RIDE_CAP)
+    facts:
+    - fact: F-025
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/events.py
+  language: python
+  added_in: c1
+  purpose: Publishes to ride.events.
+  symbols:
+  - name: RIDE_EVENTS_TOPIC
+    value: ride.events
+  - name: publish_ride_completed
+    facts:
+    - fact: F-057
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: publish_ride_refunded
+- path: farebox/models/rider.py
+  language: python
+  added_in: c1
+  purpose: Rider model.
+  symbols:
+  - name: Rider
+- path: farebox/models/plan.py
+  language: python
+  added_in: c1
+  purpose: Plan model.
+  symbols:
+  - name: Plan
+- path: farebox/models/membership.py
+  language: python
+  added_in: c1
+  purpose: Membership model.
+  symbols:
+  - name: Membership
+    note: status, renews_at, grace_ends_at
+  - name: MembershipStatus
+    value: active | grace | lapsed
+    facts:
+    - fact: F-074
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/models/invoice.py
+  language: python
+  added_in: c1
+  purpose: Invoice and invoice line models.
+  symbols:
+  - name: Invoice
+  - name: InvoiceLine
+    note: amount_cents
+    facts:
+    - fact: F-072
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/models/payment.py
+  language: python
+  added_in: c1
+  purpose: Payment model.
+  symbols:
+  - name: Payment
+    note: amount_cents, status
+    facts:
+    - fact: F-072
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/models/refund.py
+  language: python
+  added_in: c1
+  purpose: Refund model.
+  symbols:
+  - name: Refund
+    note: amount_cents
+  - name: RefundStatus
+    value: requested | approved | rejected | paid
+- path: farebox/repositories/riders.py
+  language: python
+  added_in: c1
+  purpose: Rider queries.
+  symbols:
+  - name: RiderRepository
+- path: farebox/repositories/memberships.py
+  language: python
+  added_in: c1
+  purpose: Membership queries.
+  symbols:
+  - name: MembershipRepository
+- path: farebox/repositories/invoices.py
+  language: python
+  added_in: c1
+  purpose: Invoice queries.
+  symbols:
+  - name: InvoiceRepository
+- path: farebox/repositories/payments.py
+  language: python
+  added_in: c1
+  purpose: Payment queries.
+  symbols:
+  - name: PaymentRepository
+- path: farebox/repositories/refunds.py
+  language: python
+  added_in: c1
+  purpose: Refund queries.
+  symbols:
+  - name: RefundRepository
+- path: farebox/services/rides.py
+  language: python
+  added_in: c1
+  purpose: 'Closing a ride: price, charge, publish.'
+  symbols:
+  - name: close_ride
+    facts:
+    - fact: F-050
+      steps: [c1, c2, c3, c4, c5, c6]
+    - fact: F-076
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/services/memberships.py
+  language: python
+  added_in: c1
+  purpose: Membership rules.
+  symbols:
+  - name: GRACE_DAYS
+    value:
+      c1: 3
+      c3: 7
+    facts:
+    - fact: F-015
+      steps: [c1, c2]
+    - fact: F-016
+      steps: [c3, c4, c5, c6]
+  - name: handle_failed_renewal
+    facts:
+    - fact: F-075
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: pricing_class
+    facts:
+    - fact: F-029
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/services/refunds.py
+  language: python
+  added_in: c1
+  purpose: Refund rules.
+  symbols:
+  - name: REFUND_WINDOW_DAYS
+    value: 14
+    facts:
+    - fact: F-013
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: AUTO_APPROVE_LIMIT
+    value:
+      c6: '5.00'
+    note: added at c6
+    facts:
+    - fact: F-014
+      steps: [c6]
+  - name: request_refund
+    facts:
+    - fact: F-027
+      steps: [c1, c2, c3, c4, c5]
+    - fact: F-028
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: pay_refund
+    facts:
+    - fact: F-056
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/services/lost_bikes.py
+  language: python
+  added_in: c1
+  purpose: Closing lost rides.
+  symbols:
+  - name: LOST_BIKE_HOURS
+    value: 24
+    facts:
+    - fact: F-010
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: close_lost_rides
+    facts:
+    - fact: F-026
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/services/invoicing.py
+  language: python
+  added_in: c1
+  purpose: Monthly member invoices.
+  symbols:
+  - name: build_monthly_invoice
+    facts:
+    - fact: F-035
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/services/surge.py
+  language: python
+  added_in: c1
+  purpose: Dynamic pricing multiplier.
+  symbols:
+  - name: SURGE_MULTIPLIER
+    value: '1.25'
+    note: multiplies MEMBER_RATE and CASUAL_RATE only; not the unlock fee or the e-bike surcharge
+  - name: SURGE_MIN_SEVERITY
+    value: 2
+  - name: surge_multiplier
+    facts:
+    - fact: F-024
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: latest_severity
+    note: reads weather_readings
+    facts:
+    - fact: F-066
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/clients/tollbooth.py
+  language: python
+  added_in: c1
+  purpose: HTTP client for Tollbooth Pay.
+  symbols:
+  - name: MAX_RETRIES
+    value: 3
+    facts:
+    - fact: F-023
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: BACKOFF_SECONDS
+    value: (0.5, 1, 2)
+    facts:
+    - fact: F-061
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: should_retry
+    facts:
+    - fact: F-062
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: TollboothClient
+  - name: TollboothClient.capture
+    facts:
+    - fact: F-059
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/api/refunds.py
+  language: python
+  added_in: c1
+  purpose: POST /refunds.
+  symbols:
+  - name: create_refund_endpoint
+    facts:
+    - fact: F-071
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/api/rides.py
+  language: python
+  added_in: c1
+  purpose: Internal ride endpoints.
+  symbols:
+  - name: close_ride_endpoint
+    note: POST /internal/rides/{id}/close
+    facts:
+    - fact: F-055
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: close_lost_rides_endpoint
+    note: POST /internal/rides/close-lost
+- path: farebox/api/memberships.py
+  language: python
+  added_in: c1
+  purpose: Membership read endpoint.
+  symbols:
+  - name: get_membership_endpoint
+- path: farebox/api/webhooks.py
+  language: python
+  added_in: c1
+  purpose: Tollbooth Pay webhook receiver.
+  symbols:
+  - name: tollbooth_webhook
+    facts:
+    - fact: F-075
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: farebox/migrations/0001_initial.py
+  language: python
+  added_in: c1
+  purpose: Creates the farebox tables and feature_flags.
+  symbols:
+  - name: upgrade
+- path: farebox/migrations/0002_seed_plans.py
+  language: python
+  added_in: c1
+  purpose: Seeds the plans table.
+  symbols:
+  - name: PLANS
+    value: monthly 15.00 per month, annual 120.00 per year
+    facts:
+    - fact: F-030
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/index.ts
+  language: typescript
+  added_in: c1
+  purpose: 'Entry point: starts the scheduler, the consumer and the API.'
+  symbols:
+  - name: main
+- path: dispatch/src/config.ts
+  language: typescript
+  added_in: c1
+  purpose: Configuration from the environment.
+  symbols:
+  - name: config
+- path: dispatch/src/scheduler.ts
+  language: typescript
+  added_in: c1
+  purpose: Cron schedules and the job lock.
+  symbols:
+  - name: SCHEDULES
+    value: nightly-rebalance '0 3 * * *', maintenance-sweep '0 * * * *', weather-poll '*/15 * * * *', timezone America/New_York
+    facts:
+    - fact: F-087
+      steps: [c1, c2, c3, c4, c5, c6]
+    - fact: F-088
+      steps: [c1, c2, c3, c4, c5, c6]
+    - fact: F-089
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: withJobLock
+    note: a database lock named after the job
+    facts:
+    - fact: F-090
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/jobs/nightlyRebalance.ts
+  language: typescript
+  added_in: c1
+  purpose: The nightly-rebalance job.
+  symbols:
+  - name: LOW_FILL
+    value: 0.2
+  - name: HIGH_FILL
+    value: 0.9
+  - name: TARGET_FILL
+    value: 0.5
+    facts:
+    - fact: F-032
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: needsRebalance
+    facts:
+    - fact: F-021
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: nightlyRebalance
+    note: calls isStormPaused from c6
+    facts:
+    - fact: F-022
+      steps: [c6]
+    - fact: F-033
+      steps: [c1, c2, c3, c4, c5]
+- path: dispatch/src/jobs/maintenanceSweep.ts
+  language: typescript
+  added_in: c1
+  purpose: The maintenance-sweep job.
+  symbols:
+  - name: FAULT_THRESHOLD
+    value: 3
+    facts:
+    - fact: F-020
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: FAULT_WINDOW_DAYS
+    value: 7
+  - name: maintenanceSweep
+    facts:
+    - fact: F-069
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/jobs/weatherPoll.ts
+  language: typescript
+  added_in: c1
+  purpose: The weather-poll job.
+  symbols:
+  - name: weatherPoll
+- path: dispatch/src/rules/stormPause.ts
+  language: typescript
+  added_in: c6
+  purpose: Storm pause rule.
+  symbols:
+  - name: STORM_SEVERITY
+    value: 3
+    facts:
+    - fact: F-022
+      steps: [c6]
+  - name: MAX_READING_AGE_MINUTES
+    value: 60
+    facts:
+    - fact: F-091
+      steps: [c6]
+  - name: isStormPaused
+    facts:
+    - fact: F-034
+      steps: [c6]
+- path: dispatch/src/clients/skyglass.ts
+  language: typescript
+  added_in: c1
+  purpose: HTTP client for Skyglass.
+  symbols:
+  - name: SKYGLASS_TIMEOUT_MS
+    value: 3000
+  - name: SkyglassClient
+  - name: SkyglassClient.fetchSeverity
+    note: GET /v2/severity?lat&lon
+    facts:
+    - fact: F-068
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/clients/dockyard.ts
+  language: typescript
+  added_in: c1
+  purpose: HTTP client for dockyard.
+  symbols:
+  - name: DockyardClient
+  - name: DockyardClient.lockBike
+    facts:
+    - fact: F-067
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: DockyardClient.stationFills
+- path: dispatch/src/clients/farebox.ts
+  language: typescript
+  added_in: c1
+  purpose: HTTP client for farebox.
+  symbols:
+  - name: FareboxClient
+  - name: FareboxClient.closeLostRides
+    facts:
+    - fact: F-069
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/db/rebalanceOrders.ts
+  language: typescript
+  added_in: c1
+  purpose: rebalance_orders access.
+  symbols:
+  - name: insertRebalanceOrder
+- path: dispatch/src/db/maintenanceTickets.ts
+  language: typescript
+  added_in: c1
+  purpose: maintenance_tickets access.
+  symbols:
+  - name: openTicket
+  - name: countFaultReports
+    facts:
+    - fact: F-073
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/db/weatherReadings.ts
+  language: typescript
+  added_in: c1
+  purpose: weather_readings access.
+  symbols:
+  - name: insertReading
+  - name: latestReading
+- path: dispatch/src/consumers/rideEvents.ts
+  language: typescript
+  added_in: c1
+  purpose: ride.events consumer.
+  symbols:
+  - name: CONSUMER_GROUP
+    value: dispatch-demand
+    facts:
+    - fact: F-058
+      steps: [c1, c2, c3, c4, c5, c6]
+  - name: onRideEvent
+    facts:
+    - fact: F-053
+      steps: [c1, c2, c3, c4, c5, c6]
+- path: dispatch/src/flags.ts
+  language: typescript
+  added_in: c1
+  purpose: Reads feature_flags on every job run.
+  symbols:
+  - name: isEnabled
+- path: dispatch/src/api/faults.ts
+  language: typescript
+  added_in: c1
+  purpose: POST /bikes/:id/faults, a rider's fault report.
+  symbols:
+  - name: postFaultReport
+tests:
+- document: code/dispatch/test/maintenanceSweep.test.ts
+  id: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  framework: vitest
+  asserts:
+  - fact: F-020
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/dispatch/test/nightlyRebalance.test.ts
+  id: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  framework: vitest
+  asserts:
+  - fact: F-021
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/dispatch/test/rideEvents.test.ts
+  id: rideEvents > counts ride.completed toward the return station's demand
+  framework: vitest
+  asserts:
+  - fact: F-053
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/dispatch/test/stormPause.test.ts
+  id: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+  framework: vitest
+  asserts:
+  - fact: F-022
+    steps: [c6]
+  passes_in: [c6]
+- document: code/tests/e2e/test_checkin.py
+  id: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  framework: pytest
+  asserts:
+  - fact: F-018
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_checkin.py
+  id: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  framework: pytest
+  asserts:
+  - fact: F-017
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_checkin.py
+  id: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  framework: pytest
+  asserts:
+  - fact: F-051
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_checkout.py
+  id: tests/e2e/test_checkout.py::test_third_checkout_refused
+  framework: pytest
+  asserts:
+  - fact: F-019
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_close_ride.py
+  id: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  framework: pytest
+  asserts:
+  - fact: F-050
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_pricing.py
+  id: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  framework: pytest
+  asserts:
+  - fact: F-004
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_pricing.py
+  id: tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
+  framework: pytest
+  asserts:
+  - fact: F-002
+    steps: [c2, c3]
+  passes_in: [c2, c3]
+- document: code/tests/e2e/test_pricing.py
+  id: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  framework: pytest
+  asserts:
+  - fact: F-001
+    steps: [c1]
+  - fact: F-003
+    steps: [c4, c5, c6]
+  passes_in: [c1, c4, c5, c6]
+- document: code/tests/e2e/test_refunds.py
+  id: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  framework: pytest
+  asserts:
+  - fact: F-013
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/e2e/test_refunds.py
+  id: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
+  framework: pytest
+  asserts:
+  - fact: F-014
+    steps: [c6]
+  passes_in: [c6]
+- document: code/tests/e2e/test_station_status.py
+  id: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  framework: pytest
+  asserts:
+  - fact: F-052
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/unit/test_flags.py
+  id: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  framework: pytest
+  asserts:
+  - fact: F-049
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/unit/test_lost_bikes.py
+  id: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  framework: pytest
+  asserts:
+  - fact: F-011
+    steps: [c1, c2, c3, c4]
+  passes_in: [c1, c2, c3, c4]
+- document: code/tests/unit/test_lost_bikes.py
+  id: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  framework: pytest
+  asserts:
+  - fact: F-012
+    steps: [c5, c6]
+  passes_in: [c5, c6]
+- document: code/tests/unit/test_lost_bikes.py
+  id: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  framework: pytest
+  asserts:
+  - fact: F-010
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/unit/test_memberships.py
+  id: tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
+  framework: pytest
+  asserts:
+  - fact: F-015
+    steps: [c1, c2]
+  passes_in: [c1, c2]
+- document: code/tests/unit/test_memberships.py
+  id: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  framework: pytest
+  asserts:
+  - fact: F-016
+    steps: [c3, c4, c5, c6]
+  passes_in: [c3, c4, c5, c6]
+- document: code/tests/unit/test_pricing.py
+  id: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  framework: pytest
+  asserts:
+  - fact: F-006
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/unit/test_pricing.py
+  id: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  framework: pytest
+  asserts:
+  - fact: F-007
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/unit/test_pricing.py
+  id: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  framework: pytest
+  asserts:
+  - fact: F-005
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+- document: code/tests/unit/test_pricing.py
+  id: tests/unit/test_pricing.py::test_single_ride_cap_25
+  framework: pytest
+  asserts:
+  - fact: F-008
+    steps: [c1, c2, c3, c4]
+  passes_in: [c1, c2, c3, c4]
+- document: code/tests/unit/test_pricing.py
+  id: tests/unit/test_pricing.py::test_single_ride_cap_30
+  framework: pytest
+  asserts:
+  - fact: F-009
+    steps: [c5, c6]
+  passes_in: [c5, c6]
+- document: code/tests/unit/test_tollbooth_client.py
+  id: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  framework: pytest
+  asserts:
+  - fact: F-023
+    steps: [c1, c2, c3, c4, c5, c6]
+  passes_in: [c1, c2, c3, c4, c5, c6]
+runs:
+- id: run/pytest-c1
+  framework: pytest
+  step: c1
+  result: all passed
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_25
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+- id: run/pytest-c2
+  framework: pytest
+  step: c2
+  result: all passed
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_25
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+- id: run/pytest-c3
+  framework: pytest
+  step: c3
+  result: all passed
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_25
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+- id: run/pytest-c4
+  framework: pytest
+  step: c4
+  result: all passed
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_25
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+- id: run/pytest-c5
+  framework: pytest
+  step: c5
+  result: all passed
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_30
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+- id: run/pytest-c6
+  framework: pytest
+  step: c6
+  result: all passed
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_30
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+- id: run/vitest-c1
+  framework: vitest
+  step: c1
+  result: all passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+- id: run/vitest-c2
+  framework: vitest
+  step: c2
+  result: all passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+- id: run/vitest-c3
+  framework: vitest
+  step: c3
+  result: all passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+- id: run/vitest-c4
+  framework: vitest
+  step: c4
+  result: all passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+- id: run/vitest-c5
+  framework: vitest
+  step: c5
+  result: all passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+- id: run/vitest-c6
+  framework: vitest
+  step: c6
+  result: all passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+  - stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more

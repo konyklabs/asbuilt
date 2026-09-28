@@ -1,0 +1,5 @@
+- id: S-001
+  document: wiki/pricing-rules-2025
+  states: F-005
+  changed_by: c4
+  superseded_by: F-003

@@ -1,0 +1,30 @@
+{
+  "id": "ticket/GW-177",
+  "key": "GW-177",
+  "summary": "Rebalancing ran during the 2026-09-02 storm",
+  "status": "Done",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2026-09-03T08:15:00-04:00",
+  "updated": "2026-09-09T10:00:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "A rider on social media pointed out that rebalancing vans were seen out on the road during a storm that afternoon, and ops wants to understand whether the storm pause should have kicked in.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "tobin.achebe",
+      "created": "2026-09-03T09:00:00-04:00",
+      "body": "Attaching the van dispatch log from that afternoon for reference."
+    },
+    {
+      "id": "comment-2",
+      "author": "ren.okafor",
+      "created": "2026-09-04T11:30:00-04:00",
+      "body": "Looked into it -- the latest Skyglass reading on file was stale by the time the vans went out, and the storm pause only holds rebalancing back when that reading is fresh. Past 60 minutes old, the pause stops applying, so the vans went out as normal even though the storm had already started."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-159",
+  "key": "GW-159",
+  "summary": "Rider app: remember the last payment card",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "dana.whitlock",
+  "assignee": null,
+  "created": "2026-06-19T09:33:00-04:00",
+  "updated": "2026-06-26T12:33:00-04:00",
+  "labels": [
+    "product",
+    "task"
+  ],
+  "description": "Riders have asked for the app to remember their last payment card instead of re-entering it for every casual ride.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-06-20T09:33:00-04:00",
+      "body": "Would cut down on abandoned checkouts -- worth doing."
+    }
+  ]
+}

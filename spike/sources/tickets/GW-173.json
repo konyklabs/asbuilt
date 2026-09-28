@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-173",
+  "key": "GW-173",
+  "summary": "Weather poll down for 6 hours",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2026-08-12T13:00:00-04:00",
+  "updated": "2026-08-14T11:00:00-04:00",
+  "labels": [
+    "ops",
+    "bug"
+  ],
+  "description": "The weather poll stopped updating for most of a day and nobody noticed until vans were dispatched despite an active storm nearby. Root cause: on 2026-08-12, someone rotated the Skyglass API key without updating dispatch's configuration to match, which left the poll dark for 6 hours.",
+  "comments": []
+}

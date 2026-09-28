@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-130",
+  "key": "GW-130",
+  "summary": "Rotate the staging database password",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "kasia.brandt",
+  "assignee": null,
+  "created": "2026-02-08T21:10:00-05:00",
+  "updated": "2026-02-14T00:10:00-05:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "The staging database still uses the password from when the environment was first stood up. Worth rotating it as routine hygiene before the next audit.",
+  "comments": []
+}

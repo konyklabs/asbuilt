@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-156",
+  "key": "GW-156",
+  "summary": "Keep database snapshots for 30 days",
+  "status": "Done",
+  "type": "task",
+  "reporter": "lev.anand",
+  "assignee": "lev.anand",
+  "created": "2026-06-02T13:00:00-04:00",
+  "updated": "2026-06-15T15:10:00-04:00",
+  "labels": [
+    "platform",
+    "task"
+  ],
+  "description": "Legal wants a longer window on database backups in case a data request comes in well after the fact: snapshots need to stick around for 30 days.",
+  "comments": []
+}

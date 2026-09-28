@@ -1,0 +1,101 @@
+# Pairs of facts that cannot both hold. Winner: tier (executed > code > documented), then recency.
+- id: X-001
+  facts: [F-036, F-003]
+  kind: wiki-vs-test
+  winner: F-003
+  label: refutes
+- id: X-002
+  facts: [F-037, F-016]
+  kind: wiki-vs-test
+  winner: F-016
+  label: refutes
+- id: X-003
+  facts: [F-038, F-009]
+  kind: wiki-vs-test
+  winner: F-009
+  label: refutes
+- id: X-004
+  facts: [F-039, F-012]
+  kind: wiki-vs-test
+  winner: F-012
+  label: refutes
+- id: X-005
+  facts: [F-042, F-019]
+  kind: wiki-vs-test
+  winner: F-019
+  label: refutes
+- id: X-006
+  facts: [F-047, F-021]
+  kind: wiki-vs-test
+  winner: F-021
+  label: refutes
+- id: X-007
+  facts: [F-043, F-020]
+  kind: ticket-vs-code
+  winner: F-020
+  label: refutes
+- id: X-008
+  facts: [F-044, F-013]
+  kind: ticket-vs-code
+  winner: F-013
+  label: refutes
+- id: X-009
+  facts: [F-045, F-024]
+  kind: ticket-vs-code
+  winner: F-024
+  label: refutes
+- id: X-010
+  facts: [F-078, F-063]
+  kind: ticket-vs-code
+  winner: F-063
+  label: refutes
+- id: X-011
+  facts: [F-093, F-087]
+  kind: page-vs-page
+  winner: F-087
+  label: refutes
+- id: X-012
+  facts: [F-101, F-100]
+  kind: page-vs-page
+  winner: F-100
+  label: refutes
+- id: X-013
+  facts: [F-103, F-104]
+  kind: page-vs-page
+  winner: F-104
+  label: refutes
+- id: X-014
+  facts: [F-107, F-108]
+  kind: page-vs-page
+  winner: F-108
+  label: refutes
+- id: X-015
+  facts: [F-079, F-054]
+  kind: doc-vs-code
+  winner: F-054
+  label: refutes
+- id: X-016
+  facts: [F-046, F-004]
+  kind: doc-vs-code
+  winner: F-004
+  label: refutes
+- id: X-017
+  facts: [F-095, F-088]
+  kind: doc-vs-code
+  winner: F-088
+  label: refutes
+- id: X-018
+  facts: [F-080, F-050]
+  kind: doc-vs-code
+  winner: F-050
+  label: refutes
+- id: X-019
+  facts: [F-096, F-089]
+  kind: doc-vs-code
+  winner: F-089
+  label: refutes
+- id: X-020
+  facts: [F-077, F-060]
+  kind: doc-vs-code
+  winner: F-060
+  label: refutes

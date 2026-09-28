@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-101",
+  "key": "GW-101",
+  "summary": "Station map pins drift on the rider app at high zoom",
+  "status": "Won't Do",
+  "type": "bug",
+  "reporter": "priya.lund",
+  "assignee": null,
+  "created": "2025-10-01T14:47:00-04:00",
+  "updated": "2025-10-04T17:47:00-04:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "Riders on high-zoom map tiles report station pins sliding a few pixels off the dock as they pan around. Cosmetic rather than a data problem -- the underlying station coordinates in dockyard check out fine, so closing this as won't-do for now.",
+  "comments": []
+}

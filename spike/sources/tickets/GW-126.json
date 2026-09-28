@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-126",
+  "key": "GW-126",
+  "summary": "Add station photos to the rider app",
+  "status": "Done",
+  "type": "task",
+  "reporter": "mara.voss",
+  "assignee": "mara.voss",
+  "created": "2026-01-21T21:42:00-05:00",
+  "updated": "2026-01-23T00:42:00-05:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "Riders keep asking what a station actually looks like before they walk over, so product wants a photo on each station's page in the rider app.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2026-01-22T21:42:00-05:00",
+      "body": "Fleet already has photos from the install walkthroughs -- just need somewhere to host them."
+    }
+  ]
+}

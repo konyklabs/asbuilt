@@ -1,0 +1,35 @@
+{
+  "id": "pull/21",
+  "number": 21,
+  "title": "Turn on dynamic_pricing",
+  "state": "open",
+  "author": "kasia.brandt",
+  "opened": "2026-09-08T10:00:00-04:00",
+  "closed": null,
+  "merged_step": null,
+  "head_ref": "feat/enable-dynamic-pricing",
+  "body": "## Proposal\n\nFlips the dynamic_pricing default on in production so rain surge pricing goes live for everyone instead of staying dark.",
+  "files": [
+    "farebox/flags.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2026-09-08T15:00:00-04:00",
+      "body": "Product is keen to get this out -- any blockers?"
+    },
+    {
+      "id": "comment-2",
+      "author": "kasia.brandt",
+      "created": "2026-09-09T09:30:00-04:00",
+      "body": "Can we pin a review date for this one?"
+    },
+    {
+      "id": "comment-3",
+      "author": "mara.voss",
+      "created": "2026-09-10T11:00:00-04:00",
+      "body": "Blocking for now: legal still needs to sign off on rain surge pricing before this can go live in production, so the flag has to stay off until that review wraps up."
+    }
+  ]
+}

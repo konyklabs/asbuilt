@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-172",
+  "key": "GW-172",
+  "summary": "Holiday opening hours banner",
+  "status": "Done",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2026-08-12T08:04:00-04:00",
+  "updated": "2026-08-14T11:04:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Product wants a banner in the rider app showing adjusted opening hours over the upcoming holiday weekend.",
+  "comments": []
+}

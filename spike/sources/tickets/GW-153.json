@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-153",
+  "key": "GW-153",
+  "summary": "Investigate memory growth in the ride events consumer",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "mara.voss",
+  "assignee": "mara.voss",
+  "created": "2026-05-23T09:51:00-04:00",
+  "updated": "2026-05-24T12:51:00-04:00",
+  "labels": [
+    "fares",
+    "bug"
+  ],
+  "description": "The ride events consumer's memory footprint has been creeping up over a run, which is starting to trigger restarts under load.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2026-05-24T09:51:00-04:00",
+      "body": "Looks like it's holding onto event payloads longer than it needs to -- digging into the consumer loop."
+    }
+  ]
+}

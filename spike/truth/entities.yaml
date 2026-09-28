@@ -1,0 +1,68 @@
+# Gearwell, an invented bike-share operator's back office. Every name here is
+# made up for this fixture and resembles no real system.
+
+# teams
+- {id: E-team-fleet, kind: team, name: fleet, summary: "Owns dockyard: stations, docks, bikes."}
+- {id: E-team-fares, kind: team, name: fares, summary: "Owns farebox: memberships, pricing, billing."}
+- {id: E-team-ops, kind: team, name: ops, summary: "Owns dispatch: rebalancing, maintenance, the jobs, the weather integration."}
+
+# services
+- {id: E-dockyard, kind: service, name: dockyard, owner: E-team-fleet, summary: "Stations, docks, bikes, check-out and check-in. Python."}
+- {id: E-farebox, kind: service, name: farebox, owner: E-team-fares, summary: "Memberships, ride pricing, invoices, refunds, payments. Python."}
+- {id: E-dispatch, kind: service, name: dispatch, owner: E-team-ops, summary: "Rebalancing, maintenance tickets, scheduled jobs. TypeScript."}
+
+# tables (15)
+- {id: E-table-stations, kind: table, name: stations, owner: E-dockyard}
+- {id: E-table-docks, kind: table, name: docks, owner: E-dockyard}
+- {id: E-table-bikes, kind: table, name: bikes, owner: E-dockyard}
+- {id: E-table-rides, kind: table, name: rides, owner: E-dockyard, summary: "Written by dockyard at check-out and check-in; read by farebox and dispatch."}
+- {id: E-table-riders, kind: table, name: riders, owner: E-farebox}
+- {id: E-table-plans, kind: table, name: plans, owner: E-farebox}
+- {id: E-table-memberships, kind: table, name: memberships, owner: E-farebox}
+- {id: E-table-invoices, kind: table, name: invoices, owner: E-farebox}
+- {id: E-table-invoice-lines, kind: table, name: invoice_lines, owner: E-farebox}
+- {id: E-table-payments, kind: table, name: payments, owner: E-farebox}
+- {id: E-table-refunds, kind: table, name: refunds, owner: E-farebox}
+- {id: E-table-maintenance-tickets, kind: table, name: maintenance_tickets, owner: E-dispatch}
+- {id: E-table-rebalance-orders, kind: table, name: rebalance_orders, owner: E-dispatch}
+- {id: E-table-weather-readings, kind: table, name: weather_readings, owner: E-dispatch}
+- {id: E-table-feature-flags, kind: table, name: feature_flags, owner: E-farebox, summary: "Read by all three services."}
+
+# queue and integrations
+- {id: E-queue-ride-events, kind: queue, name: ride.events, summary: "farebox publishes ride.completed and ride.refunded; dispatch consumes them for demand."}
+- {id: E-int-tollbooth-pay, kind: integration, name: "Tollbooth Pay", owner: E-farebox, summary: "Invented payment provider, HTTP. Captures at ride end."}
+- {id: E-int-skyglass, kind: integration, name: Skyglass, owner: E-dispatch, summary: "Invented weather service, HTTP. Polled for severity 0-5."}
+
+# jobs (3, all in dispatch)
+- {id: E-job-nightly-rebalance, kind: job, name: nightly-rebalance, owner: E-dispatch, summary: "03:00 daily; plans rebalance orders from station fill levels."}
+- {id: E-job-maintenance-sweep, kind: job, name: maintenance-sweep, owner: E-dispatch, summary: "Hourly; opens a maintenance ticket and locks a bike over the fault threshold."}
+- {id: E-job-weather-poll, kind: job, name: weather-poll, owner: E-dispatch, summary: "Every 15 minutes; stores a Skyglass reading."}
+
+# feature flags (4)
+- {id: E-flag-dynamic-pricing, kind: flag, name: dynamic_pricing, owner: E-farebox, summary: "Surge per-minute rate in rain. Ships dark."}
+- {id: E-flag-ebike-surcharge, kind: flag, name: ebike_surcharge, owner: E-farebox}
+- {id: E-flag-overflow-parking, kind: flag, name: overflow_parking, owner: E-dockyard, summary: "Allow check-in at a full station."}
+- {id: E-flag-refund-auto-approve, kind: flag, name: refund_auto_approve, owner: E-farebox}
+
+# business rules
+- {id: E-rule-member-free-minutes, kind: rule, name: member-free-minutes, owner: E-farebox, summary: "Minutes of each ride a member is not charged for. 30, except 45 during the spring promotion (c2 to c4)."}
+- {id: E-rule-casual-unlock-fee, kind: rule, name: casual-unlock-fee, owner: E-farebox, summary: "$1.00 to unlock for a rider without a membership."}
+- {id: E-rule-per-minute-rate, kind: rule, name: per-minute-rate, owner: E-farebox, summary: "$0.15 per minute for members after the free minutes; $0.25 for casual riders from minute one."}
+- {id: E-rule-ebike-surcharge, kind: rule, name: ebike-surcharge, owner: E-farebox, summary: "+$0.10 per minute on an e-bike when the flag is on."}
+- {id: E-rule-single-ride-cap, kind: rule, name: single-ride-cap, owner: E-farebox, summary: "One ride costs at most $30 (was $25 before c5)."}
+- {id: E-rule-lost-bike-fee, kind: rule, name: lost-bike-fee, owner: E-farebox, summary: "A bike not docked within 24 hours closes the ride with a $150 fee (was $100 before c5)."}
+- {id: E-rule-refund-window, kind: rule, name: refund-window, owner: E-farebox, summary: "A refund may be requested within 14 days of the ride's end."}
+- {id: E-rule-refund-auto-approve, kind: rule, name: refund-auto-approve, owner: E-farebox, summary: "Refunds under $5 are approved without review when the flag is on (c6)."}
+- {id: E-rule-membership-grace, kind: rule, name: membership-grace, owner: E-farebox, summary: "A membership lapses 7 days after a failed renewal (was 3 before c3)."}
+- {id: E-rule-station-capacity, kind: rule, name: station-capacity, owner: E-dockyard, summary: "Check-in at a full station is refused unless overflow_parking is on."}
+- {id: E-rule-checkout-limit, kind: rule, name: checkout-limit, owner: E-dockyard, summary: "A rider holds at most 2 bikes at once."}
+- {id: E-rule-fault-threshold, kind: rule, name: fault-threshold, owner: E-dispatch, summary: "3 fault reports in 7 days lock the bike and open a maintenance ticket."}
+- {id: E-rule-rebalance-trigger, kind: rule, name: rebalance-trigger, owner: E-dispatch, summary: "A station under 20% or over 90% full gets a rebalance order."}
+- {id: E-rule-storm-pause, kind: rule, name: storm-pause, owner: E-dispatch, summary: "Rebalancing pauses while Skyglass severity is 3 or more (c6)."}
+- {id: E-rule-payment-retry, kind: rule, name: payment-retry, owner: E-farebox, summary: "A Tollbooth Pay call is retried 3 times with backoff."}
+
+# endpoints (a few, for technical facts)
+- {id: E-endpoint-checkout, kind: endpoint, name: "POST /rides/checkout", owner: E-dockyard}
+- {id: E-endpoint-checkin, kind: endpoint, name: "POST /rides/{id}/checkin", owner: E-dockyard}
+- {id: E-endpoint-refund, kind: endpoint, name: "POST /refunds", owner: E-farebox}
+- {id: E-endpoint-station-status, kind: endpoint, name: "GET /stations/{id}/status", owner: E-dockyard}

@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-108",
+  "key": "GW-108",
+  "summary": "Upgrade the Python test runner",
+  "status": "Done",
+  "type": "task",
+  "reporter": "mara.voss",
+  "assignee": "mara.voss",
+  "created": "2025-11-01T21:36:00-04:00",
+  "updated": "2025-11-03T00:36:00-05:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "Our pytest runner is on an old minor version and a few of the newer fixtures the team wants to use aren't available yet. Bumping it should be low-risk.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2025-11-02T21:36:00-05:00",
+      "body": "Ran the full suite locally against the newer runner first -- nothing broke, going ahead."
+    }
+  ]
+}

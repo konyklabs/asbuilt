@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-112",
+  "key": "GW-112",
+  "summary": "Surge pricing in rain",
+  "status": "Done",
+  "type": "story",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2025-11-18T14:20:00-05:00",
+  "updated": "2026-01-09T09:00:00-05:00",
+  "labels": [
+    "product",
+    "story"
+  ],
+  "description": "Riders complain that fares don't reflect how much harder it is to rebalance stations in bad weather. Per-minute rates should get a 1.5x multiplier once it's raining.",
+  "comments": []
+}

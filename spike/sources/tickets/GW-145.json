@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-145",
+  "key": "GW-145",
+  "summary": "Support: canned reply for full-station complaints",
+  "status": "Done",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2026-04-17T09:55:00-04:00",
+  "updated": "2026-04-19T12:55:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Support keeps fielding the same complaint about riders finding a station full when they try to check in, so a canned reply would save agents time.",
+  "comments": []
+}

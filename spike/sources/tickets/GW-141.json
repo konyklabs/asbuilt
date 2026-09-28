@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-141",
+  "key": "GW-141",
+  "summary": "Customer asked for a paper invoice",
+  "status": "Won't Do",
+  "type": "task",
+  "reporter": "dana.whitlock",
+  "assignee": null,
+  "created": "2026-03-30T09:27:00-04:00",
+  "updated": "2026-04-06T12:27:00-04:00",
+  "labels": [
+    "product",
+    "task"
+  ],
+  "description": "A customer called in asking for a paper copy of their invoice mailed to them instead of the usual email statement.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-03-31T09:27:00-04:00",
+      "body": "Closing -- paper billing isn't something we're set up to support, and it's a single request rather than a pattern."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-121",
+  "key": "GW-121",
+  "summary": "Log lines from dispatch lack the job name",
+  "status": "Done",
+  "type": "task",
+  "reporter": "kasia.brandt",
+  "assignee": "kasia.brandt",
+  "created": "2025-12-30T09:07:00-05:00",
+  "updated": "2026-01-04T12:07:00-05:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "Dispatch's log lines don't include which scheduled job emitted them, which makes it hard to tell the nightly rebalance and the maintenance sweep apart in a shared log stream.",
+  "comments": []
+}

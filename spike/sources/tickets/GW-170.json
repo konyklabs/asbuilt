@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-170",
+  "key": "GW-170",
+  "summary": "Pause rebalancing in storms",
+  "status": "Done",
+  "type": "story",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2026-08-05T10:00:00-04:00",
+  "updated": "2026-08-30T16:30:00-04:00",
+  "labels": [
+    "ops",
+    "story"
+  ],
+  "description": "Ops wants vans held back at the depot during severe weather instead of sending them out into a storm to rebalance stations: hold rebalancing any time the latest Skyglass reading comes in at severity 3 or higher.",
+  "comments": []
+}

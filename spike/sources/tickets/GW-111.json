@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-111",
+  "key": "GW-111",
+  "summary": "Rider app: accessibility labels on the unlock button",
+  "status": "To Do",
+  "type": "bug",
+  "reporter": "joel.ferraz",
+  "assignee": null,
+  "created": "2025-11-15T09:57:00-05:00",
+  "updated": "2025-11-19T12:57:00-05:00",
+  "labels": [
+    "support",
+    "bug"
+  ],
+  "description": "Expected: VoiceOver announces something like \"unlock bike, button\". Actual: the unlock button on the rider app has no accessibility label, so a screen reader just announces \"button\".",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2025-11-16T09:57:00-05:00",
+      "body": "Agreed, flagging this for the next app accessibility pass."
+    }
+  ]
+}

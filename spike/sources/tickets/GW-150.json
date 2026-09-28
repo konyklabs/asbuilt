@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-150",
+  "key": "GW-150",
+  "summary": "Rider app: show the ride timer on the lock screen",
+  "status": "Done",
+  "type": "task",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2026-05-09T21:30:00-04:00",
+  "updated": "2026-05-17T00:30:00-04:00",
+  "labels": [
+    "product",
+    "task"
+  ],
+  "description": "Riders asked for the running ride timer to stay visible on the lock screen instead of disappearing when the phone sleeps.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-05-10T21:30:00-04:00",
+      "body": "Nice small win for the app -- shouldn't need backend changes."
+    }
+  ]
+}

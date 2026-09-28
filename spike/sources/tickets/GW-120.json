@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-120",
+  "key": "GW-120",
+  "summary": "Van route sheet prints off the page",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2025-12-25T21:00:00-05:00",
+  "updated": "2025-12-30T00:00:00-05:00",
+  "labels": [
+    "support",
+    "bug"
+  ],
+  "description": "The van route sheet PDF that mechanics print each morning runs a column past the page edge on letter paper, so the last stop's address gets cut off.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2025-12-26T21:00:00-05:00",
+      "body": "Looks like a stray margin setting in the print stylesheet -- should be quick."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-147",
+  "key": "GW-147",
+  "summary": "Upgrade the TypeScript compiler in dispatch",
+  "status": "In Progress",
+  "type": "task",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-04-26T09:09:00-04:00",
+  "updated": "2026-04-30T12:09:00-04:00",
+  "labels": [
+    "support",
+    "task"
+  ],
+  "description": "Dispatch is still on an older TypeScript compiler version, and a couple of newer language features the team wants to use aren't available yet.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2026-04-27T09:09:00-04:00",
+      "body": "No objections from product -- just flag if anything in the jobs needs retesting after the bump."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-163",
+  "key": "GW-163",
+  "summary": "Raise the lost-bike fee to $150",
+  "status": "Done",
+  "type": "story",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2026-07-02T09:00:00-04:00",
+  "updated": "2026-07-22T14:10:00-04:00",
+  "labels": [
+    "product",
+    "story"
+  ],
+  "description": "Alongside the ride cap change, finance wants the lost-bike fee brought up to reflect current replacement cost -- to $150.00 per ride closed as lost.",
+  "comments": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-133",
+  "key": "GW-133",
+  "summary": "Stations imported with swapped latitude and longitude",
+  "status": "Won't Do",
+  "type": "bug",
+  "reporter": "sami.haddad",
+  "assignee": null,
+  "created": "2026-02-22T09:31:00-05:00",
+  "updated": "2026-03-02T12:31:00-05:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "A batch of stations imported from the last expansion round showed up on the map with latitude and longitude swapped, placing them in the ocean. Closing as won't-do -- the batch was already corrected by hand and the importer that caused it has since been retired.",
+  "comments": []
+}

@@ -1,0 +1,36 @@
+# One query per surface, matching bench/run.py's mix schema (documented in
+# its module docstring). expected results:
+#   explain(E-rule-member-free-minutes) -> F-001, F-002, F-003, F-005
+#   search("free minutes")              -> F-003, F-005
+#   ask("How many free minutes ...")    -> F-003
+#   contradictions(E-rule-member-free-minutes) -> X-001 (derived from truth)
+#   stale(since 2026-01-15)             -> S-001 (changed_by c4, 2026-04-01)
+weights:
+  explain: 1.0
+  search: 1.0
+  ask: 1.0
+  contradictions: 1.0
+  stale: 1.0
+
+queries:
+  - id: q-explain-1
+    surface: explain
+    entity: E-rule-member-free-minutes
+
+  - id: q-search-1
+    surface: search
+    query: "free minutes"
+    expects: [F-003, F-005]
+
+  - id: q-ask-1
+    surface: ask
+    question: "How many free minutes does a member get?"
+    expects: [F-003]
+
+  - id: q-contradictions-1
+    surface: contradictions
+    entity: E-rule-member-free-minutes
+
+  - id: q-stale-1
+    surface: stale
+    since: "2026-01-15T00:00:00-05:00"

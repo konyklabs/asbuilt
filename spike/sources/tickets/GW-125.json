@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-125",
+  "key": "GW-125",
+  "summary": "Update the privacy notice link in receipts",
+  "status": "Won't Do",
+  "type": "task",
+  "reporter": "lev.anand",
+  "assignee": null,
+  "created": "2026-01-17T09:35:00-05:00",
+  "updated": "2026-01-26T12:35:00-05:00",
+  "labels": [
+    "platform",
+    "task"
+  ],
+  "description": "Legal asked whether the privacy notice link in ride receipts should point at the new policy page instead of the old one. Closing as won't-do -- the old page now redirects, so there's nothing to change on our side.",
+  "comments": []
+}

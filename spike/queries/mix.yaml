@@ -1,0 +1,205 @@
+# The benchmark's fixed query mix, in bench/run.py's shape (see its docstring).
+# 20 explain, 15 search, 10 ask, 4 contradictions, 3 stale; weights are percentages.
+# explain: expected = every fact tagged with the entity (derived by bench/score.py).
+# contradictions: expected = every X- whose facts carry the entity (every X- when null).
+# stale: expected = every S- whose changed_by step is dated after `since`.
+weights:
+  explain: 40
+  search: 25
+  ask: 15
+  contradictions: 10
+  stale: 10
+queries:
+- id: q-explain-01
+  surface: explain
+  entity: E-farebox
+- id: q-explain-02
+  surface: explain
+  entity: E-dockyard
+- id: q-explain-03
+  surface: explain
+  entity: E-dispatch
+- id: q-explain-04
+  surface: explain
+  entity: E-rule-member-free-minutes
+- id: q-explain-05
+  surface: explain
+  entity: E-rule-single-ride-cap
+- id: q-explain-06
+  surface: explain
+  entity: E-rule-lost-bike-fee
+- id: q-explain-07
+  surface: explain
+  entity: E-rule-membership-grace
+- id: q-explain-08
+  surface: explain
+  entity: E-rule-refund-auto-approve
+- id: q-explain-09
+  surface: explain
+  entity: E-rule-storm-pause
+- id: q-explain-10
+  surface: explain
+  entity: E-rule-fault-threshold
+- id: q-explain-11
+  surface: explain
+  entity: E-rule-payment-retry
+- id: q-explain-12
+  surface: explain
+  entity: E-int-tollbooth-pay
+- id: q-explain-13
+  surface: explain
+  entity: E-int-skyglass
+- id: q-explain-14
+  surface: explain
+  entity: E-queue-ride-events
+- id: q-explain-15
+  surface: explain
+  entity: E-table-rides
+- id: q-explain-16
+  surface: explain
+  entity: E-table-feature-flags
+- id: q-explain-17
+  surface: explain
+  entity: E-job-nightly-rebalance
+- id: q-explain-18
+  surface: explain
+  entity: E-job-maintenance-sweep
+- id: q-explain-19
+  surface: explain
+  entity: E-flag-dynamic-pricing
+- id: q-explain-20
+  surface: explain
+  entity: E-endpoint-refund
+- id: q-search-01
+  surface: search
+  query: how is a ride priced for a member
+  category: business-logic
+  expects: [F-003, F-005, F-029]
+- id: q-search-02
+  surface: search
+  query: unlock fee for riders without a membership
+  category: business-logic
+  expects: [F-004]
+- id: q-search-03
+  surface: search
+  query: e-bike surcharge
+  category: business-logic
+  expects: [F-007, F-025]
+- id: q-search-04
+  surface: search
+  query: what happens when a bike is never returned
+  category: business-logic
+  expects: [F-010, F-012, F-026]
+- id: q-search-05
+  surface: search
+  query: refund rules
+  category: business-logic
+  expects: [F-013, F-014, F-028]
+- id: q-search-06
+  surface: search
+  query: which service publishes ride.completed
+  category: technical-implementation
+  expects: [F-050, F-057]
+- id: q-search-07
+  surface: search
+  query: Tollbooth Pay timeouts and retries
+  expects: [F-023, F-060, F-061, F-062]
+- id: q-search-08
+  surface: search
+  query: feature flag caching and defaults
+  category: technical-implementation
+  expects: [F-049, F-063, F-064]
+- id: q-search-09
+  surface: search
+  query: which column holds the station a bike was returned to
+  category: technical-implementation
+  expects: [F-054]
+- id: q-search-10
+  surface: search
+  query: when does the nightly rebalance run
+  category: operations
+  expects: [F-087]
+- id: q-search-11
+  surface: search
+  query: what pages the on-call engineer
+  category: operations
+  expects: [F-098, F-099]
+- id: q-search-12
+  surface: search
+  query: how long are database snapshots kept
+  category: operations
+  expects: [F-104]
+- id: q-search-13
+  surface: search
+  query: storm pause
+  expects: [F-022, F-034, F-091, F-109]
+- id: q-search-14
+  surface: search
+  query: spring promotion
+  expects: [F-111, F-002]
+- id: q-search-15
+  surface: search
+  query: fault reports that lock a bike
+  category: business-logic
+  expects: [F-020]
+- id: q-ask-01
+  surface: ask
+  question: What happens to a bike that is not returned within a day?
+  expects: [F-010, F-012, F-026]
+- id: q-ask-02
+  surface: ask
+  question: How long can a membership go unpaid after a failed renewal before it lapses?
+  expects: [F-016]
+- id: q-ask-03
+  surface: ask
+  question: Why was the single-ride cap raised to $30?
+  expects: [F-113, F-009]
+- id: q-ask-04
+  surface: ask
+  question: At what weather severity does rebalancing stop, and why that level?
+  expects: [F-022, F-114]
+- id: q-ask-05
+  surface: ask
+  question: Which team owns the Skyglass weather integration?
+  expects: [F-117]
+- id: q-ask-06
+  surface: ask
+  question: Why is dynamic pricing not switched on in production?
+  expects: [F-115, F-049]
+- id: q-ask-07
+  surface: ask
+  question: Why does the payment client retry only three times?
+  expects: [F-116, F-023]
+- id: q-ask-08
+  surface: ask
+  question: Which refunds are approved without a person reviewing them?
+  expects: [F-014]
+- id: q-ask-09
+  surface: ask
+  question: What time does the nightly rebalance run?
+  expects: [F-087]
+- id: q-ask-10
+  surface: ask
+  question: How many bikes can one rider have checked out at the same time?
+  expects: [F-019]
+- id: q-contradictions-01
+  surface: contradictions
+  entity: null
+- id: q-contradictions-02
+  surface: contradictions
+  entity: E-rule-member-free-minutes
+- id: q-contradictions-03
+  surface: contradictions
+  entity: E-job-nightly-rebalance
+- id: q-contradictions-04
+  surface: contradictions
+  entity: E-table-rides
+- id: q-stale-01
+  surface: stale
+  since: '2026-03-01T00:00:00-05:00'
+- id: q-stale-02
+  surface: stale
+  since: '2026-06-15T00:00:00-04:00'
+- id: q-stale-03
+  surface: stale
+  since: '2026-08-01T00:00:00-04:00'

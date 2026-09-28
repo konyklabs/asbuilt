@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-142",
+  "key": "GW-142",
+  "summary": "Van 7 GPS tracker offline",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "sami.haddad",
+  "assignee": "sami.haddad",
+  "created": "2026-04-03T21:34:00-04:00",
+  "updated": "2026-04-12T00:34:00-04:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "The GPS tracker on van seven has been reporting stale positions for a few days, which is throwing off the route planning tool's estimates for that van.",
+  "comments": []
+}
