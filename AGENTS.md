@@ -9,7 +9,8 @@ apply here unchanged; this file adds only what is specific to `asbuilt`.
 Bootstrap. There is no code yet. The driving task is
 [konyklabs/roadmap#153](https://github.com/konyklabs/roadmap/issues/153); the
 next step is the storage-engine spike, which ends in an ADR in
-`roadmap/decisions/`. Do not start the build before that ADR exists.
+`roadmap/decisions/`. The spike's synthetic system and benchmark harness live
+under `spike/`; nothing lands under `src/` before that ADR exists.
 
 ## What this repository must never contain
 
@@ -23,7 +24,8 @@ realistic, stop and invent one instead.
 
 ## Conventions
 
-- Python, `uv`, `src/` layout, pytest, ruff: the org's Python defaults.
+- Python by default (`uv`, `src/` layout, pytest, ruff); the engine ADR may
+  override the language.
 - Every fact the tool stores carries provenance. A change that lets a fact in
   without a citation is a bug, not a shortcut.
 - The engine sits behind one interface in `store/`. Connector and query code

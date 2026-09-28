@@ -40,9 +40,9 @@ system does into a **categorised knowledge base**, and serves it from a
 
 | Category | Holds | Example question |
 |---|---|---|
-| Business logic | The rules the system enforces, and where each one lives | "What decides whether an order can be refunded?" |
-| Technical implementation | Components, data flows, integrations, contracts, schemas | "Which services read the customer table?" |
-| Operations | How it is run, deployed, monitored, and what breaks | "What is the rollback procedure for the nightly billing job?" |
+| Business logic | The rules the system enforces, and where each one lives | "What decides whether an account can be closed?" |
+| Technical implementation | Components, data flows, integrations, contracts, schemas | "Which services read the accounts table?" |
+| Operations | How it is run, deployed, monitored, and what breaks | "What is the rollback procedure for the nightly export job?" |
 | *(more as needed)* | Product history, decisions, ownership, glossary | "Why does the API have two versions of this endpoint?" |
 
 Categories are a facet on every fact, not separate stores: one question often
@@ -57,8 +57,10 @@ spans several.
    the code says Y, the tool says so, and says which is newer. It never
    averages.
 3. **A database, not a document.** The store is an established engine that
-   supports the four access patterns agents actually use: exact lookup,
+   supports the four access patterns we expect agents to use: exact lookup,
    relationship traversal, full-text search, and semantic (vector) search.
+   Whether that is the real query mix is one of the things the spike's
+   benchmark tests.
 
 ## What asbuilt is not
 
@@ -92,22 +94,34 @@ Candidates, to be tested rather than argued:
 
 | Candidate | Shape | Why it is on the list | Cost of choosing it |
 |---|---|---|---|
-| PostgreSQL + pgvector (+ Apache AGE for graph) | Relational, with full-text search, vectors, optional graph | The most established option that covers all four access patterns in one engine; SQL is a query surface every agent already speaks | Graph traversal is bolted on; deep multi-hop queries get awkward |
-| Neo4j | Property graph | Knowledge-graph native; Cypher; the GraphRAG ecosystem targets it | Heavier to run; vector and text search are newer additions; licence tiers |
-| Kùzu, Memgraph | Embedded or in-memory property graph | Lighter graph options; Kùzu is a single file and Cypher-compatible | Smaller ecosystems; fewer operators have run them |
-| SQLite + sqlite-vec | Embedded, single file | Zero-ops and local-first; a laptop-sized base needs nothing more | Concurrency and scale ceiling; no graph |
-| Frameworks: Graphiti, Cognee, LightRAG, Microsoft GraphRAG | Ingest and graph-building layers on top of an engine | Solve extraction and temporal edges so we do not have to | Each pins an engine and a data model; adopting one is adopting its opinions |
+| PostgreSQL + pgvector (+ Apache AGE for graph) | Relational, with full-text search, vectors, optional graph | The most established option that covers all four access patterns in one engine; SQL is a query surface every agent already speaks | Graph traversal is bolted on and deep multi-hop queries get awkward; AGE ships per Postgres major, and its newest line is still a release candidate |
+| Neo4j | Property graph | Knowledge-graph native; Cypher; the GraphRAG ecosystem targets it | Heavier to run; vector search (2023) and full-text (2018) are newer than the engine; Community is GPLv3 and single-instance, Enterprise and Aura are commercial |
+| Memgraph | In-memory property graph | Lighter than Neo4j; Cypher-compatible | Smaller ecosystem; source-available under BSL 1.1, not open source |
+| SQLite + sqlite-vec | Embedded, single file | Zero-ops and local-first; a laptop-sized base needs nothing more | Traversal only through recursive CTEs; concurrency and scale ceiling; sqlite-vec is pre-1.0 |
+| Frameworks: Graphiti, Cognee, LightRAG (Microsoft GraphRAG is in maintenance mode) | Not engines: ingest and graph-building layers on top of one | Solve extraction and temporal edges so we do not have to; evaluated for the extraction step, not benchmarked as stores | Each pins or prefers an engine (Graphiti: Neo4j, FalkorDB, Neptune; LightRAG: pluggable, Postgres recommended) and a data model; adopting one is adopting its opinions |
 
 Search engines (OpenSearch, Elasticsearch) and vector-only stores are
 retrieval layers, not systems of record, and are out unless the spike finds
-the chosen engine's search is not enough.
+the chosen engine's search is not enough. Kùzu was on the list until its
+upstream repository was archived in October 2025 after the company's
+acquisition; it fails the "established" requirement on its own, whatever its
+forks do. The claims in this table were checked against the projects' own
+pages on 2026-09-28; re-check before the spike starts.
 
 **Working hypothesis for the spike:** PostgreSQL with pgvector, because it is
 the most established engine that covers all four patterns, and Python and
 TypeScript both have first-class drivers. A graph engine is the challenger if
-relationship traversal turns out to dominate the query mix. The spike's
-definition of done is a benchmark on a synthetic system and an ADR in
-`roadmap/decisions/`, nothing else.
+relationship traversal turns out to dominate the query mix.
+
+**The spike's scope and definition of done.** It settles three things
+together, because they constrain each other: the engine, the first cut of the
+schema above, and the implementation language. It is done when there is a
+benchmark on one synthetic system with one fixed query mix (the five surfaces
+under "Agent access", weighted), and an ADR in `roadmap/decisions/` recording
+all three. The synthetic system and the benchmark harness live in this
+repository under `spike/`, on the spike's branch; the ADR either promotes them
+to `tests/fixtures/` or deletes them. That is not the build: nothing lands
+under `src/` before the ADR.
 
 ## Ingest
 
@@ -122,8 +136,12 @@ fetch (incremental, from the last cursor)
 
 Connectors in build order: **GitHub** first (it needs no private data to
 develop against, and code is the source closest to the truth), then
-Confluence, Jira, Google Drive. Extraction is where the model runs; nothing
-downstream of it is trusted without its citation.
+Confluence, Jira, Google Drive. The GitHub connector reads both a repository's
+discussion surfaces (issues, pull requests, READMEs, ADRs) and its code;
+`code` is a separate Source kind so that a fact from a comment and a fact from
+a function are never confused, but it is the same connector. Extraction is
+where the model runs; nothing downstream of it is trusted without its
+citation.
 
 ## Agent access
 
@@ -150,17 +168,18 @@ have; the fixtures describe an invented one.
 
 ```
 src/asbuilt/
-  model/        the knowledge model: Fact, Entity, Document, Source, Contradiction
+  model/        the knowledge model: Fact, Entity, Document, Source, Contradiction, Snapshot
   store/        the engine adapter behind one interface; the spike decides the first
   ingest/       one connector per source, plus the extraction step
   serve/        the MCP server and the typed client
   cli.py
 tests/
   fixtures/     the invented system: a small codebase, wiki pages, tickets, docs
+spike/          the storage-engine spike: synthetic system and benchmark harness, until the ADR
 docs/
 ```
 
-Python by default, per the org's conventions; settled with the engine.
+Python by default, the org's convention; the engine ADR may override it.
 
 ## Working here
 
@@ -174,10 +193,12 @@ than claimed, and squash merges only.
 1. **Spike: storage engine.** Benchmark the candidates above on a synthetic
    system; ADR.
 2. **Schema and one connector.** The knowledge model in the chosen engine,
-   the GitHub connector, extraction with citations.
+   point-in-time snapshots included from the start because they are hard to
+   add later, the GitHub connector, extraction with citations.
 3. **Query surface.** The MCP server and client; `search` and `explain`.
 4. **Remaining connectors.** Confluence, Jira, Google Drive.
 5. **Contradiction and staleness.** The detection pass and the two queries.
+6. **Composed answers.** `ask`, once every fact it could cite is in.
 
 ## Licence
 
