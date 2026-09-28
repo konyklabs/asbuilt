@@ -1,9 +1,11 @@
 # One query per surface, matching bench/run.py's mix schema (documented in
-# its module docstring). expected results:
-#   explain(E-rule-member-free-minutes) -> F-001, F-002, F-003, F-005
-#   search("free minutes")              -> F-003, F-005
+# its module docstring). entity fields are NAMES (truth/entities.yaml's
+# `name`), never E- ids — bench/protocol.py; bench/score.py's alias index no
+# longer registers ids at all (konyklabs/asbuilt#7 review). expected results:
+#   explain(member-free-minutes) -> F-001, F-002, F-003, F-005
+#   search("free minutes")       -> F-003, F-005
 #   ask("How many free minutes ...")    -> F-003
-#   contradictions(E-rule-member-free-minutes) -> X-001 (derived from truth)
+#   contradictions(member-free-minutes) -> X-001 (derived from truth)
 #   stale(since 2026-01-15)             -> S-001 (changed_by c4, 2026-04-01)
 weights:
   explain: 1.0
@@ -15,7 +17,7 @@ weights:
 queries:
   - id: q-explain-1
     surface: explain
-    entity: E-rule-member-free-minutes
+    entity: member-free-minutes
 
   - id: q-search-1
     surface: search
@@ -29,7 +31,7 @@ queries:
 
   - id: q-contradictions-1
     surface: contradictions
-    entity: E-rule-member-free-minutes
+    entity: member-free-minutes
 
   - id: q-stale-1
     surface: stale

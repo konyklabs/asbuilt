@@ -131,6 +131,22 @@
   candidate: "Rebalancing does not resume before Skyglass severity drops below 3."
   expect: true
 
+# -- correct paraphrases where a team name is used as an ordinary word, not
+# a mention of that team (expect: true) — konyklabs/asbuilt#7 review: a bare
+# single-word team name/alias must not be read as a team mention unless
+# adjacent to a marker phrase ("<name> team", "owned by <name>", ...), or a
+# correct paraphrase that happens to use the word for something else gets
+# vetoed by the entity-mention guard.
+- truth: "If the nightly rebalance fails, the ops on-call engineer re-runs it by hand before 06:00."
+  candidate: "If the nightly rebalance of the fleet fails, an on-call engineer re-runs it by hand before 06:00."
+  expect: true
+- truth: "Maintenance sweeps are triggered automatically without manual ops intervention."
+  candidate: "Maintenance sweeps trigger automatically, without any manual ops step."
+  expect: true
+- truth: "Casual riders are charged per-minute fares from the very first minute."
+  candidate: "Casual riders pay per-minute fares starting from the first minute of the ride."
+  expect: true
+
 # -- correct paraphrases, short SVO / graph-edge style (expect: true) ---
 - truth: "A member's first 30 minutes of every ride are free."
   candidate: "member -> free_minutes -> 30"

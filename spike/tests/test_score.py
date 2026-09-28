@@ -10,6 +10,7 @@ from bench.run import run
 from bench.score import (
     DEFAULT_CALIBRATION,
     SPIKE_ROOT,
+    _duplicate_count,
     _entity_mention_conflict,
     _mentioned_entities,
     _statement_matches,
@@ -27,6 +28,7 @@ from bench.score import (
     norm_entity,
     print_comparison,
     print_multi_report,
+    print_report,
     resolve_fact_entities,
     score,
     score_ask_query,
@@ -250,7 +252,7 @@ def test_score_contradictions_tolerates_unknown_fact_id(tmp_path):
                 "id": "q1",
                 "surface": "contradictions",
                 "latency_ms": 1.0,
-                "params": {"entity": "E-x"},
+                "params": {"entity": "x"},  # a name, never an id (konyklabs/asbuilt#7)
                 "result": [],
             }
         ],
@@ -547,15 +549,16 @@ def test_align_entities_resolves_name_and_alias_case_insensitively():
     assert unresolved == []
 
 
-def test_align_entities_still_resolves_a_bare_id_for_back_compat():
-    """queries/mix.yaml and older fixtures may still carry an E- id; the
-    index registers ids too (see build_alias_index's docstring) so this
-    doesn't hard-fail while the harness's own fixtures transition."""
+def test_align_entities_no_longer_resolves_a_bare_id():
+    """konyklabs/asbuilt#7 review: an arm emitting a raw E- id (instead of a
+    name) must not "resolve" for free — that would let it skip real entity
+    resolution entirely. queries/mix.yaml's own entity fields are names now,
+    so there is no caller left that needs id lookup to keep working."""
     truth = load_truth(MINI_ROOT / "truth")
     index = build_alias_index(truth)
     resolved, unresolved = align_entities(["E-farebox"], index)
-    assert resolved == ["E-farebox"]
-    assert unresolved == []
+    assert resolved == []
+    assert unresolved == ["E-farebox"]
 
 
 def test_align_entities_fuzzy_fallback_on_a_typo():
@@ -663,11 +666,13 @@ def test_real_fixture_ebike_surcharge_flag_and_rule_resolve_distinctly():
 
 
 @pytest.mark.fixture
-def test_real_fixture_refund_auto_approve_tied_fuzzy_match_by_category():
-    """`refund_auto_approve` (flag) and `refund-auto-approve` (rule) tie
-    exactly (0.8947 SequenceMatcher ratio, verified) against the punctuation-
-    free query "refund auto approve" — a genuine ambiguity in the real
-    index, not a synthetic one — and the category disambiguates it."""
+def test_real_fixture_refund_auto_approve_tied_match_by_category():
+    """`refund_auto_approve` (flag) and `refund-auto-approve` (rule) both
+    fold (see `_fold_separators`) to "refundautoapprove", the same as the
+    punctuation-free query "refund auto approve" — an exact tie on the
+    folded key (not a fuzzy one: 0.8947 SequenceMatcher ratio was the old,
+    now-superseded, tie point before the folded-exact pass existed), and the
+    category disambiguates it."""
     truth = load_truth(SPIKE_ROOT / "truth")
     if not truth.entities:
         pytest.skip()
@@ -688,6 +693,29 @@ def test_real_fixture_refund_auto_approve_tied_fuzzy_match_by_category():
     resolved, unresolved = align_entities(["refund auto approve"], index, truth.entities)
     assert resolved == []
     assert unresolved == ["refund auto approve"]
+
+
+def test_real_fixture_ebike_surcharge_space_query_disambiguates_by_category():
+    """The bug the review found: "ebike surcharge" (space) used to resolve
+    to the rule for EVERY category, because the rule's alias "e-bike
+    surcharge" outscored both canonical names on fuzzy similarity (0.968 vs
+    0.933) before category disambiguation ever ran. The folded-exact pass
+    (both canonical names AND that alias fold to "ebikesurcharge") now ties
+    them honestly, so category actually decides."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    if not truth.entities:
+        pytest.skip()
+    index = build_alias_index(truth)
+
+    resolved, _ = align_entities(
+        ["ebike surcharge"], index, truth.entities, category="technical-implementation"
+    )
+    assert resolved == ["E-flag-ebike-surcharge"]
+
+    resolved, _ = align_entities(
+        ["ebike surcharge"], index, truth.entities, category="business-logic"
+    )
+    assert resolved == ["E-rule-ebike-surcharge"]
 
 
 def test_resolve_fact_entities_keeps_unresolved_names_for_audit():
@@ -927,6 +955,58 @@ def test_score_fact_query_reports_hard_false_positives_and_unplanted():
     # private _unresolved_entities audit key), not the original dict as-is.
     assert len(result["unplanted_facts"]) == 1
     assert result["unplanted_facts"][0]["statement"] == unplanted_candidate["statement"]
+
+
+def test_score_fact_query_uncited_fact_is_not_also_unplanted():
+    """konyklabs/asbuilt#7 review: a fact with no citations was counted
+    once as `uncited` (in match_facts) and AGAIN as unplanted — the same
+    fact must not show up in both."""
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A ride costs $30.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    uncited_candidate = {"statement": "A ride costs $30.", "entities": ["E-x"], "citations": []}
+    result = score_fact_query(
+        [uncited_candidate], {"F-1": truth_fact}, alias_index=_identity_index("E-x")
+    )
+    assert result["uncited"] == 1
+    assert result["hard_false_positives"] == 0
+    assert result["unplanted_facts"] == []
+
+
+def test_facts_match_citation_without_document_key_is_not_a_keyerror():
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A ride costs $30.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    malformed = {
+        "statement": "A ride costs $30.",
+        "entities": ["E-x"],
+        "citations": [{"location": "#somewhere"}],  # no "document" key
+    }
+    assert not facts_match(malformed, truth_fact)  # must not raise KeyError
+
+
+def test_score_ask_query_citation_without_document_key_is_ignored():
+    fact = _free_minutes_fact()
+    answer = {
+        "sentences": [
+            {
+                "text": "Members get their first 30 minutes free.",
+                "citations": [{"location": "#x"}],  # no "document" key
+            }
+        ]
+    }
+    result = score_ask_query(answer, {"F-1": fact})  # must not raise KeyError
+    assert result["correct_sentences"] == 0
 
 
 def test_score_fact_query_hard_false_positive_uses_full_truth_set():
@@ -1185,6 +1265,18 @@ def test_bootstrap_compare_is_deterministic_with_a_fixed_seed():
     assert c1 == c2
 
 
+def test_bootstrap_compare_errors_on_mismatched_query_ids():
+    """konyklabs/asbuilt#7 review: pairing must be by query id, erroring on
+    a mismatch, never silently truncating to the shorter arm."""
+    report_a = score(_hand_built_results(), MINI_ROOT / "truth")
+    renamed_results = _hand_built_results()
+    renamed_results["queries"][0]["id"] = "q-explain-renamed"
+    report_b = score(renamed_results, MINI_ROOT / "truth")
+
+    with pytest.raises(ValueError, match="query id sets differ"):
+        bootstrap_compare(report_a["by_query"], report_b["by_query"], iterations=50, seed=0)
+
+
 def test_bootstrap_compare_detects_a_real_difference():
     report_a = score(_hand_built_results(), MINI_ROOT / "truth")
     worse_results = _hand_built_results()
@@ -1415,3 +1507,79 @@ def test_calibration_set_meets_precision_and_recall_bar():
     report = calibrate(pairs, mention_index)
     assert report["precision"] >= 0.9, report["misclassified"]
     assert report["recall"] >= 0.85, report["misclassified"]
+
+
+# --------------------------------------------------------------------------
+# Incremental phase: duplicates count, supersession label (konyklabs/
+# asbuilt#7 review)
+# --------------------------------------------------------------------------
+
+
+def test_duplicate_count_same_statement_and_document():
+    facts = [
+        {"statement": "A ride costs $30.", "citations": [{"document": "wiki/x"}]},
+        {"statement": "a ride costs $30", "citations": [{"document": "wiki/x"}]},  # norm()-equal
+        {"statement": "A ride costs $30.", "citations": [{"document": "wiki/y"}]},  # diff. document
+    ]
+    assert _duplicate_count(facts) == 1
+
+
+def test_duplicate_count_counts_per_cited_document():
+    facts = [
+        {
+            "statement": "X",
+            "citations": [{"document": "wiki/a"}, {"document": "wiki/b"}],
+        },
+        {"statement": "X", "citations": [{"document": "wiki/a"}]},
+        {"statement": "X", "citations": [{"document": "wiki/b"}]},
+    ]
+    # (X, wiki/a): 2 copies -> 1 duplicate; (X, wiki/b): 2 copies -> 1 duplicate.
+    assert _duplicate_count(facts) == 2
+
+
+def test_score_incremental_phase_reports_duplicates_and_phase():
+    fact = {
+        "statement": "A member's free minutes are 15.",
+        "category": "business-logic",
+        "entities": ["Farebox", "member free minutes"],
+        "tier": "executed",
+        "citations": [{"document": "code/farebox/pricing.py", "version": "c4"}],
+    }
+    results = {
+        "prototype": "test",
+        "fixture": str(MINI_ROOT),
+        "weights": {},
+        "ingest": {},
+        "phase": "incremental",
+        "queries": [
+            {
+                "id": "q-explain-1",
+                "surface": "explain",
+                "latency_ms": 1.0,
+                "params": {"entity": "member-free-minutes"},
+                # The same (statement, document) pair returned twice — a
+                # genuine duplicate under an incremental re-ingest.
+                "result": [fact, dict(fact)],
+            }
+        ],
+    }
+    report = score(results, MINI_ROOT / "truth")
+    assert report["phase"] == "incremental"
+    assert report["duplicates"] == 1
+
+
+def test_score_non_incremental_phase_duplicates_is_none():
+    report = score(_hand_built_results(), MINI_ROOT / "truth")
+    assert report["phase"] is None
+    assert report["duplicates"] is None
+
+
+def test_print_report_labels_validity_as_supersession_when_incremental(capsys):
+    results = _hand_built_results()
+    results["phase"] = "incremental"
+    report = score(results, MINI_ROOT / "truth")
+    print_report(report)
+    out = capsys.readouterr().out
+    assert "supersession accuracy=" in out
+    assert "validity accuracy=" not in out
+    assert "duplicates=" in out

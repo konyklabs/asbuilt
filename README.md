@@ -10,8 +10,8 @@ explicit rather than averaged away.
 > [konyklabs/roadmap#153](https://github.com/konyklabs/roadmap/issues/153);
 > the leverage-versus-build spike is
 > [konyklabs/roadmap#154](https://github.com/konyklabs/roadmap/issues/154),
-> recorded in D-013. The storage engine is decided by the benchmark under
-> `spike/`, and not before.
+> recorded in D-013: the store is Postgres + pgvector by constraint, and the
+> benchmark under `spike/` decides the extraction pipeline, not before.
 
 ## The problem
 
@@ -94,7 +94,7 @@ Snapshot       a named point in stored time (created_at / expired_at), never a c
                "what did we know in June" is answerable; every query surface takes as_of
 ```
 
-This is a sketch to argue with, not a schema. The engine ADR settles it.
+This is a sketch to argue with, not a schema. The pipeline-and-schema ADR settles it.
 D-013 adds one thing to every fact: a **provenance tier**, executed (a test
 ran and passed, at a commit, on a date) above code (read from source at a
 commit) above documented (a page, a ticket, a comment). Test suites are a
@@ -239,7 +239,7 @@ than claimed, and squash merges only.
    under `spike/`; the test connector; the no-store baseline and stack B,
    with a thin MCP adapter so the invented system can be queried from a
    Claude Code session and every benchmark run writes a cited transcript;
-   stack A under the rule; the report and the engine ADR.
+   stack A under the rule; the report and the pipeline-and-schema ADR.
 2. **Schema, tests and code.** The knowledge model in Postgres with fact
    identity and stored-time snapshots from the start; the test connector
    promoted to `src/`; the GitHub code and markdown connector; run evidence

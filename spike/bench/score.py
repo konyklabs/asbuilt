@@ -66,20 +66,31 @@ assumed, per the task's ambiguity rule):
 New in this revision (D-013 hardening, konyklabs/asbuilt#7):
 
 * Entity alignment (arms return names, never ids — bench/protocol.py). The
-  alias index registers each entity's own id *and* name (normalised the same
-  way), plus every ``truth/aliases.yaml`` alias; an id is registered so a
-  ``queries/mix.yaml`` (or hand-built test) that still names entities by id
-  keeps working unmodified while the harness's own fixtures transition to
-  names — this is a deliberate back-compat fallback, not a claim that ids
-  are a supported arm output. Entity-name normalisation (``norm_entity``)
-  treats ``-``/``_`` as word separators (so "member-free-minutes" ==
-  "member free minutes"), unlike statement ``norm()``, which strips them —
-  entity names are identifiers with conventional separators; statements are
-  prose. The fuzzy fallback (``difflib.get_close_matches``, cutoff 0.88) is
-  used only when no exact normalised match exists, and only when it is
-  unambiguous — a second candidate at the same cutoff resolving to a
-  *different* entity aborts the guess rather than picking one, per "a
-  conservative fuzzy fallback with a high threshold" in the task.
+  alias index registers each entity's ``name`` and every ``truth/
+  aliases.yaml`` alias — never the entity's own ``E-`` id, which would let an
+  arm "resolve" for free by simply echoing it back; ``queries/mix.yaml``'s
+  entity fields are names too, so nothing needs id lookup to keep working.
+  Entity-name normalisation (``norm_entity``) is case- and whitespace-only:
+  ``-``/``_`` are kept as literal, distinct characters, because the real
+  fixture uses both to name DIFFERENT entities that would otherwise collide
+  (``ebike_surcharge`` the flag vs ``ebike-surcharge`` the rule) — unlike
+  statement ``norm()``, which strips separators outright, and unlike an
+  earlier version of this function, which folded them together. Resolution
+  then tries three passes in order: an exact match on that separator-
+  preserving key; if that misses, an exact match on a separator-FOLDED key
+  (``-``/``_``/whitespace collapsed away entirely — see ``_fold_separators``)
+  over the same name/alias pool, so a query spelled with the "wrong"
+  separator (or none) still ties honestly against every candidate that
+  shares its letters, rather than falling to fuzzy scoring, where one
+  candidate's alias could outscore the tie by a hair of text similarity and
+  resolve before disambiguation ever ran (measured: "ebike surcharge" used
+  to resolve to the rule for every category, because its alias "e-bike
+  surcharge" scored 0.968 against both canonical names' 0.933); only then,
+  if neither exact pass found anything, ``_fuzzy_resolve``
+  (``difflib.get_close_matches``, cutoff 0.88). Whichever pass produces more
+  than one candidate id is handed to ``_disambiguate``, which resolves a tie
+  only when the caller's ``category`` maps to a preferred entity ``kind`` —
+  never a guess among still-tied candidates.
 * The entity-resolution measure (precision/recall of a matched fact's
   resolved entities against the truth fact's) is computed over the matches
   ``match_facts`` produces for ``explain`` and ``search`` specifically —
@@ -353,42 +364,86 @@ def _has_negation(text: str) -> bool:
 
 _MENTION_KINDS = {"team", "service", "integration", "queue", "job", "flag"}
 
+# konyklabs/asbuilt#7 review: a bare single-word team name/alias ("fleet")
+# is often an ordinary English word too — "the nightly rebalance of the
+# fleet" mentions no team at all, but the bare-word rule read it as one,
+# conflicting with a genuine "ops" mention elsewhere and rejecting a correct
+# paraphrase (F-092). A single-word TEAM mention is only registered when
+# immediately adjacent to one of these markers; a multi-word team alias
+# ("the ops team") is unambiguous on its own and needs no marker.
+_TEAM_MARKERS = (
+    lambda a: rf"{a}\s+team",
+    lambda a: rf"team\s+{a}",
+    lambda a: rf"the\s+{a}\s+on-call",
+    lambda a: rf"owned\s+by\s+{a}",
+    lambda a: rf"{a}\s+owns",
+)
+# A team-marker match is always more specific than a bare-word match would
+# have been (it required the surrounding phrase, not just the word), so it
+# is sorted as if it were this much longer than the bare alias — ahead of
+# any ordinary single-word mention it might otherwise tie or lose to.
+_TEAM_MARKER_SORT_BOOST = 1000
+
 
 def build_mention_index(truth: Truth) -> list[tuple[re.Pattern[str], str, str]]:
     """(compiled word-boundary pattern, entity id, kind) for every name/
     alias of every entity whose kind is one the mention guard checks (team,
     service, integration, queue, job, flag — the "who/what does X"
     attributions a text-similarity matcher can otherwise be fooled on),
-    sorted longest-alias-first so `_mentioned_entities` prefers a longer,
-    more specific mention over a shorter one nested inside it. No hardcoded
+    sorted longest/most-specific-first so `_mentioned_entities` prefers a
+    more specific mention over a weaker one nested inside it. No hardcoded
     vocabulary: every name/alias comes straight from the given Truth's
     `entities`/`aliases` — the real fixture's for scoring and `--calibrate`,
-    the mini fixture's in the harness's own tests."""
-    raw: list[tuple[str, str, str]] = []
+    the mini fixture's in the harness's own tests.
+
+    Two guards against an ordinary word being misread as an entity mention:
+    single-word TEAM names/aliases require adjacency to a marker phrase (see
+    `_TEAM_MARKERS`); for the other five kinds, a single-word ALIAS (not the
+    entity's own canonical `name`) is dropped entirely — a canonical name
+    ("farebox", "dispatch") is what a fact is actually likely to say, while
+    an invented single-word alias is more likely to double as a common word
+    the fixture's authors happened to reuse."""
+    entries: list[tuple[int, re.Pattern[str], str, str]] = []
     seen: set[tuple[str, str]] = set()
 
-    def _add(text: str, entity_id: str, kind: str) -> None:
+    def _emit(pattern_text: str, sort_len: int, entity_id: str, kind: str) -> None:
+        dedup_key = (pattern_text.lower(), entity_id)
+        if dedup_key in seen:
+            return
+        seen.add(dedup_key)
+        entries.append(
+            (sort_len, re.compile(rf"\b{pattern_text}\b", re.IGNORECASE), entity_id, kind)
+        )
+
+    def _register(text: str, entity_id: str, kind: str, canonical: bool) -> None:
         text = text.strip()
-        dedup_key = (text.lower(), entity_id)
-        if text and dedup_key not in seen:
-            seen.add(dedup_key)
-            raw.append((text, entity_id, kind))
+        if not text:
+            return
+        multi_word = " " in text
+        escaped = re.escape(text)
+        if kind == "team":
+            if multi_word:
+                _emit(escaped, len(text), entity_id, kind)
+            else:
+                for marker in _TEAM_MARKERS:
+                    _emit(marker(escaped), _TEAM_MARKER_SORT_BOOST + len(text), entity_id, kind)
+        elif multi_word or canonical:
+            _emit(escaped, len(text), entity_id, kind)
+        # else: a single-word, non-canonical alias for a non-team kind — dropped.
 
     for entity in truth.entities.values():
         if entity.kind in _MENTION_KINDS:
-            _add(entity.name, entity.id, entity.kind)
+            _register(entity.name, entity.id, entity.kind, canonical=True)
     for alias_entry in truth.aliases.values():
         entity = truth.entities.get(alias_entry.id)
         if entity is None or entity.kind not in _MENTION_KINDS:
             continue
-        for alias in (alias_entry.name, *alias_entry.aliases):
-            _add(alias, alias_entry.id, entity.kind)
+        _register(alias_entry.name, alias_entry.id, entity.kind, canonical=True)
+        for alias in alias_entry.aliases:
+            _register(alias, alias_entry.id, entity.kind, canonical=False)
 
-    raw.sort(key=lambda e: len(e[0]), reverse=True)
-    return [
-        (re.compile(rf"\b{re.escape(text)}\b", re.IGNORECASE), entity_id, kind)
-        for text, entity_id, kind in raw
-    ]
+    entries.sort(key=lambda e: e[0], reverse=True)
+    return [(pattern, entity_id, kind) for _, pattern, entity_id, kind in entries]
 
 
 def _mentioned_entities(
@@ -496,13 +551,18 @@ _WORD_JOINERS = re.compile(r"[-_]+")
 def _words(text: str) -> list[str]:
     """Word list for `_text_similarity`: `-`/`_` are separators, not glue —
     a graph-edge-style attribute name ("free_minutes") or a hyphenated
-    entity name ("member-free-minutes") must split the same way prose would
-    ("free minutes" / "member free minutes"), matching `norm_entity`'s
-    treatment of the same characters. Plain `norm()` alone would keep
-    "free_minutes" as one token (`_` is a regex word character) while never
-    reassembling "->" into a separator (it's stripped with no space left
-    behind but the words either side already had one), so a graph-edge
-    candidate would share almost no tokens with a prose truth statement. A
+    phrase ("member-free-minutes") must split the same way prose would
+    ("free minutes" / "member free minutes"). This is a STATEMENT-similarity
+    concern only, deliberately different from `norm_entity` (entity-name
+    resolution), which keeps `-`/`_` literal and distinct — collapsing them
+    there would conflate different real entities (see `norm_entity`'s
+    docstring); collapsing them here only affects how alike two pieces of
+    PROSE look, where no such identity collision exists. Plain `norm()`
+    alone would keep "free_minutes" as one token (`_` is a regex word
+    character) while never reassembling "->" into a separator (it's
+    stripped with no space left behind but the words either side already
+    had one), so a graph-edge candidate would share almost no tokens with a
+    prose truth statement. A
     trailing "s" is then dropped from words over 3 letters (a deliberately
     tiny stemmer, not a real one) — "member"/"members" and "refund"/
     "refunds" are singular-vs-plural spellings of the same content word and
@@ -528,17 +588,24 @@ def facts_match(
     `resolve_fact_entities`) — `facts_match` itself does no name alignment,
     so a caller working directly with arm-returned names must resolve them
     first."""
-    citations = returned.get("citations") or []
-    if not citations:
+    returned_docs = _citation_documents(returned.get("citations"))
+    if not returned_docs:
         return False
     returned_entities = set(returned.get("entities") or [])
     if not returned_entities & set(truth_fact.entities):
         return False
-    returned_docs = {c["document"] for c in citations}
     truth_docs = {c.document for c in truth_fact.carriers}
     if not returned_docs & truth_docs:
         return False
     return _statement_matches(returned.get("statement", ""), truth_fact.statement, mention_index)
+
+
+def _citation_documents(citations: list[dict[str, Any]] | None) -> set[str]:
+    """Every `document` named by `citations`, skipping any citation dict
+    that lacks that key rather than raising KeyError — a malformed citation
+    (konyklabs/asbuilt#7 review) is treated the same as if it weren't cited
+    at all, everywhere a returned fact's citations are read."""
+    return {c["document"] for c in (citations or []) if "document" in c}
 
 
 # --------------------------------------------------------------------------
@@ -578,14 +645,19 @@ def norm_entity(text: str) -> str:
 
 
 def build_alias_index(truth: Truth) -> dict[str, list[str]]:
-    """Normalised name/alias/id -> every entity id registered under that
-    exact string (almost always one; `truth/aliases.yaml`'s own rule is "no
-    alias belongs to two entities", but the index stays multi-valued as a
+    """Normalised name/alias -> every entity id registered under that exact
+    string (almost always one; `truth/aliases.yaml`'s own rule is "no alias
+    belongs to two entities", but the index stays multi-valued as a
     defensive measure and because two DIFFERENT normalised keys can still
-    tie in `_fuzzy_resolve`, which reuses the same list shape). Registers
-    each entity's own id and name from `entities.yaml`, then every name/
+    tie in `_fuzzy_resolve`/`_fold_index`, which reuse the same list shape).
+    Registers each entity's `name` from `entities.yaml`, then every name/
     alias from `aliases.yaml` (tolerant of that file being absent — see
-    `bench.truth.load_aliases`)."""
+    `bench.truth.load_aliases`). The entity's own `E-` id is deliberately
+    NOT registered (konyklabs/asbuilt#7 review): an arm that emitted ids
+    directly could otherwise "resolve" perfectly for free, defeating the
+    point of measuring entity resolution at all — `queries/mix.yaml`'s own
+    entity fields are names too, so there is no longer a caller that needs
+    id lookup to keep working."""
     index: dict[str, list[str]] = {}
 
     def _register(key: str, entity_id: str) -> None:
@@ -594,12 +666,37 @@ def build_alias_index(truth: Truth) -> dict[str, list[str]]:
             ids.append(entity_id)
 
     for entity in truth.entities.values():
-        _register(entity.id, entity.id)
         _register(entity.name, entity.id)
     for entry in truth.aliases.values():
         for key in (entry.name, *entry.aliases):
             _register(key, entry.id)
     return index
+
+
+_SEPARATOR_FOLD = re.compile(r"[-_\s]+")
+
+
+def _fold_separators(key: str) -> str:
+    """`-`, `_` and whitespace runs all collapsed away entirely (not to a
+    single separator) — used only for the second, separator-INSENSITIVE
+    exact-match pass in `align_entities`, so "ebike surcharge",
+    "ebike_surcharge" and "ebike-surcharge" all fold to "ebikesurcharge" and
+    tie exactly. Without this, a query with the "wrong" separator (or none)
+    fell straight to `_fuzzy_resolve`, where one candidate's alias could
+    outscore the tie by a hair (measured: the rule's alias "e-bike
+    surcharge" at 0.968 vs both canonical names at 0.933) and resolve on
+    text-similarity luck before category disambiguation ever got a turn."""
+    return _SEPARATOR_FOLD.sub("", key)
+
+
+def _fold_index(index: dict[str, list[str]]) -> dict[str, list[str]]:
+    folded: dict[str, list[str]] = {}
+    for key, ids in index.items():
+        bucket = folded.setdefault(_fold_separators(key), [])
+        for entity_id in ids:
+            if entity_id not in bucket:
+                bucket.append(entity_id)
+    return folded
 
 
 def _fuzzy_resolve(key: str, index: dict[str, list[str]]) -> list[str] | None:
@@ -654,20 +751,29 @@ def align_entities(
     entities: dict[str, Any] | None = None,
     category: str | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Resolves each name (exact normalised match, else the fuzzy fallback,
-    then `_disambiguate` when either produced more than one candidate id) to
-    an entity id. `entities` (truth.entities) and `category` (the fact's own
-    claimed category) are only used for that disambiguation; both are
-    optional; omitting them just means an ambiguous name is always
-    unresolved rather than sometimes disambiguated. Returns (resolved ids,
-    deduped, in first-seen order; unresolved names, in input order)."""
+    """Resolves each name to an entity id in three passes, in order: (1) an
+    exact match on the separator-preserving normalised key; (2) an exact
+    match on the separator-FOLDED key (see `_fold_separators`) over the SAME
+    name/alias pool — this is still an exact match, not a score, so it is
+    tried before any fuzzy comparison can let one candidate's phrasing win
+    by a whisker; (3) `_fuzzy_resolve`, only when neither exact pass found
+    anything. `_disambiguate` (category-vs-kind) runs whenever any pass
+    produces more than one candidate id. `entities` (truth.entities) and
+    `category` (the fact's own claimed category) are only used for that
+    disambiguation; both are optional; omitting them just means an
+    ambiguous name is always unresolved rather than sometimes disambiguated.
+    Returns (resolved ids, deduped, in first-seen order; unresolved names,
+    in input order)."""
     entities = entities or {}
+    folded_index = _fold_index(index)
     resolved: list[str] = []
     unresolved: list[str] = []
     seen: set[str] = set()
     for raw in names:
         key = norm_entity(str(raw))
         candidates = index.get(key)
+        if candidates is None:
+            candidates = folded_index.get(_fold_separators(key))
         if candidates is None:
             candidates = _fuzzy_resolve(key, index)
         entity_id = _disambiguate(candidates, entities, category)
@@ -724,7 +830,11 @@ def _shares_matching_version(
 ) -> bool:
     """True if some document cited by `returned` is also a carrier of
     `truth_fact`, with the same version (see _version_matches)."""
-    citation_versions = {c["document"]: c.get("version") for c in (returned.get("citations") or [])}
+    citation_versions = {
+        c["document"]: c.get("version")
+        for c in (returned.get("citations") or [])
+        if "document" in c
+    }
     for carrier in truth_fact.carriers:
         returned_version = citation_versions.get(carrier.document)
         if returned_version is not None and carrier.version is not None:
@@ -744,14 +854,17 @@ def match_facts(
     prefer one whose carrier version agrees with the returned citation's
     version (see _shares_matching_version); otherwise take candidates in
     `expected`'s order (greedy first-match). Returns (matches, uncited_count).
-    Entities on `returned_facts` are expected to already be resolved ids.
+    Entities on `returned_facts` are expected to already be resolved ids. A
+    fact is "uncited" when it has no citation with a `document` key, not
+    merely an empty citations list — a malformed citation is never a
+    silent KeyError (see `_citation_documents`).
     """
     commits = commits or {}
     matched_ids: set[str] = set()
     matches: list[tuple[dict[str, Any], str]] = []
     uncited = 0
     for rf in returned_facts:
-        if not rf.get("citations"):
+        if not _citation_documents(rf.get("citations")):
             uncited += 1
             continue
         candidates = [
@@ -909,7 +1022,7 @@ def classify_unmatched(
     unplanted: list[dict[str, Any]] = []
     for rf in unmatched:
         entities = set(rf.get("entities") or [])
-        docs = {c["document"] for c in (rf.get("citations") or [])}
+        docs = _citation_documents(rf.get("citations"))
         shares = any(
             entities & set(tf.entities) and docs & {c.document for c in tf.carriers}
             for tf in all_facts.values()
@@ -946,7 +1059,14 @@ def score_fact_query(
     matches, uncited = match_facts(resolved, expected, commits, mention_index)
     matched_ids = {fid for _, fid in matches}
     matched_obj_ids = {id(rf) for rf, _ in matches}
-    unmatched = [rf for rf in resolved if id(rf) not in matched_obj_ids]
+    # A fact with no (usable) citation is already counted once, as
+    # `uncited` (match_facts never even tries to match it) — it must not
+    # ALSO show up as "unplanted" here, which double-counted it before.
+    unmatched = [
+        rf
+        for rf in resolved
+        if id(rf) not in matched_obj_ids and _citation_documents(rf.get("citations"))
+    ]
     hard_fp, unplanted = classify_unmatched(unmatched, all_facts)
 
     return {
@@ -992,7 +1112,10 @@ def score_ask_query(
         text = sentence.get("text", "")
         hit_ids: set[str] = set()
         for citation in citations:
-            for fid, fact in doc_to_facts.get(citation["document"], []):
+            document = citation.get("document")
+            if document is None:
+                continue
+            for fid, fact in doc_to_facts.get(document, []):
                 if _statement_matches(text, fact.statement, mention_index):
                     hit_ids.add(fid)
         if hit_ids:
@@ -1101,10 +1224,9 @@ def score_stale(
 
     matched_ids: set[str] = set()
     for rf in returned:
-        citations = rf.get("citations") or []
-        if not citations:
+        cited_docs = _citation_documents(rf.get("citations"))
+        if not cited_docs:
             continue
-        cited_docs = {c["document"] for c in citations}
         for sid, entry in expected.items():
             if sid in matched_ids:
                 continue
@@ -1273,6 +1395,25 @@ def latency_percentiles(queries: list[dict[str, Any]]) -> dict[str, dict[str, fl
     return out
 
 
+def _duplicate_count(fact_dicts: list[dict[str, Any]]) -> int:
+    """Extra copies (beyond the first) of a (normalised statement, cited
+    document) pair across every returned fact given — the D-013 incremental-
+    ingest measure (konyklabs/asbuilt#7): a later re-ingest that reproduces
+    a fact already extracted, citing the same document, is a duplicate. A
+    fact citing several documents contributes one (statement, document) pair
+    per citation, since "the same cited document" names one document at a
+    time. Only computed when `results["phase"] == "incremental"` (see
+    `score()`) — on a first/full ingest, restating the same fact from two
+    different, genuinely separate documents is expected corroboration, not
+    a duplicate, so this measure is meaningless there."""
+    counts: Counter[tuple[str, str]] = Counter()
+    for rf in fact_dicts:
+        statement_key = norm(rf.get("statement", ""))
+        for document in _citation_documents(rf.get("citations")):
+            counts[(statement_key, document)] += 1
+    return sum(count - 1 for count in counts.values() if count > 1)
+
+
 def score(
     results: dict[str, Any],
     truth_root: Path,
@@ -1286,6 +1427,8 @@ def score(
     commits = commits or {}
     alias_index = build_alias_index(truth)
     mention_index = build_mention_index(truth)
+    phase = results.get("phase")
+    all_returned_facts: list[dict[str, Any]] = []
 
     per_query: dict[str, list[dict[str, Any]]] = {s: [] for s in SURFACES}
     for q in results["queries"]:
@@ -1298,36 +1441,47 @@ def score(
             expected = {
                 fid: f for fid, f in truth.facts.items() if entity_id and entity_id in f.entities
             }
+            all_returned_facts.extend(q["result"])
             per_query["explain"].append(
-                score_fact_query(
-                    q["result"],
-                    expected,
-                    commits,
-                    alias_index,
-                    truth.facts,
-                    truth.entities,
-                    mention_index,
-                )
+                {
+                    **score_fact_query(
+                        q["result"],
+                        expected,
+                        commits,
+                        alias_index,
+                        truth.facts,
+                        truth.entities,
+                        mention_index,
+                    ),
+                    "_query_id": q["id"],
+                }
             )
         elif surface == "search":
             expects = params.get("expects") or []
             expected = {fid: truth.facts[fid] for fid in expects if fid in truth.facts}
+            all_returned_facts.extend(q["result"])
             per_query["search"].append(
-                score_fact_query(
-                    q["result"],
-                    expected,
-                    commits,
-                    alias_index,
-                    truth.facts,
-                    truth.entities,
-                    mention_index,
-                )
+                {
+                    **score_fact_query(
+                        q["result"],
+                        expected,
+                        commits,
+                        alias_index,
+                        truth.facts,
+                        truth.entities,
+                        mention_index,
+                    ),
+                    "_query_id": q["id"],
+                }
             )
         elif surface == "ask":
             expects = params.get("expects") or []
             expected = {fid: truth.facts[fid] for fid in expects if fid in truth.facts}
             per_query["ask"].append(
-                score_ask_query(q["result"], expected, ask_citation_cap, mention_index)
+                {
+                    **score_ask_query(q["result"], expected, ask_citation_cap, mention_index),
+                    "_query_id": q["id"],
+                }
             )
         elif surface == "contradictions":
             raw_entity = params.get("entity")
@@ -1358,18 +1512,32 @@ def score(
                 _resolve_contradiction_entities(rc, alias_index, truth.entities)
                 for rc in q["result"]
             ]
+            for rc in resolved_result:
+                all_returned_facts.extend(rc[k] for k in ("a", "b", "winner") if rc.get(k))
             per_query["contradictions"].append(
-                score_contradictions(resolved_result, expected_x, truth.facts, mention_index)
+                {
+                    **score_contradictions(resolved_result, expected_x, truth.facts, mention_index),
+                    "_query_id": q["id"],
+                }
             )
         elif surface == "stale":
             since = datetime.fromisoformat(params["since"])
             resolved_result = [
                 resolve_fact_entities(rf, alias_index, truth.entities) for rf in q["result"]
             ]
+            all_returned_facts.extend(resolved_result)
             per_query["stale"].append(
-                score_stale(
-                    resolved_result, since, truth.stale, step_dates, truth.facts, mention_index
-                )
+                {
+                    **score_stale(
+                        resolved_result,
+                        since,
+                        truth.stale,
+                        step_dates,
+                        truth.facts,
+                        mention_index,
+                    ),
+                    "_query_id": q["id"],
+                }
             )
         else:
             raise ValueError(f"unknown surface {surface!r} in results")
@@ -1429,6 +1597,8 @@ def score(
         for name in SURFACES
     ) / len(SURFACES)
 
+    duplicates = _duplicate_count(all_returned_facts) if phase == "incremental" else None
+
     return {
         "prototype": results.get("prototype"),
         "ingest": results.get("ingest"),
@@ -1438,6 +1608,8 @@ def score(
         "headline": headline,
         "headline_equal_weights": headline_equal_weights,
         "by_query": per_query,
+        "phase": phase,
+        "duplicates": duplicates,
     }
 
 
@@ -1539,6 +1711,28 @@ def _bootstrap_diff(
     }
 
 
+def _paired_by_query_id(
+    per_query_a: list[dict[str, Any]], per_query_b: list[dict[str, Any]], label: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Aligns two arms' per-query lists by the `_query_id` each entry
+    carries (attached in `score()`), not by list position — a truncating
+    `min(len(a), len(b))` would silently pair the wrong queries together,
+    or hide a missing one, if either arm skipped a query or the two runs
+    used different mixes. Raises ValueError, rather than truncating, when
+    the two arms' query id SETS for `label` differ at all."""
+    ids_a = [pq["_query_id"] for pq in per_query_a]
+    ids_b = [pq["_query_id"] for pq in per_query_b]
+    if set(ids_a) != set(ids_b):
+        only_a = sorted(set(ids_a) - set(ids_b))
+        only_b = sorted(set(ids_b) - set(ids_a))
+        raise ValueError(
+            f"bootstrap comparison ({label}): query id sets differ between arms "
+            f"(only in A: {only_a}, only in B: {only_b})"
+        )
+    by_id_b = {pq["_query_id"]: pq for pq in per_query_b}
+    return per_query_a, [by_id_b[qid] for qid in ids_a]
+
+
 def bootstrap_compare(
     per_query_a: dict[str, list[dict[str, Any]]],
     per_query_b: dict[str, list[dict[str, Any]]],
@@ -1548,17 +1742,25 @@ def bootstrap_compare(
     """A paired bootstrap (resampling query indices, with replacement, the
     same resample applied to both arms) over each surface's F1 and over
     executed-tier precision (pooling explain+search per-query counts — see
-    module docstring). `iterations`/`seed` default to the task's own values
-    (1000, fixed) but are exposed for the CLI and for faster tests."""
+    module docstring). The two arms are paired by query id, not list
+    position (see `_paired_by_query_id`) — this raises ValueError if either
+    surface's query id set differs between the two results files, rather
+    than silently truncating to whichever ran fewer queries.
+    `iterations`/`seed` default to the task's own values (1000, fixed) but
+    are exposed for the CLI and for faster tests."""
     result: dict[str, Any] = {"surfaces": {}}
     for surface, keys in _SURFACE_RATIO_KEYS.items():
-        a = per_query_a.get(surface, [])
-        b = per_query_b.get(surface, [])
+        a, b = _paired_by_query_id(
+            per_query_a.get(surface, []), per_query_b.get(surface, []), surface
+        )
         result["surfaces"][surface] = _bootstrap_diff(
             lambda s, k=keys: _f1_from_samples(s, k), a, b, iterations, seed
         )
-    tier_a = per_query_a.get("explain", []) + per_query_a.get("search", [])
-    tier_b = per_query_b.get("explain", []) + per_query_b.get("search", [])
+    tier_a, tier_b = _paired_by_query_id(
+        per_query_a.get("explain", []) + per_query_a.get("search", []),
+        per_query_b.get("explain", []) + per_query_b.get("search", []),
+        "explain+search",
+    )
     result["executed_precision"] = _bootstrap_diff(
         _executed_precision_from_samples, tier_a, tier_b, iterations, seed
     )
@@ -1642,7 +1844,7 @@ def _fmt(value: Any) -> str:
     return str(value)
 
 
-def _print_fact_surface_detail(s: dict[str, Any]) -> None:
+def _print_fact_surface_detail(s: dict[str, Any], phase: str | None = None) -> None:
     tier = s.get("tier", {})
     confusion = tier.get("confusion", {})
     if confusion:
@@ -1664,8 +1866,14 @@ def _print_fact_surface_detail(s: dict[str, Any]) -> None:
         f"({cat.get('correct', 0)}/{cat.get('total', 0)})"
     )
     val = s.get("validity", {})
+    # D-013 incremental phase (konyklabs/asbuilt#7): the same valid_from/
+    # valid_to check IS the supersession measure once a run advances an
+    # existing store past a step that changed a fact's value — a correct
+    # valid_to on the OLD value is exactly "the arm recognised it was
+    # superseded", so this is a relabelling, not a different computation.
+    label = "supersession" if phase == "incremental" else "validity"
     print(
-        f"    validity accuracy={_fmt(val.get('accuracy'))} "
+        f"    {label} accuracy={_fmt(val.get('accuracy'))} "
         f"({val.get('correct', 0)}/{val.get('total', 0)})"
     )
     er = s.get("entity_resolution", {})
@@ -1677,7 +1885,10 @@ def _print_fact_surface_detail(s: dict[str, Any]) -> None:
 
 def print_report(report: dict[str, Any], show_headline: bool = False) -> None:
     ingest = report.get("ingest") or {}
+    phase = report.get("phase")
     print(f"prototype: {report.get('prototype')}")
+    if phase is not None:
+        print(f"phase: {phase}")
     print("ingest:")
     print(
         f"  seconds={_fmt(ingest.get('seconds'))} input_tokens={_fmt(ingest.get('input_tokens'))} "
@@ -1691,6 +1902,8 @@ def print_report(report: dict[str, Any], show_headline: bool = False) -> None:
             f"embedding_tokens={_fmt(ingest.get('embedding_tokens'))} "
             f"cache_tokens={_fmt(ingest.get('cache_tokens'))}"
         )
+    if phase == "incremental":
+        print(f"  duplicates={_fmt(report.get('duplicates'))}")
     print()
     print(f"{'surface':<15}{'precision':<12}{'recall':<12}{'f1':<10}denominators")
     for name in SURFACES:
@@ -1718,7 +1931,7 @@ def print_report(report: dict[str, Any], show_headline: bool = False) -> None:
         for cat, counts in sorted(s.get("by_category", {}).items()):
             print(f"    {cat:<20} tp={counts['tp']} expected={counts['expected']}")
         if name in ("explain", "search"):
-            _print_fact_surface_detail(s)
+            _print_fact_surface_detail(s, phase)
         if name == "search":
             rank = s.get("rank", {})
             r10 = rank.get("r10_hits")

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
-from bench.run import assemble_ingest_root, main
+import pytest
+
+from bench.run import RunError, assemble_ingest_root, main
 from tests._support import MINI_ROOT
 
 
@@ -155,3 +158,59 @@ def test_run_reset_flag_only_touches_the_given_fixture_root(tmp_path: Path, monk
     assert not (fixture / "build" / "ingest" / "leftover.txt").exists()
     captured = capsys.readouterr()
     assert "cleared build/ingest" in captured.out
+
+
+def test_assemble_ingest_root_raises_on_invalid_json_run_report(tmp_path: Path):
+    fixture = tmp_path / "fixture"
+    shutil.copytree(MINI_ROOT, fixture)
+    (fixture / "runs" / "broken.json").write_text("not json{")
+    with pytest.raises(RunError):
+        assemble_ingest_root(fixture, "c2", tmp_path / "ingest")
+
+
+def test_assemble_ingest_root_raises_on_missing_metadata_step(tmp_path: Path):
+    fixture = tmp_path / "fixture"
+    shutil.copytree(MINI_ROOT, fixture)
+    (fixture / "runs" / "no-step.json").write_text(json.dumps({"metadata": {}}))
+    with pytest.raises(RunError):
+        assemble_ingest_root(fixture, "c2", tmp_path / "ingest")
+
+
+def test_run_incremental_records_both_reports_and_delta(tmp_path: Path, monkeypatch):
+    out_path = tmp_path / "results.json"
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--incremental",
+            "--repeats",
+            "1",
+        ]
+    )
+    assert exit_code == 0
+    data = json.loads(out_path.read_text())
+    assert data["phase"] == "incremental"
+    assert data["through_step"] == "c4"  # the mini fixture's last step
+
+    inc = data["ingest_incremental"]
+    assert inc["through_step_1"] == "c3"  # second-to-last
+    assert inc["through_step_2"] == "c4"
+    assert set(inc["delta"]) == {"seconds", "input_tokens", "output_tokens", "dollars", "calls"}
+    assert inc["report_1"]["documents"] > 0
+    assert inc["report_2"]["documents"] > 0
+
+
+def test_run_full_phase_is_recorded_as_full(tmp_path: Path, monkeypatch):
+    out_path = tmp_path / "results.json"
+    monkeypatch.chdir(tmp_path)
+    exit_code = main(["--prototype", "null", "--fixture", str(MINI_ROOT), "--out", str(out_path)])
+    assert exit_code == 0
+    data = json.loads(out_path.read_text())
+    assert data["phase"] == "full"
+    assert "ingest_incremental" not in data

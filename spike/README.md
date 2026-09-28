@@ -1,18 +1,20 @@
-# Storage-engine spike: benchmark harness
+# The extraction-pipeline benchmark: harness
 
-Benchmarks a storage-engine prototype against one synthetic system
+Benchmarks an extraction-pipeline prototype against one synthetic system
 ("Gearwell", invented — see `../AGENTS.md`'s cleanroom rule) on five agent
 access surfaces: `explain`, `search`, `ask`, `contradictions`, `stale`. See
-`../README.md`'s "Storage engine: the open spike" for what this settles.
+`../README.md`'s "The store, and the benchmark" for what this settles — the
+store itself is decided by constraint, not benchmarked; the pipeline is.
 
 Two halves live here. The **fixture**: `truth/` (the ground truth, authored
 first), `system/` (the invented system's code, tests and history),
 `sources/` (its wiki, documents, tickets and pull-request threads), `runs/`
 (test-run evidence at every commit) and `queries/mix.yaml`. The **harness**:
 `bench/` (build, run, score, the prototype protocol) and `tests/` (the
-harness's own tests, on a throwaway mini fixture, plus four tests on the real
-fixture). `truth/SCHEMA.md` defines the ground-truth yaml shapes. Build issue:
-konyklabs/asbuilt#2; decision: D-013 in `konyklabs/roadmap`.
+harness's own tests, on a throwaway mini fixture, plus four real-fixture
+tests and the leak test). `truth/SCHEMA.md` defines the ground-truth yaml
+shapes. Build issue: konyklabs/asbuilt#2; decision: D-013 in
+`konyklabs/roadmap`.
 
 ## The invented system
 
@@ -36,15 +38,17 @@ turns that into a repository with reproducible SHAs.
 
 Planted, listed in `truth/` before any artefact was written: 120 facts
 (48 business logic, 38 technical implementation, 24 operations, 10 history;
-28 at the `executed` tier, 40 `code`, 52 `documented`), 20 contradictions
-(6 wiki-vs-test, 4 ticket-vs-code, 4 page-vs-page, 6 doc-vs-code), 10 stale
-pages, and 5 facts whose only carrier is a pull-request comment. Carriers:
-54 Python modules and 16 TypeScript files; 23 distinct pytest tests across
-the history (19 at the final commit, end-to-end and unit) and 4 Vitest tests, with 12 run reports (one per suite per commit); 40
-wiki pages, 10 documents, 80 tickets (57 of them noise), 8 pull-request
-threads. `truth/PLAN.yaml` is the authoring plan every document was written
-from; the prose paraphrases each fact (never its statement verbatim) so that
-extraction is measured, not string matching.
+27 at the `executed` tier, 41 `code`, 52 `documented`), 21 contradictions in
+five kinds (6 wiki-vs-test, 6 doc-vs-code, 4 ticket-vs-code, 4 page-vs-page,
+1 run-vs-code), 10 stale pages, and 5 facts whose only carrier is a
+pull-request comment. Carriers: 54 Python modules and 16 TypeScript files;
+24 distinct pytest node ids across the history (20 collected at the final
+commit, of which one is skipped) and 4 Vitest tests, with 14 run reports
+(one per suite per commit, plus two reruns); 40 wiki pages, 10 documents,
+80 tickets (57 of them noise), 8 pull-request threads. `truth/PLAN.yaml` is
+the authoring plan every document was written from; the prose paraphrases
+each fact (never its statement verbatim) so that extraction is measured, not
+string matching.
 
 The JavaScript runner is **Vitest** (5.0.2): its JSON reporter carries
 `ancestorTitles` and `title` per test, which is what a run carrier needs to
@@ -60,6 +64,7 @@ it.
 uv run --with pyyaml python truth/validate.py          # truth <-> PLAN: ids, counts, carriers, dates
 uv run --with pyyaml python tools/check_wiki_docs.py   # every page: metadata, anchors, values, no verbatim statements
 uv run --with pyyaml python tools/check_tickets_pulls.py
+uv run --with pyyaml python tools/check_code_leaks.py  # code/tests: no fact id, no 8-word prefix, no >=0.5 similarity
 uv run pytest tests/test_fixture.py                    # carriers resolve on disk; runs carry commits; SHAs reproduce
 ```
 
@@ -277,9 +282,10 @@ in vitest's JSON shape (the mini fixture has no `dispatch/package.json`, so
 `tests/test_leaks.py` exercises the ingest-root leak scanner (`find_leaks`)
 against synthetic content directly, and, marked `fixture` like
 `tests/test_fixture.py` (skips if `truth/facts.yaml` is absent), against the
-real fixture's own assembled ingest root — expected red until the fixture
-authors finish scrubbing docstrings; the leak count is always printed and
-in the assertion message, not just a bare pass/fail.
+real fixture's own assembled ingest root — also running
+`tools/check_code_leaks.py`'s stronger 0.5-similarity rule over the root's
+code, imported from there rather than reimplemented. The leak count is
+always printed and in the assertion message, not just a bare pass/fail.
 
 ```
 uv run pytest

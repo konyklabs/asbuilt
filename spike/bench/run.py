@@ -3,7 +3,7 @@ over warm repeats, and writes raw results.
 
 CLI: ``uv run python bench/run.py --prototype null [--fixture .]
 [--out build/results-null.json] [--through-step c6] [--repeats 20]
-[--budget-tokens N] [--reset]``.
+[--budget-tokens N] [--budget-dollars N] [--reset] [--incremental]``.
 
 Ingest-root integrity (D-013): ``ingest()`` is never handed the raw fixture.
 ``assemble_ingest_root`` builds ``build/ingest/`` from three things only —
@@ -11,19 +11,27 @@ the built repository's content *through* ``--through-step`` (default: the
 fixture's last step), via ``bench.build.Timeline``, never a git checkout of
 ``system/`` itself; ``sources/{wiki,docs,tickets,pulls}``, whole (they don't
 carry a step); and only the ``runs/*.json`` reports at or before that step
-(by each report's own ``metadata.step``, not by filename). ``truth/``,
-``truth/PLAN.yaml``, ``queries/`` and the check scripts under ``tools/`` are
-never assembled in — see ``tests/test_leaks.py`` for the check that nothing
-under the assembled root carries a truth fact id or near-verbatim statement.
-``--through-step`` also drives the incremental phase: ingesting through c5,
-then again through c6 with ``incremental=True``, is two separate ``run.py``
-invocations (the second passes ``--through-step c6``; whether a prototype
-treats that as fresh or incremental is the prototype's own state to hold,
-signalled to it by the protocol's ``incremental`` flag — this script always
-calls ``ingest`` with ``incremental=False``; a script orchestrating the
-two-phase comparison is expected to call the underlying ``run()`` function
-directly with ``incremental=True`` for the second phase, since that is a
-benchmark-level decision, not a per-invocation CLI default).
+(by each report's own ``metadata.step``, not by filename — a report that
+fails to parse, or has none, is an error, not a silent skip: an ingest root
+silently missing evidence it should have is worse than one that fails to
+build at all). ``truth/``, ``truth/PLAN.yaml``, ``queries/`` and the check
+scripts under ``tools/`` are never assembled in — see ``tests/test_leaks.py``
+for the check that nothing under the assembled root carries a truth fact id
+or near-verbatim statement.
+
+``--incremental``: the two-phase run (D-013). Assembles the ingest root
+through the fixture's *second-to-last* step and calls
+``ingest(root, ENTITY_KINDS, incremental=False)``, then assembles it again
+through the *last* step and calls
+``ingest(root, ENTITY_KINDS, incremental=True)``. Both ``IngestReport``s and
+their delta (seconds, tokens, dollars, calls — the second call's own numbers,
+since each call reports only the work it did) are recorded under
+``ingest_incremental`` in the results file; ``phase`` is ``"incremental"``
+(else ``"full"``). The query mix still runs once, after the second ingest,
+so the scorer can check the prototype answers as of the *later* state
+(supersession, not a stale snapshot from the first phase). ``--through-step``
+is ignored with ``--incremental`` (the two steps are fixed by the fixture's
+own history, not chosen).
 
 Prototype lookup: ``--prototype null`` loads ``bench.null:NullPrototype``.
 Any other name ``X`` loads ``prototypes.X:Prototype``, importable from
@@ -34,12 +42,12 @@ document-id conventions every prototype must honour).
 ``ENTITY_KINDS`` (below) is the fixed vocabulary passed to every arm's
 ``ingest`` — the same set, in the same order, for every arm (D-013).
 
-``--budget-tokens N``: the environment variable ``ASBUILT_BUDGET_TOKENS`` is
-set to ``N`` before ``ingest`` runs, for a prototype's own ``bench.llm.
-CountingClient`` to read as its budget if the prototype doesn't set one more
-specifically itself. If ``ingest`` raises ``bench.llm.BudgetExceeded``, this
-script prints the stop message and exits non-zero rather than writing a
-(necessarily incomplete) results file.
+``--budget-tokens N``/``--budget-dollars N``: set ``ASBUILT_BUDGET_TOKENS``/
+``ASBUILT_BUDGET_DOLLARS`` before ``ingest`` runs, for ``bench.llm.
+budget_from_env()`` — which ``bench.llm.CountingClient`` calls automatically
+when constructed with no explicit ``budget=`` — to read. If ``ingest`` raises
+``bench.llm.BudgetExceeded``, this script prints the stop message and exits
+non-zero rather than writing a (necessarily incomplete) results file.
 
 ``--reset``: calls ``bench.reset.reset_arm(prototype)`` before assembling the
 ingest root.
@@ -187,10 +195,14 @@ def assemble_ingest_root(fixture_root: Path, through_step: str, ingest_root: Pat
         for report_path in sorted(runs_src.glob("*.json")):
             try:
                 data = json.loads(report_path.read_text())
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as exc:
+                raise RunError(f"{report_path}: invalid JSON ({exc})") from exc
             step = (data.get("metadata") or {}).get("step")
-            if step in step_ids and step_ids.index(step) <= through_index:
+            if not step:
+                raise RunError(f"{report_path}: missing metadata.step")
+            if step not in step_ids:
+                raise RunError(f"{report_path}: metadata.step {step!r} is not a known history step")
+            if step_ids.index(step) <= through_index:
                 shutil.copy2(report_path, runs_dst / report_path.name)
 
     return ingest_root
@@ -293,31 +305,68 @@ def run(
     ingest_root: Path | None = None,
     repeats: int = DEFAULT_REPEATS,
     budget_tokens: int | None = None,
+    budget_dollars: float | None = None,
     incremental: bool = False,
 ) -> dict[str, Any]:
     prototype = load_prototype(prototype_name)
-
     timeline = Timeline(fixture_root)
-    step = through_step or timeline.steps[-1].id
     ingest_root = ingest_root or (Path.cwd() / "build" / "ingest")
-    assembled = assemble_ingest_root(fixture_root, step, ingest_root)
 
     if budget_tokens is not None:
         os.environ["ASBUILT_BUDGET_TOKENS"] = str(budget_tokens)
+    if budget_dollars is not None:
+        os.environ["ASBUILT_BUDGET_DOLLARS"] = str(budget_dollars)
 
-    ingest_report = prototype.ingest(assembled, ENTITY_KINDS, incremental)
+    ingest_incremental: dict[str, Any] | None = None
+
+    if incremental:
+        if len(timeline.steps) < 2:
+            raise RunError("--incremental needs at least two history steps")
+        first_step, second_step = timeline.steps[-2].id, timeline.steps[-1].id
+
+        first_root = assemble_ingest_root(fixture_root, first_step, ingest_root / "phase-1")
+        first_report = prototype.ingest(first_root, ENTITY_KINDS, False)
+
+        second_root = assemble_ingest_root(fixture_root, second_step, ingest_root / "phase-2")
+        second_report = prototype.ingest(second_root, ENTITY_KINDS, True)
+
+        ingest_report = second_report
+        step = second_step
+        ingest_incremental = {
+            "through_step_1": first_step,
+            "through_step_2": second_step,
+            "report_1": _to_jsonable(first_report),
+            "report_2": _to_jsonable(second_report),
+            # The second call's own numbers: each ingest() call reports only
+            # the work it did, so this *is* the added cost of the second step.
+            "delta": {
+                "seconds": second_report.seconds,
+                "input_tokens": second_report.input_tokens,
+                "output_tokens": second_report.output_tokens,
+                "dollars": second_report.dollars,
+                "calls": second_report.calls,
+            },
+        }
+    else:
+        step = through_step or timeline.steps[-1].id
+        assembled = assemble_ingest_root(fixture_root, step, ingest_root)
+        ingest_report = prototype.ingest(assembled, ENTITY_KINDS, False)
+
     mix = load_mix(fixture_root / "queries" / "mix.yaml")
-
     queries_out = [run_query(prototype, query, repeats) for query in mix["queries"]]
 
-    return {
+    result: dict[str, Any] = {
         "prototype": getattr(prototype, "name", prototype_name),
         "fixture": str(fixture_root),
         "through_step": step,
+        "phase": "incremental" if incremental else "full",
         "weights": mix["weights"],
         "ingest": _to_jsonable(ingest_report),
         "queries": queries_out,
     }
+    if ingest_incremental is not None:
+        result["ingest_incremental"] = ingest_incremental
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -337,9 +386,17 @@ def main(argv: list[str] | None = None) -> int:
         "--budget-tokens", type=int, default=None, help="sets ASBUILT_BUDGET_TOKENS for ingest"
     )
     parser.add_argument(
+        "--budget-dollars", type=float, default=None, help="sets ASBUILT_BUDGET_DOLLARS for ingest"
+    )
+    parser.add_argument(
         "--reset",
         action="store_true",
         help="reset the arm (bench.reset.reset_arm) before ingesting",
+    )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="two-phase ingest: second-to-last step, then the last with incremental=True",
     )
     args = parser.parse_args(argv)
 
@@ -364,6 +421,8 @@ def main(argv: list[str] | None = None) -> int:
             through_step=args.through_step,
             repeats=args.repeats,
             budget_tokens=args.budget_tokens,
+            budget_dollars=args.budget_dollars,
+            incremental=args.incremental,
         )
     except BudgetExceeded as exc:
         print(f"STOPPED: {exc}")

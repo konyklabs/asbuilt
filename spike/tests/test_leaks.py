@@ -1,15 +1,16 @@
 """Fails if any file under the assembled ingest root contains a truth fact id
 (``F-\\d{3}``) or the first eight normalised words of any truth statement —
 the leak the D-013 panel found (47 of 68 code/executed facts carried their
-own answer key in a docstring).
+own answer key in a docstring). The real-fixture test also runs
+``tools/check_code_leaks.py``'s stronger 0.5-similarity rule over the
+assembled root's code (imported from there, not reimplemented, so both
+checks stay in sync), catching a paraphrase that isn't a verbatim 8-word
+prefix but still reads as the answer.
 
 ``find_leaks`` is exercised directly with synthetic content (fast,
 deterministic, no dependency on the real fixture's state) and, marked
 ``fixture`` like ``tests/test_fixture.py`` (skips if ``truth/facts.yaml`` is
-absent), against the real fixture's own assembled ingest root — this one may
-fail until the fixture authors finish scrubbing docstrings; the leak count is
-always printed and put in the assertion message, so a red run here is
-informative, not just a bare failure.
+absent), against the real fixture's own assembled ingest root.
 
 Statements shorter than eight words are excluded from the snippet check (an
 interpretation call: a 3-4 word common phrase risks false positives that a
@@ -28,6 +29,10 @@ from bench.build import Timeline
 from bench.run import assemble_ingest_root
 from bench.truth import load_truth
 from tests._support import SPIKE_ROOT
+from tools.check_code_leaks import PREFIX_WORDS as CODE_PREFIX_WORDS
+from tools.check_code_leaks import find_files as code_find_files
+from tools.check_code_leaks import normalize as code_normalize
+from tools.check_code_leaks import scan as code_scan
 
 pytestmark = pytest.mark.fixture
 
@@ -122,8 +127,29 @@ def test_real_fixture_ingest_root_has_no_leaks(tmp_path: Path):
     ingest_root = assemble_ingest_root(SPIKE_ROOT, through_step, tmp_path / "ingest")
 
     leaks = find_leaks(ingest_root, statements)
-    print(f"leak scan: {len(leaks)} hit(s) under {ingest_root}")
+    print(f"leak scan (id + 8-word prefix): {len(leaks)} hit(s) under {ingest_root}")
     for leak in leaks[:50]:
         print(f"  {leak}")
 
-    assert leaks == [], f"{len(leaks)} leak(s) found (see captured output with -s for detail)"
+    # The stronger 0.5-similarity rule, over the assembled root's own code
+    # (not system/ — the ingest root is what a prototype actually sees).
+    facts_norm = {fid: code_normalize(f.statement) for fid, f in truth.facts.items()}
+    facts_first8 = {
+        fid: tuple(norm.split()[:CODE_PREFIX_WORDS])
+        for fid, norm in facts_norm.items()
+        if len(norm.split()) >= CODE_PREFIX_WORDS
+    }
+    code_files = code_find_files(ingest_root / "repo", {".py", ".ts"})
+    code_hits = code_scan(code_files, facts_norm, facts_first8)
+    print(f"code-leak scan (0.5-similarity rule): {len(code_hits)} hit(s)")
+    code_leaks = [
+        f"{hit.path.relative_to(ingest_root)}:{hit.line} [{hit.kind}] {hit.reason}: {hit.snippet!r}"
+        for hit in code_hits
+    ]
+    for line in code_leaks[:50]:
+        print(f"  {line}")
+
+    all_leaks = leaks + code_leaks
+    assert all_leaks == [], (
+        f"{len(all_leaks)} leak(s) found (see captured output with -s for detail)"
+    )

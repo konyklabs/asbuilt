@@ -25,7 +25,7 @@ Snapshots of the shared database are retained for 30 days before they're purged.
 
 ## Exceptions
 
-Any deviation from a retention window listed here needs sign-off from platform, not just from whichever team wants the exception. Document the reason and the new window in this doc directly rather than letting an exception live only in someone's memory or a Slack thread.
+Any deviation from a retention window listed here needs sign-off from platform, not just from whichever team wants the exception. Document the reason and the new window in this doc directly rather than letting an exception live only in someone's memory or a chat thread.
 
 ## Review cadence
 

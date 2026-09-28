@@ -135,10 +135,15 @@ class Prototype(Protocol):
         fixture — see bench/run.py). `entity_kinds` is the fixed vocabulary
         every arm gets (service, table, rule, job, flag, integration, queue,
         team, endpoint), the same set truth/entities.yaml uses. When
-        `incremental` is True, `fixture_root` is a *later* checkout (e.g.
-        through c6 after an earlier call through c5) and this call advances
-        the prototype's existing store rather than starting over — duplicate
-        facts, supersession and the added cost are themselves measured."""
+        `incremental` is True, `fixture_root` is a later checkout than an
+        earlier call in the same run (`bench/run.py --incremental` ingests
+        through the fixture's second-to-last step, then again through its
+        last step with this set) and this call must advance the prototype's
+        own existing store rather than start over. The harness records both
+        calls' IngestReports and their delta (`ingest_incremental` in the
+        results file); whether the resulting store avoided duplicate facts
+        and superseded correctly is for the scorer to check separately, not
+        a guarantee this call makes on its own."""
         ...
 
     def explain(self, entity: str) -> list[Fact]: ...

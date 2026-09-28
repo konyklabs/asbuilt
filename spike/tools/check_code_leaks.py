@@ -128,7 +128,7 @@ def python_blocks(path: Path) -> list[TextBlock]:
                 text = tok.string.lstrip("#").strip()
                 if text:
                     blocks.append(TextBlock(path, tok.start[0], "comment", text))
-    except tokenize.TokenizeError:
+    except tokenize.TokenError:
         pass
 
     return blocks
