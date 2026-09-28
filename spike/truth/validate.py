@@ -662,6 +662,14 @@ for x in contradictions:
         fail(f"{xid}: bad kind {x.get('kind')}")
     if x.get("label") != "refutes":
         fail(f"{xid}: label must be refutes")
+    ob, rb = x.get("opened_by"), x.get("resolved_by")
+    for fld, v in (("opened_by", ob), ("resolved_by", rb)):
+        if v is not None and v not in STEPS:
+            fail(f"{xid}: {fld} {v!r} is not a step id")
+    if ob in STEPS and rb in STEPS and STEPS.index(ob) >= STEPS.index(rb):
+        fail(f"{xid}: opened_by {ob} is not before resolved_by {rb}")
+    if x.get("kind") == "run-vs-code" and ob is None:
+        fail(f"{xid}: a run-vs-code contradiction needs opened_by")
     fa, fb = facts[a], facts[b]
     if not set(fa["entities"]) & set(fb["entities"]):
         fail(f"{xid}: {a} and {b} share no entity")
@@ -1042,6 +1050,17 @@ print(
     + ", ".join(f"{k} {n}" for k, n in Counter(x["kind"] for x in contradictions).items())
 )
 print(f"stale {len(stale)}; mix stale expectations {stale_counts}")
+print(
+    "contradiction windows: "
+    + (
+        ", ".join(
+            f"{x['id']} {x.get('opened_by', 'start')}-{x.get('resolved_by', 'open')}"
+            for x in contradictions
+            if "opened_by" in x or "resolved_by" in x
+        )
+        or "none"
+    )
+)
 print(
     f"claims: {len(claims)} of {sum(1 for f in facts.values() if is_numeric(f['statement']))} "
     f"numeric facts; {len({(c['entity'], c['attribute']) for c in claims.values()})} distinct "

@@ -103,6 +103,13 @@ Run outcomes (D-013; the planted cases are in `planted-runs.yaml`):
   label: refutes
 ```
 
+Two optional fields bound when a contradiction is open, as step ids:
+`opened_by` is the step at which it opens (none: open from the fixture's
+start) and `resolved_by` the step at which it stops holding (none: still
+open). A `run-vs-code` entry always has `opened_by`, the step of the failing
+run; X-021 opens at c5 and is resolved at c6, when the failing test is
+replaced.
+
 ## stale.yaml
 
 ```yaml

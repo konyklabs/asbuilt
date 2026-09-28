@@ -58,9 +58,14 @@ def _load_outcomes_by_step(fixture_root: Path) -> dict[str, list[Outcome]]:
     return by_step
 
 
-def _fact_dict(rule: Rule, skeleton: Skeleton, lifted: Lift, step: str) -> dict[str, Any]:
+def _fact_dict(
+    rule: Rule, skeleton: Skeleton, lifted: Lift, step: str, commits: dict[str, dict[str, str]]
+) -> dict[str, Any]:
     location = skeleton.node_id.split("::")[-1] if "::" in skeleton.node_id else skeleton.node_id
-    citations = [{"document": f"code/{skeleton.file}", "location": location, "version": step}]
+    sha = commits[step]["sha"]
+    citations = [
+        {"document": f"code/{skeleton.file}", "location": location, "version": sha, "step": step}
+    ]
     if lifted.tier == "executed" and lifted.executed_run_id:
         citations.append(
             {"document": f"run/{lifted.executed_run_id}", "location": skeleton.node_id}
@@ -92,8 +97,6 @@ def build_step_output(
     skeletons = collect_from_timeline(timeline, step)
     rules = extract_all(skeletons, _source_lookup(timeline, step))
     rules_by_id = {r.node_id: r for r in rules}
-    step_index = step_order.index(step)
-    good_step = step_order[step_index - 1] if step_index > 0 else None
 
     facts: list[dict[str, Any]] = []
     contradiction_candidates: list[dict[str, Any]] = []
@@ -109,13 +112,19 @@ def build_step_output(
             flaky.append(skeleton.node_id)
         if any(m == "skip" or m.startswith("skip:") for m in skeleton.markers):
             skipped.append(skeleton.node_id)
-        if lifted.contradiction_candidate and good_step is not None:
+        if lifted.contradiction_candidate:
             payload = build_contradiction_payload(
-                skeleton, rule, lifted.contradiction_candidate, good_step, timeline
+                skeleton, rule, lifted.contradiction_candidate, step_order, timeline, commits
             )
             if payload is not None:
-                contradiction_candidates.append({"node_id": skeleton.node_id, **payload})
-        facts.append(_fact_dict(rule, skeleton, lifted, step))
+                contradiction_candidates.append(
+                    {
+                        "node_id": skeleton.node_id,
+                        "opened_step": lifted.contradiction_candidate.opened_step,
+                        **payload,
+                    }
+                )
+        facts.append(_fact_dict(rule, skeleton, lifted, step, commits))
 
     counts = {
         "statements": len(facts),

@@ -19,7 +19,8 @@ NOT guaranteed to match pytest's exact algorithm for every value type;
 when given.
 
 TypeScript (Vitest): a small, deliberately tolerant line-based scanner over
-``dispatch/test/*.test.ts`` — no tree-sitter, per the driving issue. Tracks
+``dispatch/test/*.test.ts`` and ``*.spec.ts`` — no tree-sitter, per the
+driving issue. Tracks
 brace depth to know which ``it``/``test`` block is currently open and which
 ``describe`` blocks enclose it (``ancestorTitles``), collecting every line
 that contains ``expect(`` inside the current ``it`` (only that line, not a
@@ -338,8 +339,9 @@ def collect_typescript(root: Path) -> list[Skeleton]:
     test_dir = root / "dispatch" / "test"
     if not test_dir.is_dir():
         return []
+    paths = {*test_dir.glob("*.test.ts"), *test_dir.glob("*.spec.ts")}
     skeletons: list[Skeleton] = []
-    for path in sorted(test_dir.glob("*.test.ts")):
+    for path in sorted(paths):
         skeletons.extend(_typescript_file_skeletons(path, path.relative_to(root).as_posix()))
     return skeletons
 

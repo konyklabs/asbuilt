@@ -29,20 +29,33 @@ false positives. This pass never picks one literal arbitrarily:
    Never a single literal chosen arbitrarily — every distinct comparison
    the test makes becomes a clause in `detail`, deduplicated only when
    truly identical.
-2. Claims come from module-level constants, not the primary-literal guess:
-   every ALL_CAPS name the test's body references that resolves (through the
-   test's own imports, followed one hop into the source tree via a caller-
-   supplied `source_lookup`) to a scalar assignment becomes one claim
-   (`entity` = the constant's own name, `attribute` = the constant's name
-   lower-cased, `value` read from the source at the given step, `unit`
-   inferred from the name and value type — see `infer_unit`). The first
-   resolved constant's claim is `Rule.claim`; the rest are `Rule.claims`
-   (the scorer only reads the singular field; the list is carried for
-   completeness and for a future claim-first matcher). A test that
-   references no resolvable constant carries no claim at all — this is a
-   known, accepted gap for compound end-to-end tests that only prove a
-   value through *behaviour* (e.g. a boundary probe), never by naming the
-   constant; that gap is exactly the model extractor's job, not this one's.
+2. Claims come from module-level constants first, not a primary-literal
+   guess: every ALL_CAPS name one of the test's own assertions mentions that
+   resolves (through the test's own imports, followed one hop into the
+   source tree via a caller-supplied `source_lookup`) to a scalar assignment
+   becomes one claim (`entity` = the constant's own name, `attribute` = the
+   constant's name lower-cased, `value` read from the source at the given
+   step, `unit` inferred from the name and value type — see `infer_unit`).
+   The first resolved constant's claim is `Rule.claim`; the rest are
+   `Rule.claims` (the scorer only reads the singular field). When NO
+   constant resolves, a conservative fallback (`_fallback_claim`) derives a
+   claim from the test's own name instead of leaving it empty, but only
+   when confident: the test's SOLE literal-bearing assert is a money/cents
+   comparison, or any literal-bearing assert (money or a plain count) whose
+   own left side shares a word with the test's name; never an HTTP-status-
+   shaped int, a bare `len(...)`/`toHaveLength(...)` count unless the name
+   itself says times/retries/attempts/count, or a bool; unit only "usd" for
+   money or an explicit unit/count word in the name, never guessed from the
+   assert's own expression text. A fourth-pass review found the PRIOR
+   (unconditional, last-literal) version wrong on 12 of 13 fixture cases —
+   entities that never resolve, an HTTP status read as a day count, a
+   boundary probe's incidental per-minute charge attributed to a 30-minute
+   threshold it never proves — and removing it raised true positives; this
+   version is deliberately narrow rather than repeat that. Even so, most
+   compound end-to-end tests that only prove a value through *behaviour*
+   (a boundary probe, never naming or directly computing the value) still
+   carry no claim at all — a known, accepted gap, and exactly the model
+   extractor's job, not this one's.
 3. Entities are the service (from the module path), every constant name a
    claim was built from, and the test file's own "subject noun" (its
    filename with `test_`/`.py` stripped and underscores turned to spaces —
@@ -867,35 +880,98 @@ def _unit_from_words(text: str) -> str | None:
     return None
 
 
+_COUNT_NAME_WORDS = ("time", "times", "retry", "retries", "attempt", "attempts", "count")
+_LENGTH_CALL_HINTS = ("len(", "tohavelength(")
+
+
+def _is_http_status_shaped(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599
+
+
+def _is_length_call(text: str) -> bool:
+    low = text.lower()
+    return any(hint in low for hint in _LENGTH_CALL_HINTS)
+
+
+def _shares_word(a: str, b: str) -> bool:
+    return bool(_segments(a) & _segments(b))
+
+
 def _fallback_claim(skeleton: Skeleton) -> dict[str, Any] | None:
-    """Module docstring point 2's third-pass addendum: when no ALL_CAPS
-    constant resolves (`_resolve_constants` returned nothing — kept as the
-    PRIMARY claim whenever it does find one) but the test's own primary
-    (last) literal-bearing assert compares a COMPUTED expression against a
-    literal, a claim is still derived rather than left empty — entity and
-    attribute from the test's own name (`_test_subject_phrase`, e.g. "lost
-    bike fee"; the alias table resolves a name like this the same way it
-    resolves a constant name), value from the literal (cents/100 when the
-    non-literal side names "cents"; a `Decimal("x")`-wrapped string literal
-    read as its float, same conversion `_format_literal` already does),
-    unit "usd" for a money/cents context, else minute/day/hour/second from
-    the test's own name, else "count"."""
-    primary = _primary_literal_assert(skeleton)
-    if primary is None:
+    """Fourth-pass review correction: the earlier version fired on the
+    test's LAST literal-bearing assert unconditionally, which produced
+    wrong data for most tests it touched — a compound e2e test's status
+    code read as a claim value with a nonsense unit, or a boundary probe's
+    incidental per-minute charge ($0.15) attributed to the test's OWN named
+    subject (30-minute-free), which it never actually proves. Now
+    conservative, in order:
+
+    1. Only the test's SOLE literal-bearing assert is trusted when it's a
+       money literal (`Decimal("x")`, `$x.xx`) or a `_cents`-named
+       expression — no ambiguity about which of several branches it
+       belongs to, since there IS only one (this is exactly
+       `test_lost_bike_fee_150`'s shape: one assert, no constant, a cents
+       expression). A money/cents assert among several in the SAME test is
+       trusted only if its own left side shares a word with the test's own
+       name (subject phrase) — the case that rejects the $0.15 boundary
+       probe, whose `body["amount_cents"]` shares nothing with "member
+       first thirty minutes free".
+    2. A non-money integer literal is trusted only with that same word-
+       overlap requirement, always — no "sole assert" exception, since an
+       arbitrary count has no other signal tying it to the test's subject.
+    3. Even then, the literal is rejected if it's HTTP-status-shaped (a
+       plain int 100-599 — a status code masquerading as a business value),
+       or came from a `len(...)`/`toHaveLength(...)` call UNLESS the test's
+       own name says times/retries/attempts/count (a bare length is
+       usually incidental, not the thing being tested), or is a bool.
+    4. Unit comes from exactly two places: "usd" for a money/cents context,
+       or an explicit unit/count word in the test's own name — never from
+       the assert's own non-literal side text (that produced "day" for a
+       422 status code once, from an unrelated "days" elsewhere in the
+       name — the bug this whole rewrite exists to fix). No matching word
+       means no unit, not a guessed "count"."""
+    literal_asserts = [
+        a for a in skeleton.asserts if a.left_literal is not None or a.right_literal is not None
+    ]
+    if not literal_asserts:
         return None
+    primary = literal_asserts[-1]
     literal, other_side = _literal_side(primary)
     if isinstance(literal, bool) or not isinstance(literal, (int, float, str)):
         return None
+
     subject_phrase = _test_subject_phrase(skeleton)
+    left_text = primary.left or ""
     cents = _is_cents(other_side)
     money = cents or _is_money_context(other_side, subject_phrase)
+
+    if money:
+        if len(literal_asserts) > 1 and not _shares_word(left_text, subject_phrase):
+            return None
+    elif not _shares_word(left_text, subject_phrase):
+        return None
+
+    if (
+        isinstance(literal, int)
+        and not isinstance(literal, bool)
+        and _is_http_status_shaped(literal)
+    ):
+        return None
+    if _is_length_call(left_text) and not any(
+        _has_word(subject_phrase, w) for w in _COUNT_NAME_WORDS
+    ):
+        return None
+
     display, numeric = _format_literal(literal, money=money, cents=cents)
-    value: Any = display if money else numeric
-    unit = (
-        "usd"
-        if money
-        else (_unit_from_words(subject_phrase) or _unit_from_words(other_side) or "count")
-    )
+    if money:
+        value: Any = display
+        unit = "usd"
+    else:
+        value = numeric
+        unit = _unit_from_words(subject_phrase)
+        if unit is None and any(_has_word(subject_phrase, w) for w in _COUNT_NAME_WORDS):
+            unit = "count"
+
     return {
         "entity": subject_phrase,
         "attribute": subject_phrase.replace(" ", "_"),

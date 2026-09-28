@@ -15,6 +15,7 @@ import yaml
 
 from bench.build import Timeline
 from bench.build import build as build_repo
+from connectors.tests.__main__ import build_step_output
 from connectors.tests.collect import (
     Skeleton,
     collect_from_timeline,
@@ -174,6 +175,24 @@ def test_skeleton_typescript_nested_describe_it(tmp_path: Path):
     assert s.language == "typescript"
     assert any("expect(result).toBe(1)" in a.source for a in s.asserts)
     assert "../src/thing.js" in s.imports
+
+
+def test_skeleton_typescript_also_collects_spec_files(tmp_path: Path):
+    """Review fix, point 6: `.spec.ts` is collected alongside `.test.ts` —
+    the README's own documented convention, which the code didn't actually
+    support until now."""
+    _write(
+        tmp_path / "dispatch" / "test" / "sample.spec.ts",
+        'import { describe, it, expect } from "vitest";\n\n'
+        'describe("outer", () => {\n'
+        '  it("does the thing", () => {\n'
+        "    expect(1).toBe(1);\n"
+        "  });\n"
+        "});\n",
+    )
+    skeletons = collect_typescript(tmp_path)
+    assert len(skeletons) == 1
+    assert skeletons[0].node_id == "outer > does the thing"
 
 
 def test_cross_check_reports_differences():
@@ -363,17 +382,16 @@ def test_extract_rules_constant_claim_wins_over_fallback(tmp_path: Path):
     assert rule.claim["entity"] == "FEE_AMOUNT"  # not the fallback's "fee amount charged 1250"
 
 
-def test_extract_rules_fallback_claim_non_money_uses_name_words_for_unit(tmp_path: Path):
-    """Module docstring point 2's addendum: no constant resolves here (no
-    `source_lookup` given at all), but the primary literal-bearing assert
-    compares a computed expression against a plain count — the fallback
-    still derives entity/attribute from the test's own name and a unit from
-    its words ("days"), never leaving the claim empty."""
+def test_extract_rules_fallback_claim_non_money_needs_word_overlap(tmp_path: Path):
+    """Module docstring point 2's fourth-pass rule: a non-money int literal
+    is only trusted when the assert's own LEFT side shares a word with the
+    test's name — `grace_period` does ("grace"/"period"), so this claim
+    fires with a unit from the name's own words ("days")."""
     _write(
         tmp_path / "tests" / "test_grace.py",
         "def test_grace_period_7_days():\n"
-        "    remaining = compute_grace(lapsed_at, now)\n"
-        "    assert remaining == 7\n",
+        "    grace_period = compute_grace(lapsed_at, now)\n"
+        "    assert grace_period == 7\n",
     )
     skeleton = collect_python(tmp_path)[0]
     rule = extract(skeleton)
@@ -383,6 +401,40 @@ def test_extract_rules_fallback_claim_non_money_uses_name_words_for_unit(tmp_pat
         "value": 7,
         "unit": "day",
     }
+
+
+def test_extract_rules_fallback_claim_rejects_no_word_overlap(tmp_path: Path):
+    """The same shape, but the compared expression ("remaining") shares no
+    word with the test's own name — no claim, per the fourth-pass rule."""
+    _write(
+        tmp_path / "tests" / "test_grace2.py",
+        "def test_grace_period_7_days():\n"
+        "    remaining = compute_grace(lapsed_at, now)\n"
+        "    assert remaining == 7\n",
+    )
+    skeleton = collect_python(tmp_path)[0]
+    rule = extract(skeleton)
+    assert rule.claim is None
+
+
+def test_extract_rules_fallback_claim_rejects_http_status_and_ambiguous_money(tmp_path: Path):
+    """Module docstring point 2's exclusions: an HTTP-status-shaped int
+    (422) never becomes a claim value even with word overlap; a money/cents
+    assert that ISN'T the test's only literal comparison, and whose own
+    left side shares no word with the name, is rejected too (the real
+    fixture's own "$0.15 for the 30-minute free rule" bug)."""
+    _write(
+        tmp_path / "tests" / "test_reject.py",
+        "def test_refund_status_check():\n"
+        "    refund_status = 422\n"
+        "    assert refund_status == 422\n\n"
+        "def test_member_first_thirty_minutes_free():\n"
+        "    assert 1 == 1\n"
+        "    assert body['amount_cents'] == 15\n",
+    )
+    skeletons = {s.name: s for s in collect_python(tmp_path)}
+    assert extract(skeletons["test_refund_status_check"]).claim is None
+    assert extract(skeletons["test_member_first_thirty_minutes_free"]).claim is None
 
 
 def test_extract_rules_api_status_and_error_clauses(tmp_path: Path):
@@ -655,6 +707,60 @@ def test_exercised_paths_python():
     assert not any("pytest" in p for p in paths)
 
 
+def test_exercised_paths_typescript_normalises_relative_import():
+    """Review fix: "dispatch/test/../src/rules/stormPause.ts" (the raw join
+    of the test's own directory and its own relative import) is never a
+    path `git diff --name-only` would report — only the normalised
+    "dispatch/src/rules/stormPause.ts" is, so the staleness check in
+    `lift()` must compare against that form, not the un-collapsed one."""
+    skeleton = Skeleton(
+        node_id="t::x",
+        file="dispatch/test/stormPause.test.ts",
+        line=1,
+        name="x",
+        language="typescript",
+        imports=("../src/rules/stormPause.js",),
+    )
+    paths = exercised_paths(skeleton)
+    assert "dispatch/src/rules/stormPause.ts" in paths
+    assert not any(".." in p for p in paths)
+
+
+def test_lift_contradiction_persists_then_closes(tmp_path: Path):
+    """Review fix, point 3: a demotion opened at "s2" persists at "s3" (no
+    run recorded there at all — the test simply wasn't rerun) with the SAME
+    `opened_step` and the failing run id carried from "s2", then closes
+    outright once "s4" records a pass. None of these target steps ever
+    needs `git diff` (a demotion never reaches the backward search; a pass
+    AT the target step itself short-circuits it), so a real repo isn't
+    needed here."""
+    skeleton = Skeleton(
+        node_id="tests/x.py::test_x", file="tests/x.py", line=1, name="test_x", language="python"
+    )
+    step_order = ["s1", "s2", "s3", "s4"]
+    commits = {s: {"sha": s} for s in step_order}
+    repo = tmp_path  # never touched: see the docstring above
+    outcomes_by_step = {
+        "s1": [Outcome("tests/x.py::test_x", "passed", "s1", None, 1, "run-s1")],
+        "s2": [Outcome("tests/x.py::test_x", "failed", "s2", None, 1, "run-s2")],
+        "s4": [Outcome("tests/x.py::test_x", "passed", "s4", None, 1, "run-s4")],
+    }
+
+    demoted = lift(skeleton, outcomes_by_step, step_order, "s2", repo, commits)
+    assert demoted.tier == "code"
+    assert demoted.contradiction_candidate.opened_step == "s2"
+    assert demoted.contradiction_candidate.failing_run_id == "run-s2"
+
+    carried = lift(skeleton, outcomes_by_step, step_order, "s3", repo, commits)
+    assert carried.tier == "code"
+    assert carried.contradiction_candidate.opened_step == "s2"  # inherited, not reset to "s3"
+    assert carried.contradiction_candidate.failing_run_id == "run-s2"  # no fresher run to update it
+
+    closed = lift(skeleton, outcomes_by_step, step_order, "s4", repo, commits)
+    assert closed.tier == "executed"
+    assert closed.contradiction_candidate is None
+
+
 def test_lift_never_imports_truth_or_yaml_at_runtime():
     """lift.py's module docstring promises it never reads truth/
     planted-runs.yaml at runtime (only this package's own tests do) — a
@@ -671,6 +777,32 @@ def test_lift_never_imports_truth_or_yaml_at_runtime():
     assert "open(" not in body
     code_lines = [line for line in body.splitlines() if not line.strip().startswith("#")]
     assert "truth" not in "\n".join(code_lines).lower()
+
+
+@pytest.mark.fixture
+def test_fact_citations_carry_sha_and_step():
+    """Review fix, point 5: a Fact's code citation writes `version` as the
+    step's SHA (README and the CLI docstring's own promise — the scorer
+    accepts either a step id or a SHA, but only the SHA was ever documented
+    as the real shape), with `step` written alongside for a human reader."""
+    fixture_root = SPIKE_ROOT
+    facts_path = fixture_root / "truth" / "facts.yaml"
+    if not facts_path.is_file():
+        pytest.skip(f"real fixture not present yet: no {facts_path}")
+    build_out = fixture_root / "build" / "test-connector-citations"
+    commits = build_repo(fixture_root, build_out)
+    repo = build_out / "repo"
+    step_order = list(commits)
+    outcomes_by_step: dict[str, list[Outcome]] = {}
+    for o in read_runs_directory(fixture_root / "runs"):
+        if o.step:
+            outcomes_by_step.setdefault(o.step, []).append(o)
+
+    output = build_step_output(fixture_root, "c6", repo, commits, outcomes_by_step, step_order)
+    fact = output["facts"][0]
+    code_citation = next(c for c in fact["citations"] if c["document"].startswith("code/"))
+    assert code_citation["version"] == commits["c6"]["sha"]
+    assert code_citation["step"] == "c6"
 
 
 @pytest.mark.fixture
@@ -713,12 +845,13 @@ def test_lift_planted_runs_on_the_real_fixture():
     # very same file at the very same step, per the real fixture) by name
     # overlap with the demoted test's own name.
     rule1 = extract(s1)
+    assert lifted1.contradiction_candidate.opened_step == "c5"
     good_step = step_order[step_order.index("c5") - 1]
     changed = find_changed_constant(s1, good_step, "c5", timeline)
     assert changed is not None
     assert changed[0] == "LOST_BIKE_FEE"  # not SINGLE_RIDE_CAP, also changed c4->c5
     payload = build_contradiction_payload(
-        s1, rule1, lifted1.contradiction_candidate, good_step, timeline
+        s1, rule1, lifted1.contradiction_candidate, step_order, timeline, commits
     )
     assert payload is not None
     assert payload["b"]["claim"] == {
@@ -728,6 +861,8 @@ def test_lift_planted_runs_on_the_real_fixture():
         "unit": "usd",
     }
     assert payload["b"]["citations"][0]["document"] == "code/farebox/pricing.py"
+    assert payload["b"]["citations"][0]["version"] == commits["c5"]["sha"]  # SHA, not "c5"
+    assert payload["b"]["citations"][0]["step"] == "c5"
     assert payload["winner"] is payload["b"]
     assert "pytest-c5" in payload["reason"]
 

@@ -9,17 +9,20 @@ import pytest
 
 from bench.run import run
 from bench.score import (
+    _TRUTH_FILTER_PREFIXES,
     DEFAULT_CALIBRATION,
     SPIKE_ROOT,
     _attributes_match,
     _boundary_numbers_ok,
-    _claim_accuracy,
+    _claim_metrics,
     _claim_value_as_number_token,
     _claim_values_match,
     _claims_match,
     _current_at_step,
     _duplicate_count,
     _entity_mention_conflict,
+    _expected_tier_at_step,
+    _has_test_carrier_by_step,
     _mentioned_entities,
     _resolve_step_or_sha,
     _statement_matches,
@@ -1621,10 +1624,14 @@ def test_resolve_step_or_sha_accepts_either_or_neither():
     assert _resolve_step_or_sha("unknown", _MINI_COMMITS) == "unknown"
 
 
-def test_current_at_step_half_open_window():
-    """[valid_from, valid_to): the step that retires a fact already carries
-    the NEW value, never the old one — F-001 valid_to=c2 / F-002
-    valid_from=c2 in the mini fixture partition history this way."""
+def test_current_at_step_closed_interval_overlaps_at_the_boundary():
+    """[valid_from, valid_to], closed on both ends (konyklabs/asbuilt#8
+    review — this was half-open until the reviewer's own reproduction:
+    "F-011 must be expected... at c5", exactly its own valid_to): AT the
+    boundary step, BOTH the retiring and the introduced fact are in scope
+    at once — deliberately, since a demotion's own step is exactly when
+    the old (now-failing) test and the new (not-yet-proven) code both
+    remain legitimate connector targets."""
     order = _step_order(_MINI_COMMITS)
     retired_at_c2 = TruthFact(
         id="F-x",
@@ -1645,7 +1652,8 @@ def test_current_at_step_half_open_window():
         valid_from="c2",
     )
     assert _current_at_step(retired_at_c2, order, order["c1"])
-    assert not _current_at_step(retired_at_c2, order, order["c2"])
+    assert _current_at_step(retired_at_c2, order, order["c2"])  # still in scope AT its own valid_to
+    assert not _current_at_step(retired_at_c2, order, order["c3"])
     assert not _current_at_step(introduced_at_c2, order, order["c1"])
     assert _current_at_step(introduced_at_c2, order, order["c2"])
 
@@ -1688,7 +1696,14 @@ def test_score_test_connector_on_mini_fixture_perfect_wrong_tier_wrong_number():
     report = score_test_connector(payload, MINI_ROOT / "truth", "c4", _MINI_COMMITS)
 
     assert report["step"] == "c4"
-    assert report["expected"] == 2  # F-003, F-012
+    # F-002, F-003, F-012: F-002's validity window is [c2, c4] (closed —
+    # konyklabs/asbuilt#8 review), so it is STILL in scope exactly at its
+    # own valid_to=c4, alongside F-003 (valid_from=c4) — deliberately
+    # overlapping, not a bug (see _current_at_step's docstring). F-002 has
+    # no run/pytest-c4 carrier of its own, so its PER-STEP tier here is
+    # "code", not its eventual "executed" — nothing in this payload targets
+    # it, so it is simply missed.
+    assert report["expected"] == 3
     assert report["tp"] == 2  # perfect + wrong_tier both match; tier isn't a match criterion
     assert report["hard_false_positives"] == 1
     assert report["tier_confusion"]["confusion"] == {
@@ -1700,7 +1715,7 @@ def test_score_test_connector_on_mini_fixture_perfect_wrong_tier_wrong_number():
     assert report["tier_confusion"]["hard_errors"] == 2
     assert report["by_tier"]["executed"]["tp"] == 1
     assert report["by_tier"]["code"]["tp"] == 0
-    assert report["missed"] == []
+    assert [m["id"] for m in report["missed"]] == ["F-002"]
     assert report["contradiction_candidates"]["expected"] == 0  # mini has no run-vs-code kind
 
 
@@ -1715,14 +1730,14 @@ def test_print_test_connector_report_smoke(capsys):
     print_test_connector_report(report)
     out = capsys.readouterr().out
     assert "step: c4" in out
-    assert "missed truth facts: 2" in out
+    assert "missed truth facts: 3" in out  # F-002, F-003, F-012 (see the perfect/wrong-tier test)
 
 
-def test_claim_accuracy_uses_claims_match_not_exact_attribute_equality():
+def test_claim_metrics_uses_claims_match_not_exact_attribute_equality():
     """konyklabs/asbuilt#8 review: the earlier version required exact
     attribute-string equality, scoring a constant-derived "lost_bike_fee"
     against truth's "fee" as wrong even though _claims_match's word-overlap
-    rule already accepts that pair — _claim_accuracy must reuse
+    rule already accepts that pair — _claim_metrics must reuse
     _claims_match, not a separate, stricter check."""
     truth_fact = TruthFact(
         id="F-1",
@@ -1741,9 +1756,58 @@ def test_claim_accuracy_uses_claims_match_not_exact_attribute_equality():
             "_resolved_entities": ["E-farebox"],
         }
     }
-    result = _claim_accuracy([(accepted_by_overlap, "F-1")], {"F-1": truth_fact})
-    assert result == {"accepted": 1, "compared": 1, "accuracy": 1.0}
+    result = _claim_metrics(
+        [accepted_by_overlap], [(accepted_by_overlap, "F-1")], {"F-1": truth_fact}
+    )
+    assert result == {"agree": 1, "returned": 1, "expected": 1, "precision": 1.0, "recall": 1.0}
 
+
+def test_claim_metrics_precision_penalises_an_unmatched_resolvable_claim():
+    """A resolvable claim on a fact that never matched anything at all
+    still counts against precision (konyklabs/asbuilt#8 review) — not just
+    towards a denominator it happens never to reach, the way the earlier
+    tautological "claim accuracy" only looked at already-matched facts."""
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="x",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(),
+        claim={"entity": "E-farebox", "attribute": "fee", "value": 150.0, "unit": "usd"},
+    )
+    matching = {
+        "claim": {
+            "attribute": "fee",
+            "value": "150.0",
+            "unit": "usd",
+            "_resolved_entities": ["E-farebox"],
+        }
+    }
+    unmatched_with_resolvable_claim = {
+        "claim": {
+            "attribute": "cap",
+            "value": "30.0",
+            "unit": "usd",
+            "_resolved_entities": ["E-farebox"],
+        }
+    }
+    result = _claim_metrics(
+        [matching, unmatched_with_resolvable_claim], [(matching, "F-1")], {"F-1": truth_fact}
+    )
+    assert result == {"agree": 1, "returned": 2, "expected": 1, "precision": 0.5, "recall": 1.0}
+
+
+def test_claim_metrics_wrong_value_is_zero_not_tautological():
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="x",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(),
+        claim={"entity": "E-farebox", "attribute": "fee", "value": 150.0, "unit": "usd"},
+    )
     wrong_value = {
         "claim": {
             "attribute": "fee",
@@ -1752,11 +1816,28 @@ def test_claim_accuracy_uses_claims_match_not_exact_attribute_equality():
             "_resolved_entities": ["E-farebox"],
         }
     }
-    result_wrong = _claim_accuracy([(wrong_value, "F-1")], {"F-1": truth_fact})
-    assert result_wrong == {"accepted": 0, "compared": 1, "accuracy": 0.0}
+    result = _claim_metrics([wrong_value], [(wrong_value, "F-1")], {"F-1": truth_fact})
+    assert result == {"agree": 0, "returned": 1, "expected": 1, "precision": 0.0, "recall": 0.0}
 
 
-def test_claim_accuracy_zero_when_truth_has_no_claim():
+def test_claim_metrics_ignores_unresolved_claims_for_precisions_denominator():
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="x",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(),
+        claim={"entity": "E-farebox", "attribute": "fee", "value": 150.0, "unit": "usd"},
+    )
+    unresolved = {
+        "claim": {"attribute": "fee", "value": "150.0", "unit": "usd", "_resolved_entities": []}
+    }
+    result = _claim_metrics([unresolved], [], {"F-1": truth_fact})
+    assert result == {"agree": 0, "returned": 0, "expected": 1, "precision": None, "recall": 0.0}
+
+
+def test_claim_metrics_zero_when_truth_has_no_claim():
     truth_fact = TruthFact(
         id="F-1",
         statement="x",
@@ -1768,8 +1849,8 @@ def test_claim_accuracy_zero_when_truth_has_no_claim():
     returned = {
         "claim": {"attribute": "a", "value": 1, "unit": None, "_resolved_entities": ["E-x"]}
     }
-    result = _claim_accuracy([(returned, "F-1")], {"F-1": truth_fact})
-    assert result == {"accepted": 0, "compared": 0, "accuracy": None}
+    result = _claim_metrics([returned], [(returned, "F-1")], {"F-1": truth_fact})
+    assert result == {"agree": 0, "returned": 1, "expected": 0, "precision": 0.0, "recall": None}
 
 
 # --------------------------------------------------------------------------
@@ -1892,6 +1973,81 @@ def test_facts_match_claim_first_overrides_dissimilar_statement_text():
     assert not facts_match(returned_disagreeing_claim, truth_fact)
 
 
+def test_facts_match_claim_first_falls_back_when_returned_entity_unresolved():
+    """konyklabs/asbuilt#8 review, reproduced at c6 (tp 14/24 -> 17/24 with
+    returned claims stripped entirely): an unresolved returned claim entity
+    must not reject a fact whose plain entities, document and statement all
+    otherwise agree — it should fall back to the statement path instead of
+    letting `_claims_match` alone decide with no way back."""
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A member's free minutes are 15.",
+        category="business-logic",
+        entities=("E-farebox", "E-rule-member-free-minutes"),
+        tier="executed",
+        carriers=(Carrier(document="wiki/x"),),
+        claim={
+            "entity": "E-rule-member-free-minutes",
+            "attribute": "free_minutes",
+            "value": 15,
+            "unit": "minute",
+        },
+    )
+    fact_with_unresolvable_claim_entity = {
+        "statement": "A member's free minutes are 15.",
+        "entities": ["Farebox", "member-free-minutes"],
+        "category": "business-logic",
+        "citations": [{"document": "wiki/x"}],
+        "claim": {
+            "entity": "totally unrelated gibberish",
+            "attribute": "free_minutes",
+            "value": 15,
+            "unit": "minute",
+        },
+    }
+    resolved = resolve_fact_entities(fact_with_unresolvable_claim_entity, index, truth.entities)
+    assert resolved["claim"]["_resolved_entities"] == []  # confirms the reproduction premise
+    assert facts_match(resolved, truth_fact)  # falls back to the (matching) statement/entities
+
+
+def test_facts_match_claim_first_still_rejects_when_both_resolve_and_disagree():
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A member's free minutes are 15.",
+        category="business-logic",
+        entities=("E-farebox", "E-rule-member-free-minutes"),
+        tier="executed",
+        carriers=(Carrier(document="wiki/x"),),
+        claim={
+            "entity": "E-rule-member-free-minutes",
+            "attribute": "free_minutes",
+            "value": 15,
+            "unit": "minute",
+        },
+    )
+    fact_with_wrong_value = {
+        "statement": "A member's free minutes are 15.",
+        "entities": ["Farebox", "member-free-minutes"],
+        "category": "business-logic",
+        "citations": [{"document": "wiki/x"}],
+        "claim": {
+            "entity": "member-free-minutes",
+            "attribute": "free_minutes",
+            "value": 30,
+            "unit": "minute",
+        },
+    }
+    resolved = resolve_fact_entities(fact_with_wrong_value, index, truth.entities)
+    assert resolved["claim"]["_resolved_entities"] == ["E-rule-member-free-minutes"]
+    # Both resolve; the claim disagrees (30 vs 15) -> rejected even though
+    # the plain statement text is identical on both sides.
+    assert not facts_match(resolved, truth_fact)
+
+
 def test_resolve_fact_entities_resolves_the_claims_own_entity():
     truth = load_truth(MINI_ROOT / "truth")
     index = build_alias_index(truth)
@@ -1903,6 +2059,36 @@ def test_resolve_fact_entities_resolves_the_claims_own_entity():
     }
     resolved = resolve_fact_entities(fact, index, truth.entities)
     assert resolved["claim"]["_resolved_entities"] == ["E-farebox"]
+
+
+@pytest.mark.fixture
+def test_real_fixture_f011_f012_per_step_tier_reproduction():
+    """konyklabs/asbuilt#8 review, reproduced directly against the real
+    F-011/F-012/commits.json: F-012 must not be in scope at c5 (its only
+    test carrier is version c6); F-011 must be in scope at "code" tier at
+    c5 (demoted) and "executed" at c1..c4 (a run/pytest-<step> carrier at
+    each of those steps)."""
+    commits_path = SPIKE_ROOT / "build" / "commits.json"
+    if not commits_path.is_file():
+        pytest.skip()
+    commits = json.loads(commits_path.read_text())
+    truth = load_truth(SPIKE_ROOT / "truth")
+    if "F-011" not in truth.facts or "F-012" not in truth.facts:
+        pytest.skip()
+    order = _step_order(commits)
+    prefixes = _TRUTH_FILTER_PREFIXES["tests"]
+    f011, f012 = truth.facts["F-011"], truth.facts["F-012"]
+
+    assert not _has_test_carrier_by_step(f012, prefixes, order, order["c5"])
+    assert _has_test_carrier_by_step(f012, prefixes, order, order["c6"])
+
+    for step in ("c1", "c2", "c3", "c4"):
+        assert _has_test_carrier_by_step(f011, prefixes, order, order[step])
+        assert _current_at_step(f011, order, order[step])
+        assert _expected_tier_at_step(f011, step) == "executed"
+    assert _has_test_carrier_by_step(f011, prefixes, order, order["c5"])
+    assert _current_at_step(f011, order, order["c5"])
+    assert _expected_tier_at_step(f011, "c5") == "code"
 
 
 @pytest.mark.fixture

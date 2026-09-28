@@ -140,15 +140,27 @@ def extract_with_model(
     arm: str = "stack-b-model",
     model: str = DEFAULT_MODEL,
     budget: Any = None,
+    stop_dir: Any = None,
 ) -> tuple[list[dict[str, Any]], Any]:
     """Makes one real structured-output call per skeleton, through a
     `CountingClient`. Not called by `__main__.py` in this slice (dry-run
     only) and never given a real client in this package's own tests — a
-    fake `client_factory` proves the wiring without spending anything."""
+    fake `client_factory` proves the wiring without spending anything (see
+    `tests/test_connector_model.py`). `stop_dir` passes through to
+    `CountingClient` (default: its own `build/`) so a test exercising the
+    budget stop condition can point it at a `tmp_path` instead."""
     from bench.llm import CountingClient
 
+    kwargs: dict[str, Any] = {}
+    if stop_dir is not None:
+        kwargs["stop_dir"] = stop_dir
     wrapped = CountingClient(
-        client=client_factory(), arm=arm, model=model, budget=budget, prices=PRICE_TABLE.get(model)
+        client=client_factory(),
+        arm=arm,
+        model=model,
+        budget=budget,
+        prices=PRICE_TABLE.get(model),
+        **kwargs,
     )
 
     results = []

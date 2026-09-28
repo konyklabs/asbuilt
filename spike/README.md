@@ -276,15 +276,26 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   collects at any history step via `bench.build.Timeline`, materialized to a
   temp directory.
 - **Extraction.** `extract_rules.py` is a deterministic extractor: one
-  statement per test, never past its own assertion, built from the test's
-  own name and imports (e.g. `test_lost_bike_fee_150` → "The farebox's lost
-  bike fee is $150.00."); category is a business-logic/technical-
-  implementation heuristic on the imported module. `extract_model.py` is the
-  model alternative — one structured-output call per skeleton through
-  `bench.llm.CountingClient` — but in this slice only its `--dry-run` path
-  runs: it builds every prompt and prices it from a stated, labelled rate
-  table, and makes no call (no key is used until Oleg names the paying
-  account).
+  ONE-SENTENCE `statement` per test, never past its own assertion, built
+  from the test's own name (e.g. `test_lost_bike_fee_150` → "Lost bike fee
+  $150.00." — the name's own trailing number upgraded to its primary
+  assert's money value); every assertion clause, API/error clause and event
+  clause instead goes into a separate `detail` field (semicolon-joined,
+  carried for arms and readers but never matched against truth — appending
+  them to `statement` itself was tried and reverted: the matcher's
+  similarity is a word-overlap coefficient over the whole statement, and
+  enough unrelated clause words pushed even a correct name sentence below
+  its threshold). Claims come from module-level constants the test's own
+  assertions reference first, falling back — conservatively, only when
+  confident (a sole or name-word-matching money/cents/count comparison,
+  never an HTTP status or a bare length) — to a claim derived from the
+  test's own name when no constant resolves. Category is a business-logic/
+  technical-implementation heuristic on the test's own name and file path.
+  `extract_model.py` is the model alternative — one structured-output call
+  per skeleton through `bench.llm.CountingClient` — but in this slice only
+  its `--dry-run` path runs: it builds every prompt and prices it from a
+  stated, labelled rate table, and makes no call (no key is used until Oleg
+  names the paying account).
 
 Dynamic evidence comes from `evidence.py`, which reads pytest-json-report,
 pytest-reportlog, JUnit XML (pytest's own shape and the generic
@@ -318,10 +329,14 @@ uv run python -m connectors.tests --fixture . --step c6 --extractor rules --mode
 
 Each processed step writes `build/connector/tests-<step>.json`: a list of
 protocol-shaped Facts (citing `code/tests/...::node` at the step's SHA
-always, plus `run/<run-id>` when `executed`), `contradiction_candidates`,
-`flaky` and `skipped` node ids, and `counts`. `--model-dry-run` additionally
-prints token/dollar totals without making a call. `connectors/tests/RUNNERS.md`
-documents how to actually produce `runs/` output for a CI-sourced corpus.
+always — with the step id itself alongside as `step`, for a human reader —
+plus `run/<run-id>` when `executed`), `contradiction_candidates` (each
+carrying `opened_step`, the step where the demotion first happened — a
+candidate persists across a later step with no fresh run, as long as the
+test still exists and hasn't passed again), `flaky` and `skipped` node ids,
+and `counts`. `--model-dry-run` additionally prints token/dollar totals
+without making a call. `connectors/tests/RUNNERS.md` documents how to
+actually produce `runs/` output for a CI-sourced corpus.
 
 ## Testing the harness itself
 

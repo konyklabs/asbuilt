@@ -103,6 +103,13 @@ class TruthContradiction:
     kind: str
     winner: str | None = None
     label: str = "refutes"
+    # Step ids bracketing when the contradiction exists in history
+    # (konyklabs/asbuilt#8): `opened_by` is the step that created it,
+    # `resolved_by` (optional — a still-open contradiction has none) the
+    # step that resolved it. Only `kind: run-vs-code` entries carry these
+    # so far.
+    opened_by: str | None = None
+    resolved_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -192,6 +199,8 @@ def load_contradictions(path: Path) -> dict[str, TruthContradiction]:
             kind=raw["kind"],
             winner=raw.get("winner"),
             label=raw.get("label", "refutes"),
+            opened_by=raw.get("opened_by"),
+            resolved_by=raw.get("resolved_by"),
         )
     return contradictions
 

@@ -19,6 +19,7 @@ runtime, which has no dependency on ``truth/`` at all.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ class ContradictionCandidate:
     statement_step: str
     failing_run_id: str | None
     code_citation: str
+    opened_step: str
 
 
 @dataclass(frozen=True)
@@ -67,7 +69,12 @@ def exercised_paths(skeleton: Skeleton) -> set[str]:
         for imp in skeleton.imports:
             if imp in _TS_SKIP_IMPORTS or not imp.startswith("."):
                 continue
-            resolved = (test_dir / imp).as_posix()
+            # `os.path.normpath` collapses the `..` a relative import like
+            # "../src/rules/stormPause.js" leaves behind when just joined
+            # onto the test's own directory ("dispatch/test/../src/rules/
+            # stormPause.ts" is never a real path `git diff --name-only`
+            # would ever list — it always reports the normalised form).
+            resolved = os.path.normpath(test_dir / imp).replace(os.sep, "/")
             if resolved.endswith(".js"):
                 resolved = resolved[: -len(".js")] + ".ts"
             paths.add(resolved)
@@ -91,6 +98,49 @@ def _attempts_at(
     outcomes_by_step: dict[str, list[Outcome]], step: str, node_id: str
 ) -> dict[int, Outcome]:
     return {o.attempt: o for o in outcomes_by_step.get(step, []) if o.node_id == node_id}
+
+
+def _demotion_state(
+    skeleton: Skeleton,
+    outcomes_by_step: dict[str, list[Outcome]],
+    step_order: list[str],
+    target_step: str,
+) -> tuple[str, str | None] | None:
+    """(opened_step, failing_run_id) if this node has an unresolved
+    contradiction open at `target_step`, else None — review fix, point 3:
+    a demotion now persists across a later step with no run recorded at all
+    (the test wasn't rerun, but nothing shows it's fixed either), carrying
+    the ORIGINAL `opened_step` forward rather than losing it the moment a
+    step goes by without fresh evidence. Recurses backward one step at a
+    time: a recorded failure at `target_step` either opens a new candidate
+    (no earlier one open) or extends the existing one (`opened_step`
+    inherited, `failing_run_id` updated to this step's own); a recorded
+    pass closes any open candidate outright ("drop it when the test passes
+    again"); a flaky step, a skip/xfail, or no run at all is inconclusive
+    on its own and simply defers to whatever the previous step already
+    decided (same treatment `lift()`'s own flaky handling already gives
+    these — inconclusive evidence neither opens nor closes anything)."""
+    target_index = step_order.index(target_step)
+    attempts = _attempts_at(outcomes_by_step, target_step, skeleton.node_id)
+    outcomes_seen = {a.outcome for a in attempts.values()}
+    flaky = len(attempts) >= 2 and "passed" in outcomes_seen and "failed" in outcomes_seen
+
+    if attempts and not flaky:
+        latest = attempts[max(attempts)]
+        if latest.outcome == "failed":
+            if target_index == 0:
+                return target_step, latest.run_id
+            earlier = _demotion_state(
+                skeleton, outcomes_by_step, step_order, step_order[target_index - 1]
+            )
+            opened_step = earlier[0] if earlier is not None else target_step
+            return opened_step, latest.run_id
+        if latest.outcome == "passed":
+            return None
+
+    if target_index == 0:
+        return None
+    return _demotion_state(skeleton, outcomes_by_step, step_order, step_order[target_index - 1])
 
 
 def lift(
@@ -134,23 +184,25 @@ def lift(
             flaky=True,
         )
 
-    if attempts:
-        latest_attempt = attempts[max(attempts)]
-        if latest_attempt.outcome == "failed":
-            candidate = ContradictionCandidate(
-                statement_step=target_step,
-                failing_run_id=latest_attempt.run_id,
-                code_citation=f"code/{skeleton.file}",
-            )
-            return Lift(
-                tier="code",
-                valid_from_step=None,
-                executed_run_id=None,
-                contradiction_candidate=candidate,
-                flaky=False,
-            )
-        # skipped/xfail/error fall through to the backward search below,
-        # same as "no run at all" — none of them lift on their own.
+    demotion = _demotion_state(skeleton, outcomes_by_step, step_order, target_step)
+    if demotion is not None:
+        opened_step, failing_run_id = demotion
+        candidate = ContradictionCandidate(
+            statement_step=target_step,
+            failing_run_id=failing_run_id,
+            code_citation=f"code/{skeleton.file}",
+            opened_step=opened_step,
+        )
+        return Lift(
+            tier="code",
+            valid_from_step=None,
+            executed_run_id=None,
+            contradiction_candidate=candidate,
+            flaky=False,
+        )
+    # skipped/xfail/error/no-run-at-all-with-nothing-open fall through to
+    # the backward search below — none of them lift on their own, but none
+    # keeps an already-closed or never-opened candidate alive either.
 
     exercised = exercised_paths(skeleton)
     target_sha = commits[target_step]["sha"]
@@ -277,14 +329,28 @@ def build_contradiction_payload(
     skeleton: Skeleton,
     rule: Rule,
     candidate: ContradictionCandidate,
-    good_step: str,
+    step_order: list[str],
     timeline: Any,
+    commits: dict[str, dict[str, str]],
 ) -> dict[str, Any] | None:
     """The full `{a, b, winner, reason}` shape for `candidate`, or None when
     no single changed constant could be found (see `find_changed_constant`).
     `winner` is the same dict object as `b` — the demotion's whole point is
-    that the code's current value beats the once-passing test's stale one."""
-    found = find_changed_constant(skeleton, good_step, candidate.statement_step, timeline)
+    that the code's current value beats the once-passing test's stale one.
+
+    Review fix, point 3: the constant-change diff is taken across
+    `candidate.opened_step` (when the code actually changed), not
+    `candidate.statement_step` (whichever LATER step is being reported,
+    once the candidate persists across steps with no fresh run) — diffing
+    against a later step could span unrelated, subsequent code changes that
+    have nothing to do with why this test first failed. None (no payload)
+    when `opened_step` is the fixture's very first step, since there is no
+    earlier step to diff against."""
+    opened_index = step_order.index(candidate.opened_step)
+    if opened_index == 0:
+        return None
+    good_step = step_order[opened_index - 1]
+    found = find_changed_constant(skeleton, good_step, candidate.opened_step, timeline)
     if found is None:
         return None
     name, path, value, is_decimal = found
@@ -302,7 +368,8 @@ def build_contradiction_payload(
             {
                 "document": f"code/{skeleton.file}",
                 "location": location,
-                "version": candidate.statement_step,
+                "version": commits[candidate.statement_step]["sha"],
+                "step": candidate.statement_step,
             },
             {"document": f"run/{candidate.failing_run_id}", "location": skeleton.node_id},
         ],
@@ -315,7 +382,12 @@ def build_contradiction_payload(
         "entities": [service, name],
         "tier": "code",
         "citations": [
-            {"document": f"code/{document}", "location": name, "version": candidate.statement_step}
+            {
+                "document": f"code/{document}",
+                "location": name,
+                "version": commits[candidate.opened_step]["sha"],
+                "step": candidate.opened_step,
+            }
         ],
         "claim": claim,
     }
