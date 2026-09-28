@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-164",
+  "key": "GW-164",
+  "summary": "Ops console loses filters on refresh",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "priya.lund",
+  "assignee": "priya.lund",
+  "created": "2026-07-11T21:08:00-04:00",
+  "updated": "2026-07-15T00:08:00-04:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "Steps: set a station or status filter on the maintenance ticket list, refresh the page. Expected: the filter is still applied. Actual: it resets to the default unfiltered view, which is annoying during a long triage session.",
+  "comments": []
+}

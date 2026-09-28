@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-102",
+  "key": "GW-102",
+  "summary": "Receipt email shows the ride date in UTC",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2025-10-05T21:54:00-04:00",
+  "updated": "2025-10-10T00:54:00-04:00",
+  "labels": [
+    "support",
+    "bug"
+  ],
+  "description": "Steps: finish a ride, wait for the receipt email. Expected: the timestamp shown matches the rider's local time, same as the app. Actual: the receipt prints the ride's start and end time in UTC, which confuses riders checking their statement against what the app showed them.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "dana.whitlock",
+      "created": "2025-10-06T21:54:00-04:00",
+      "body": "Easy fix on the receipt template -- swapping the formatter should sort it before the next release window."
+    }
+  ]
+}

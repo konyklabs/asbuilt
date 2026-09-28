@@ -1,0 +1,12 @@
+{
+  "number": 1,
+  "title": "Add refunds module",
+  "body": "The refunds module was reviewed by the payments team before merge.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "test.author",
+      "body": "The module now also handles partial refunds."
+    }
+  ]
+}

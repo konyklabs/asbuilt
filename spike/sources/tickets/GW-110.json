@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-110",
+  "key": "GW-110",
+  "summary": "Plan prices for 2026",
+  "status": "Done",
+  "type": "story",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2025-11-10T11:00:00-05:00",
+  "updated": "2025-12-15T10:00:00-05:00",
+  "labels": [
+    "product",
+    "story"
+  ],
+  "description": "Finance needs next year's plan prices locked in before renewal notices go out. Numbers to ship: $15.00 a month for the monthly plan, $120.00 a year for the annual one.",
+  "comments": []
+}

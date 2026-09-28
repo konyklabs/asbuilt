@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-144",
+  "key": "GW-144",
+  "summary": "Paint touch-up for the riverside station",
+  "status": "Done",
+  "type": "task",
+  "reporter": "mara.voss",
+  "assignee": "mara.voss",
+  "created": "2026-04-12T21:48:00-04:00",
+  "updated": "2026-04-14T00:48:00-04:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "The riverside station's paint has weathered badly and is starting to look shabby compared to the newer stations nearby.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2026-04-13T21:48:00-04:00",
+      "body": "Added to the next maintenance crew route."
+    }
+  ]
+}

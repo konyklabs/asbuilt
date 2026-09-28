@@ -5,9 +5,12 @@ documented legacy systems: gathered from the code and from every place the
 documentation is scattered, held in a real database, and queryable by people
 and agents with provenance on every answer.
 
-> **Status: bootstrap.** Nothing runs yet. The driving task is
-> [konyklabs/roadmap#153](https://github.com/konyklabs/roadmap/issues/153).
-> The storage engine is an open spike, not a decision.
+> **Status: spike.** Nothing runs yet. The driving idea is
+> [konyklabs/roadmap#153](https://github.com/konyklabs/roadmap/issues/153);
+> the leverage-versus-build spike is
+> [konyklabs/roadmap#154](https://github.com/konyklabs/roadmap/issues/154),
+> recorded in D-013. The storage engine is decided by the benchmark under
+> `spike/`, and not before.
 
 ## The problem
 
@@ -72,7 +75,7 @@ spans several.
 ## The knowledge model, first cut
 
 ```
-Source         a system of record: jira | confluence | github | gdrive | code
+Source         a system of record: jira | confluence | github | gdrive | code | tests
 Document       one addressable thing in a source (issue, page, file, commit), versioned
 Fact           one claim about the system, in one category, with a confidence
                └─ cites → Document (+ location: line, anchor, comment id)
@@ -82,8 +85,13 @@ Contradiction  two facts that cannot both hold, with the newer one marked
 Snapshot       the base at a point in time, so "what did we know in June" is answerable
 ```
 
-This is a sketch to argue with, not a schema. The spike settles it alongside
-the engine.
+This is a sketch to argue with, not a schema. The engine ADR settles it.
+D-013 adds one thing to every fact: a **provenance tier**, executed (a test
+ran and passed, at a commit, on a date) above code (read from source at a
+commit) above documented (a page, a ticket, a comment). Test suites are a
+source of their own, and a passing run is what lifts a statement to the top
+tier; a statement with no passing run is a code-tier claim, and a passing
+test proves exactly what it asserted, no more.
 
 ## Storage engine: the open spike
 
@@ -113,15 +121,16 @@ the most established engine that covers all four patterns, and Python and
 TypeScript both have first-class drivers. A graph engine is the challenger if
 relationship traversal turns out to dominate the query mix.
 
-**The spike's scope and definition of done.** It settles three things
-together, because they constrain each other: the engine, the first cut of the
-schema above, and the implementation language. It is done when there is a
-benchmark on one synthetic system with one fixed query mix (the five surfaces
-under "Agent access", weighted), and an ADR in `roadmap/decisions/` recording
-all three. The synthetic system and the benchmark harness live in this
-repository under `spike/`, on the spike's branch; the ADR either promotes them
-to `tests/fixtures/` or deletes them. That is not the build: nothing lands
-under `src/` before the ADR.
+**Two ADRs, not one.** The first half of the spike, what to leverage, what
+to build and in which language, is recorded in D-013: build, Python, and a
+benchmark of two stacks (Graphiti on a graph store; our own fact model on
+Postgres + pgvector) on one synthetic system with one fixed query mix (the
+five surfaces under "Agent access", weighted). The engine, the first cut of
+the schema above and the fate of `spike/` are the second ADR, written from
+the benchmark's numbers. The synthetic system and the benchmark harness live
+in this repository under `spike/`; that ADR either promotes them to
+`tests/fixtures/` or deletes them. That is not the build: nothing lands under
+`src/` before it.
 
 ## Ingest
 
@@ -179,7 +188,7 @@ spike/          the storage-engine spike: synthetic system and benchmark harness
 docs/
 ```
 
-Python by default, the org's convention; the engine ADR may override it.
+Python, per D-013.
 
 ## Working here
 
@@ -190,8 +199,8 @@ than claimed, and squash merges only.
 
 ## Roadmap
 
-1. **Spike: storage engine.** Benchmark the candidates above on a synthetic
-   system; ADR.
+1. **Spike** (in progress): D-013 leverage versus build; the harness and
+   the invented system under `spike/`; two prototypes; the engine ADR.
 2. **Schema and one connector.** The knowledge model in the chosen engine,
    point-in-time snapshots included from the start because they are hard to
    add later, the GitHub connector, extraction with citations.

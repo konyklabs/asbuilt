@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-131",
+  "key": "GW-131",
+  "summary": "Winter tyres for the classic fleet",
+  "status": "In Progress",
+  "type": "task",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2026-02-13T09:17:00-05:00",
+  "updated": "2026-02-19T12:17:00-05:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Fleet wants winter tyres fitted to the classic, non-electric bikes before the first hard frost, based on last year's spike in skid-related fault reports.",
+  "comments": []
+}

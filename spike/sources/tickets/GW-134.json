@@ -1,0 +1,36 @@
+{
+  "id": "ticket/GW-134",
+  "key": "GW-134",
+  "summary": "Lock bikes with repeated fault reports sooner",
+  "status": "Done",
+  "type": "story",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2026-02-25T09:40:00-05:00",
+  "updated": "2026-03-12T16:20:00-04:00",
+  "labels": [
+    "ops",
+    "story"
+  ],
+  "description": "Mechanics have flagged a few bikes that kept getting ridden with an obviously bent wheel or a slipping brake, well after riders had already reported the same fault more than once. They'd like the fault threshold tightened so a repeatedly-reported bike gets pulled sooner, before it does someone an injury out on the road.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "ren.okafor",
+      "created": "2026-02-26T10:00:00-05:00",
+      "body": "What threshold are we thinking -- how much sooner than today?"
+    },
+    {
+      "id": "comment-2",
+      "author": "priya.lund",
+      "created": "2026-03-03T14:30:00-05:00",
+      "body": "Worth being careful here -- tighten it too far and we'll start locking bikes over one grumpy rider's duplicate report."
+    },
+    {
+      "id": "comment-3",
+      "author": "tobin.achebe",
+      "created": "2026-03-12T16:20:00-04:00",
+      "body": "Talked this through with mechanics and landed on 2 fault reports inside a 7-day window before a bike gets locked. Leaving this open until it actually ships."
+    }
+  ]
+}

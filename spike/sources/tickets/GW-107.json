@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-107",
+  "key": "GW-107",
+  "summary": "Monthly invoices should list every ride",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2025-10-28T09:15:00-04:00",
+  "updated": "2025-12-01T12:00:00-05:00",
+  "labels": [
+    "product",
+    "bug"
+  ],
+  "description": "Finance flagged a ride missing off a member's statement even though it clearly happened. The invoicing rule is one statement per member per calendar month, one line for every ride that closed in it -- this one didn't make it onto the line-up.",
+  "comments": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-113",
+  "key": "GW-113",
+  "summary": "Ops console times out when listing more than 500 tickets",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2025-11-24T09:11:00-05:00",
+  "updated": "2025-11-30T12:11:00-05:00",
+  "labels": [
+    "ops",
+    "bug"
+  ],
+  "description": "Expected: the maintenance ticket list in the ops console loads within a couple of seconds regardless of how many tickets are open. Actual: it times out once there's a large backlog on screen at once -- looks like it fetches everything in one page instead of paging the query.",
+  "comments": []
+}

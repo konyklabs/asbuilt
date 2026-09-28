@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-139",
+  "key": "GW-139",
+  "summary": "Clearer error message when a card is declined",
+  "status": "In Progress",
+  "type": "bug",
+  "reporter": "kasia.brandt",
+  "assignee": "kasia.brandt",
+  "created": "2026-03-21T09:13:00-04:00",
+  "updated": "2026-03-26T12:13:00-04:00",
+  "labels": [
+    "fares",
+    "bug"
+  ],
+  "description": "When a rider's card gets declined at checkout, the app just shows a generic error, which leaves riders guessing whether it's a card problem or something on our end.",
+  "comments": []
+}

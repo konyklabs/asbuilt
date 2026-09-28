@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-165",
+  "key": "GW-165",
+  "summary": "Nightly rebalance failed on 2026-07-14",
+  "status": "Done",
+  "type": "task",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2026-07-14T06:40:00-04:00",
+  "updated": "2026-07-15T09:00:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "The overnight rebalance job failed partway through and didn't finish planning orders for the morning shift.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "ren.okafor",
+      "created": "2026-07-14T07:05:00-04:00",
+      "body": "Getting paged is exactly what's supposed to happen when the nightly rebalance fails, and that's what happened here. Per the runbook, ops on-call hand-reruns a failed nightly rebalance before 06:00, so I kicked it off manually and the vans went out on schedule."
+    }
+  ]
+}

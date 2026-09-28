@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-166",
+  "key": "GW-166",
+  "summary": "Add a status page for riders",
+  "status": "Done",
+  "type": "task",
+  "reporter": "kasia.brandt",
+  "assignee": "kasia.brandt",
+  "created": "2026-07-20T21:22:00-04:00",
+  "updated": "2026-07-26T00:22:00-04:00",
+  "labels": [
+    "fares",
+    "task"
+  ],
+  "description": "Riders keep asking support whether an outage is known or just affecting them, so a public status page would cut down on repeat questions.",
+  "comments": []
+}

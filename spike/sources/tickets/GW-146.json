@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-146",
+  "key": "GW-146",
+  "summary": "Waive the lost-bike fee when the bike turns up",
+  "status": "Done",
+  "type": "story",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-04-20T11:00:00-04:00",
+  "updated": "2026-05-02T14:00:00-04:00",
+  "labels": [
+    "support",
+    "story"
+  ],
+  "description": "A rider reported their bike as lost, then found it in their garage two days later and asked whether the fee could be waived. Policy gives support room to waive it as long as the bike turns up inside 72 hours.",
+  "comments": []
+}

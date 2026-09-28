@@ -1,0 +1,1819 @@
+# Ground-truth facts about Gearwell. Format: SCHEMA.md. Every carrier resolves
+# to a document in sources/PLAN.yaml, the built repository (code/), or a test
+# run (run/). valid_from / valid_to are history step ids (system/history/steps.yaml).
+# Documented facts without valid_from/valid_to that lose a contradiction never
+# held; they exist because a source states them.
+- id: F-001
+  statement: A member's first 30 minutes of every ride are free.
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
+  tier: executed
+  valid_to: c2
+  carriers:
+  - document: code/farebox/pricing.py
+    location: MEMBER_FREE_MINUTES
+    version: c1
+  - document: code/tests/e2e/test_pricing.py
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+- id: F-002
+  statement: A member's first 45 minutes of every ride are free.
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
+  tier: executed
+  valid_from: c2
+  valid_to: c4
+  carriers:
+  - document: code/farebox/pricing.py
+    location: MEMBER_FREE_MINUTES
+    version: c2
+  - document: code/tests/e2e/test_pricing.py
+    location: tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
+    version: c2
+  - document: run/pytest-c2
+    location: tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
+  - document: run/pytest-c3
+    location: tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
+  - document: pull/9
+    location: body
+  - document: ticket/GW-129
+    location: description
+- id: F-003
+  statement: A member's first 30 minutes of every ride are free.
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
+  tier: executed
+  valid_from: c4
+  carriers:
+  - document: code/farebox/pricing.py
+    location: MEMBER_FREE_MINUTES
+    version: c4
+  - document: code/tests/e2e/test_pricing.py
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+    version: c4
+  - document: run/pytest-c4
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - document: run/pytest-c5
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - document: run/pytest-c6
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - document: wiki/spring-promotion
+    location: '#free-minutes'
+    version: 2
+  - document: pull/12
+    location: body
+  - document: ticket/GW-155
+    location: description
+- id: F-004
+  statement: A rider without a membership pays a $1.00 unlock fee for every ride.
+  category: business-logic
+  entities: [E-farebox, E-rule-casual-unlock-fee, E-table-riders]
+  tier: executed
+  carriers:
+  - document: code/farebox/pricing.py
+    location: CASUAL_UNLOCK_FEE
+    version: c1
+  - document: code/tests/e2e/test_pricing.py
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: run/pytest-c2
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: run/pytest-c3
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: run/pytest-c4
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: run/pytest-c5
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: run/pytest-c6
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: wiki/casual-pricing
+    location: '#unlock'
+    version: 4
+- id: F-005
+  statement: A member pays $0.15 per minute for every minute after the free minutes.
+  category: business-logic
+  entities: [E-farebox, E-rule-per-minute-rate, E-rule-member-free-minutes, E-table-memberships]
+  tier: executed
+  carriers:
+  - document: code/farebox/pricing.py
+    location: MEMBER_RATE
+    version: c1
+  - document: code/tests/unit/test_pricing.py
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: run/pytest-c2
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: run/pytest-c3
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: run/pytest-c4
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: run/pytest-c5
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: run/pytest-c6
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: wiki/member-pricing
+    location: '#per-minute'
+    version: 3
+  - document: doc/fares-price-sheet
+    location: '#member-rates'
+    version: 1Qm4Vr12
+- id: F-006
+  statement: A rider without a membership pays $0.25 per minute from the first minute of the ride.
+  category: business-logic
+  entities: [E-farebox, E-rule-per-minute-rate]
+  tier: executed
+  carriers:
+  - document: code/farebox/pricing.py
+    location: CASUAL_RATE
+    version: c1
+  - document: code/tests/unit/test_pricing.py
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: run/pytest-c2
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: run/pytest-c3
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: run/pytest-c4
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: run/pytest-c5
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: run/pytest-c6
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: wiki/casual-pricing
+    location: '#per-minute'
+    version: 4
+  - document: doc/fares-price-sheet
+    location: '#casual-rates'
+    version: 1Qm4Vr12
+- id: F-007
+  statement: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  category: business-logic
+  entities: [E-farebox, E-rule-ebike-surcharge, E-flag-ebike-surcharge, E-table-bikes]
+  tier: executed
+  carriers:
+  - document: code/farebox/pricing.py
+    location: EBIKE_SURCHARGE
+    version: c1
+  - document: code/tests/unit/test_pricing.py
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: run/pytest-c2
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: run/pytest-c3
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: run/pytest-c4
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: run/pytest-c5
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: run/pytest-c6
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: wiki/ebike-surcharge
+    location: '#rule'
+    version: 2
+  - document: wiki/fares-overview
+    location: '#ebike'
+    version: 5
+  - document: doc/fares-price-sheet
+    location: '#ebike'
+    version: 1Qm4Vr12
+  - document: ticket/GW-105
+    location: description
+- id: F-008
+  statement: A single ride costs at most $25.00.
+  category: business-logic
+  entities: [E-farebox, E-rule-single-ride-cap]
+  tier: executed
+  valid_to: c5
+  carriers:
+  - document: code/farebox/pricing.py
+    location: SINGLE_RIDE_CAP
+    version: c1
+  - document: code/tests/unit/test_pricing.py
+    location: tests/unit/test_pricing.py::test_single_ride_cap_25
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_pricing.py::test_single_ride_cap_25
+  - document: run/pytest-c2
+    location: tests/unit/test_pricing.py::test_single_ride_cap_25
+  - document: run/pytest-c3
+    location: tests/unit/test_pricing.py::test_single_ride_cap_25
+  - document: run/pytest-c4
+    location: tests/unit/test_pricing.py::test_single_ride_cap_25
+- id: F-009
+  statement: A single ride costs at most $30.00.
+  category: business-logic
+  entities: [E-farebox, E-rule-single-ride-cap]
+  tier: executed
+  valid_from: c5
+  carriers:
+  - document: code/farebox/pricing.py
+    location: SINGLE_RIDE_CAP
+    version: c5
+  - document: code/tests/unit/test_pricing.py
+    location: tests/unit/test_pricing.py::test_single_ride_cap_30
+    version: c5
+  - document: run/pytest-c5
+    location: tests/unit/test_pricing.py::test_single_ride_cap_30
+  - document: run/pytest-c6
+    location: tests/unit/test_pricing.py::test_single_ride_cap_30
+  - document: wiki/casual-pricing
+    location: '#cap'
+    version: 4
+  - document: pull/14
+    location: body
+  - document: ticket/GW-162
+    location: description
+- id: F-010
+  statement: A ride whose bike is not docked within 24 hours of check-out is closed as lost.
+  category: business-logic
+  entities: [E-farebox, E-rule-lost-bike-fee, E-table-rides]
+  tier: executed
+  carriers:
+  - document: code/farebox/services/lost_bikes.py
+    location: LOST_BIKE_HOURS
+    version: c1
+  - document: code/tests/unit/test_lost_bikes.py
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: run/pytest-c2
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: run/pytest-c3
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: run/pytest-c4
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: run/pytest-c5
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: run/pytest-c6
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: wiki/lost-and-stolen-bikes
+    location: '#detection'
+    version: 2
+- id: F-011
+  statement: A ride closed as lost is charged a $100.00 lost-bike fee.
+  category: business-logic
+  entities: [E-farebox, E-rule-lost-bike-fee, E-table-invoice-lines]
+  tier: executed
+  valid_to: c5
+  carriers:
+  - document: code/farebox/pricing.py
+    location: LOST_BIKE_FEE
+    version: c1
+  - document: code/tests/unit/test_lost_bikes.py
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - document: run/pytest-c2
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - document: run/pytest-c3
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  - document: run/pytest-c4
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+- id: F-012
+  statement: A ride closed as lost is charged a $150.00 lost-bike fee.
+  category: business-logic
+  entities: [E-farebox, E-rule-lost-bike-fee, E-table-invoice-lines]
+  tier: executed
+  valid_from: c5
+  carriers:
+  - document: code/farebox/pricing.py
+    location: LOST_BIKE_FEE
+    version: c5
+  - document: code/tests/unit/test_lost_bikes.py
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+    version: c5
+  - document: run/pytest-c5
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  - document: run/pytest-c6
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  - document: pull/14
+    location: body
+  - document: ticket/GW-163
+    location: description
+- id: F-013
+  statement: A refund requested more than 14 days after the ride ended is rejected.
+  category: business-logic
+  entities: [E-farebox, E-rule-refund-window, E-endpoint-refund, E-table-refunds]
+  tier: executed
+  carriers:
+  - document: code/farebox/services/refunds.py
+    location: REFUND_WINDOW_DAYS
+    version: c1
+  - document: code/tests/e2e/test_refunds.py
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: run/pytest-c2
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: run/pytest-c3
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: run/pytest-c4
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: run/pytest-c5
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: run/pytest-c6
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: wiki/refunds-process
+    location: '#window'
+    version: 3
+  - document: doc/refund-policy
+    location: '#window'
+    version: 4Nr6Tr11
+- id: F-014
+  statement: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+  category: business-logic
+  entities: [E-farebox, E-rule-refund-auto-approve, E-flag-refund-auto-approve, E-table-refunds]
+  tier: executed
+  valid_from: c6
+  carriers:
+  - document: code/farebox/services/refunds.py
+    location: AUTO_APPROVE_LIMIT
+    version: c6
+  - document: code/tests/e2e/test_refunds.py
+    location: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
+    version: c6
+  - document: run/pytest-c6
+    location: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
+  - document: pull/19
+    location: body
+  - document: wiki/refunds-auto-approval
+    location: '#rule'
+    version: 1
+  - document: doc/refund-policy
+    location: '#auto-approval'
+    version: 4Nr6Tr11
+  - document: ticket/GW-171
+    location: description
+- id: F-015
+  statement: A membership lapses 3 days after a failed renewal.
+  category: business-logic
+  entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
+  tier: executed
+  valid_to: c3
+  carriers:
+  - document: code/farebox/services/memberships.py
+    location: GRACE_DAYS
+    version: c1
+  - document: code/tests/unit/test_memberships.py
+    location: tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
+  - document: run/pytest-c2
+    location: tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
+- id: F-016
+  statement: A membership lapses 7 days after a failed renewal.
+  category: business-logic
+  entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
+  tier: executed
+  valid_from: c3
+  carriers:
+  - document: code/farebox/services/memberships.py
+    location: GRACE_DAYS
+    version: c3
+  - document: code/tests/unit/test_memberships.py
+    location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+    version: c3
+  - document: run/pytest-c3
+    location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - document: run/pytest-c4
+    location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - document: run/pytest-c5
+    location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - document: run/pytest-c6
+    location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - document: pull/11
+    location: body
+  - document: wiki/membership-lifecycle
+    location: '#grace'
+    version: 6
+  - document: wiki/glossary
+    location: '#grace-period'
+    version: 8
+  - document: ticket/GW-136
+    location: comment-2
+- id: F-017
+  statement: A check-in at a full station is refused when the overflow_parking flag is off.
+  category: business-logic
+  entities:
+  - E-dockyard
+  - E-rule-station-capacity
+  - E-flag-overflow-parking
+  - E-endpoint-checkin
+  - E-table-stations
+  tier: executed
+  carriers:
+  - document: code/dockyard/services/capacity.py
+    location: can_accept_bike
+    version: c1
+  - document: code/tests/e2e/test_checkin.py
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: run/pytest-c2
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: run/pytest-c3
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: run/pytest-c4
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: run/pytest-c5
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: run/pytest-c6
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: wiki/station-capacity
+    location: '#full-station'
+    version: 3
+  - document: doc/dockyard-design
+    location: '#capacity'
+    version: 7Hc2Xr31
+- id: F-018
+  statement: When the overflow_parking flag is on, a bike can be checked in at a full station.
+  category: business-logic
+  entities: [E-dockyard, E-rule-station-capacity, E-flag-overflow-parking, E-endpoint-checkin]
+  tier: executed
+  carriers:
+  - document: code/dockyard/services/capacity.py
+    location: can_accept_bike
+    version: c1
+  - document: code/tests/e2e/test_checkin.py
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: run/pytest-c2
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: run/pytest-c3
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: run/pytest-c4
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: run/pytest-c5
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: run/pytest-c6
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: wiki/station-capacity
+    location: '#overflow'
+    version: 3
+  - document: ticket/GW-115
+    location: comment-1
+- id: F-019
+  statement: A rider can hold at most 2 bikes at once, so a third check-out is refused.
+  category: business-logic
+  entities: [E-dockyard, E-rule-checkout-limit, E-endpoint-checkout, E-table-rides]
+  tier: executed
+  carriers:
+  - document: code/dockyard/services/checkout.py
+    location: CHECKOUT_LIMIT
+    version: c1
+  - document: code/tests/e2e/test_checkout.py
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: run/pytest-c2
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: run/pytest-c3
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: run/pytest-c4
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: run/pytest-c5
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: run/pytest-c6
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: doc/dockyard-design
+    location: '#checkout'
+    version: 7Hc2Xr31
+  - document: ticket/GW-116
+    location: comment-2
+- id: F-020
+  statement: A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket.
+  category: business-logic
+  entities:
+  - E-dispatch
+  - E-rule-fault-threshold
+  - E-job-maintenance-sweep
+  - E-table-maintenance-tickets
+  - E-table-bikes
+  tier: executed
+  carriers:
+  - document: code/dispatch/src/jobs/maintenanceSweep.ts
+    location: FAULT_THRESHOLD
+    version: c1
+  - document: code/dispatch/test/maintenanceSweep.test.ts
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+    version: c1
+  - document: run/vitest-c1
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: run/vitest-c2
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: run/vitest-c3
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: run/vitest-c4
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: run/vitest-c5
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: run/vitest-c6
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: wiki/runbook-maintenance-sweep
+    location: '#threshold'
+    version: 2
+- id: F-021
+  statement: A station that is under 20% or over 90% full gets a rebalance order.
+  category: business-logic
+  entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance, E-table-rebalance-orders]
+  tier: executed
+  carriers:
+  - document: code/dispatch/src/jobs/nightlyRebalance.ts
+    location: needsRebalance
+    version: c1
+  - document: code/dispatch/test/nightlyRebalance.test.ts
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+    version: c1
+  - document: run/vitest-c1
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: run/vitest-c2
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: run/vitest-c3
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: run/vitest-c4
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: run/vitest-c5
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: run/vitest-c6
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: doc/dispatch-design
+    location: '#rebalance'
+    version: 3Tz9Kr18
+- id: F-022
+  statement: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  category: business-logic
+  entities: [E-dispatch, E-rule-storm-pause, E-job-nightly-rebalance, E-int-skyglass, E-table-weather-readings]
+  tier: executed
+  valid_from: c6
+  carriers:
+  - document: code/dispatch/src/rules/stormPause.ts
+    location: STORM_SEVERITY
+    version: c6
+  - document: code/dispatch/src/jobs/nightlyRebalance.ts
+    location: nightlyRebalance
+    version: c6
+  - document: code/dispatch/test/stormPause.test.ts
+    location: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+    version: c6
+  - document: run/vitest-c6
+    location: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+  - document: pull/19
+    location: body
+  - document: wiki/storm-pause
+    location: '#rule'
+    version: 1
+  - document: doc/storm-policy
+    location: '#pause'
+    version: 8Fx3Sr09
+  - document: ticket/GW-170
+    location: description
+- id: F-023
+  statement: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+  category: business-logic
+  entities: [E-farebox, E-rule-payment-retry, E-int-tollbooth-pay, E-table-payments]
+  tier: executed
+  carriers:
+  - document: code/farebox/clients/tollbooth.py
+    location: MAX_RETRIES
+    version: c1
+  - document: code/tests/unit/test_tollbooth_client.py
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: run/pytest-c2
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: run/pytest-c3
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: run/pytest-c4
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: run/pytest-c5
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: run/pytest-c6
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: wiki/tollbooth-pay
+    location: '#retries'
+    version: 4
+  - document: doc/tollbooth-integration
+    location: '#retries'
+    version: 6Gv5Ur22
+  - document: ticket/GW-167
+    location: description
+- id: F-024
+  statement: When the dynamic_pricing flag is on and the latest Skyglass severity is 2 or more, per-minute rates
+    are multiplied by 1.25.
+  category: business-logic
+  entities:
+  - E-farebox
+  - E-flag-dynamic-pricing
+  - E-rule-per-minute-rate
+  - E-int-skyglass
+  - E-table-weather-readings
+  tier: code
+  carriers:
+  - document: code/farebox/services/surge.py
+    location: surge_multiplier
+    version: c1
+  - document: wiki/dynamic-pricing
+    location: '#surge'
+    version: 2
+- id: F-025
+  statement: The single-ride cap applies to the ride charge including the e-bike surcharge.
+  category: business-logic
+  entities: [E-farebox, E-rule-single-ride-cap, E-rule-ebike-surcharge]
+  tier: code
+  carriers:
+  - document: code/farebox/pricing.py
+    location: price_ride
+    version: c1
+  - document: wiki/ebike-surcharge
+    location: '#cap'
+    version: 2
+- id: F-026
+  statement: The lost-bike fee is added on top of the capped ride charge.
+  category: business-logic
+  entities: [E-farebox, E-rule-lost-bike-fee, E-rule-single-ride-cap]
+  tier: code
+  carriers:
+  - document: code/farebox/services/lost_bikes.py
+    location: close_lost_rides
+    version: c1
+  - document: wiki/lost-and-stolen-bikes
+    location: '#charges'
+    version: 2
+- id: F-027
+  statement: Every refund request is created in status requested and waits for a fares agent to review it.
+  category: business-logic
+  entities: [E-farebox, E-rule-refund-auto-approve, E-table-refunds, E-team-fares]
+  tier: code
+  valid_to: c6
+  carriers:
+  - document: code/farebox/services/refunds.py
+    location: request_refund
+    version: c1
+- id: F-028
+  statement: A refund cannot exceed the amount charged for the ride.
+  category: business-logic
+  entities: [E-farebox, E-endpoint-refund, E-table-refunds]
+  tier: code
+  carriers:
+  - document: code/farebox/services/refunds.py
+    location: request_refund
+    version: c1
+  - document: wiki/refunds-process
+    location: '#limits'
+    version: 3
+  - document: doc/refund-policy
+    location: '#limits'
+    version: 4Nr6Tr11
+- id: F-029
+  statement: A rider whose membership is in grace is priced as a member, and a rider whose membership has lapsed
+    is priced as a casual rider.
+  category: business-logic
+  entities: [E-farebox, E-rule-membership-grace, E-rule-per-minute-rate, E-table-memberships]
+  tier: code
+  carriers:
+  - document: code/farebox/services/memberships.py
+    location: pricing_class
+    version: c1
+  - document: wiki/membership-lifecycle
+    location: '#pricing'
+    version: 6
+- id: F-030
+  statement: The monthly plan costs $15.00 per month and the annual plan costs $120.00 per year.
+  category: business-logic
+  entities: [E-farebox, E-table-plans]
+  tier: code
+  carriers:
+  - document: code/farebox/migrations/0002_seed_plans.py
+    location: PLANS
+    version: c1
+  - document: wiki/membership-faq
+    location: '#plans'
+    version: 2
+  - document: ticket/GW-110
+    location: description
+- id: F-031
+  statement: A bike with status locked cannot be checked out.
+  category: business-logic
+  entities: [E-dockyard, E-endpoint-checkout, E-table-bikes]
+  tier: code
+  carriers:
+  - document: code/dockyard/services/checkout.py
+    location: check_out
+    version: c1
+  - document: wiki/checkout-rules
+    location: '#locked-bikes'
+    version: 2
+- id: F-032
+  statement: A rebalance order moves enough bikes to bring the station to 50% full.
+  category: business-logic
+  entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance, E-table-rebalance-orders]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/jobs/nightlyRebalance.ts
+    location: TARGET_FILL
+    version: c1
+  - document: wiki/rebalancing-overview
+    location: '#target'
+    version: 4
+  - document: wiki/glossary
+    location: '#rebalance-order'
+    version: 8
+  - document: doc/dispatch-design
+    location: '#rebalance'
+    version: 3Tz9Kr18
+- id: F-033
+  statement: The nightly rebalance plans orders without consulting any weather reading.
+  category: business-logic
+  entities: [E-dispatch, E-rule-storm-pause, E-job-nightly-rebalance]
+  tier: code
+  valid_to: c6
+  carriers:
+  - document: code/dispatch/src/jobs/nightlyRebalance.ts
+    location: nightlyRebalance
+    version: c1
+- id: F-034
+  statement: The storm pause applies only to rebalancing, and the maintenance sweep keeps running in a storm.
+  category: business-logic
+  entities: [E-dispatch, E-rule-storm-pause, E-job-nightly-rebalance, E-job-maintenance-sweep]
+  tier: code
+  valid_from: c6
+  carriers:
+  - document: code/dispatch/src/rules/stormPause.ts
+    location: isStormPaused
+    version: c6
+  - document: wiki/storm-pause
+    location: '#scope'
+    version: 1
+- id: F-035
+  statement: A member receives one invoice per calendar month with one invoice line per ride.
+  category: business-logic
+  entities: [E-farebox, E-table-invoices, E-table-invoice-lines]
+  tier: code
+  carriers:
+  - document: code/farebox/services/invoicing.py
+    location: build_monthly_invoice
+    version: c1
+  - document: wiki/invoicing
+    location: '#monthly'
+    version: 3
+  - document: ticket/GW-107
+    location: description
+- id: F-036
+  statement: Members ride free for the first 45 minutes of every ride.
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes]
+  tier: documented
+  valid_from: c2
+  valid_to: c4
+  carriers:
+  - document: wiki/member-pricing
+    location: '#free-minutes'
+    version: 3
+  - document: wiki/support-playbook
+    location: '#free-minutes'
+    version: 6
+- id: F-037
+  statement: A member has a 3-day grace period after a failed renewal before the membership lapses.
+  category: business-logic
+  entities: [E-farebox, E-rule-membership-grace]
+  tier: documented
+  valid_to: c3
+  carriers:
+  - document: wiki/membership-faq
+    location: '#grace'
+    version: 2
+- id: F-038
+  statement: The most a single ride can cost is $25.00.
+  category: business-logic
+  entities: [E-farebox, E-rule-single-ride-cap]
+  tier: documented
+  valid_to: c5
+  carriers:
+  - document: wiki/fares-overview
+    location: '#cap'
+    version: 5
+  - document: doc/fares-price-sheet
+    location: '#caps-and-fees'
+    version: 1Qm4Vr12
+- id: F-039
+  statement: A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee.
+  category: business-logic
+  entities: [E-farebox, E-rule-lost-bike-fee]
+  tier: documented
+  valid_to: c5
+  carriers:
+  - document: wiki/lost-and-stolen-bikes
+    location: '#lost-fee'
+    version: 2
+  - document: doc/fares-price-sheet
+    location: '#caps-and-fees'
+    version: 1Qm4Vr12
+- id: F-040
+  statement: Every refund is reviewed by a fares agent before it is paid.
+  category: business-logic
+  entities: [E-farebox, E-rule-refund-auto-approve, E-team-fares]
+  tier: documented
+  valid_to: c6
+  carriers:
+  - document: wiki/refunds-process
+    location: '#review'
+    version: 3
+- id: F-041
+  statement: The nightly rebalance runs in all weather.
+  category: business-logic
+  entities: [E-dispatch, E-rule-storm-pause, E-job-nightly-rebalance]
+  tier: documented
+  valid_to: c6
+  carriers:
+  - document: wiki/runbook-nightly-rebalance
+    location: '#weather'
+    version: 5
+- id: F-042
+  statement: A rider can hold up to 3 bikes at once.
+  category: business-logic
+  entities: [E-dockyard, E-rule-checkout-limit]
+  tier: documented
+  carriers:
+  - document: wiki/checkout-rules
+    location: '#limit'
+    version: 2
+- id: F-043
+  statement: A bike is locked after 2 fault reports within 7 days.
+  category: business-logic
+  entities: [E-dispatch, E-rule-fault-threshold]
+  tier: documented
+  carriers:
+  - document: ticket/GW-134
+    location: comment-3
+- id: F-044
+  statement: A refund can be requested up to 30 days after the ride.
+  category: business-logic
+  entities: [E-farebox, E-rule-refund-window]
+  tier: documented
+  carriers:
+  - document: ticket/GW-149
+    location: comment-1
+- id: F-045
+  statement: Dynamic pricing multiplies per-minute rates by 1.5 in rain.
+  category: business-logic
+  entities: [E-farebox, E-flag-dynamic-pricing]
+  tier: documented
+  carriers:
+  - document: ticket/GW-112
+    location: description
+- id: F-046
+  statement: A rider without a membership pays a $2.00 unlock fee.
+  category: business-logic
+  entities: [E-farebox, E-rule-casual-unlock-fee]
+  tier: documented
+  carriers:
+  - document: doc/fares-price-sheet
+    location: '#casual-rates'
+    version: 1Qm4Vr12
+- id: F-047
+  statement: A station under 25% full gets a rebalance order.
+  category: business-logic
+  entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance]
+  tier: documented
+  carriers:
+  - document: wiki/rebalancing-overview
+    location: '#trigger'
+    version: 4
+- id: F-048
+  statement: Support may waive the lost-bike fee when the bike is found within 72 hours.
+  category: business-logic
+  entities: [E-farebox, E-rule-lost-bike-fee]
+  tier: documented
+  carriers:
+  - document: wiki/support-playbook
+    location: '#lost-bike-waiver'
+    version: 6
+  - document: ticket/GW-146
+    location: description
+- id: F-049
+  statement: The dynamic_pricing flag is off by default.
+  category: technical-implementation
+  entities: [E-farebox, E-flag-dynamic-pricing, E-table-feature-flags]
+  tier: executed
+  carriers:
+  - document: code/farebox/flags.py
+    location: FLAGS
+    version: c1
+  - document: code/tests/unit/test_flags.py
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+    version: c1
+  - document: run/pytest-c1
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: run/pytest-c2
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: run/pytest-c3
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: run/pytest-c4
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: run/pytest-c5
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: run/pytest-c6
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: wiki/dynamic-pricing
+    location: '#status'
+    version: 2
+- id: F-050
+  statement: farebox publishes a ride.completed event to the ride.events queue when it closes a ride.
+  category: technical-implementation
+  entities: [E-farebox, E-queue-ride-events, E-table-rides]
+  tier: executed
+  carriers:
+  - document: code/farebox/services/rides.py
+    location: close_ride
+    version: c1
+  - document: code/tests/e2e/test_close_ride.py
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - document: run/pytest-c2
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - document: run/pytest-c3
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - document: run/pytest-c4
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - document: run/pytest-c5
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - document: run/pytest-c6
+    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  - document: wiki/ride-events
+    location: '#producers'
+    version: 3
+- id: F-051
+  statement: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  category: technical-implementation
+  entities: [E-dockyard, E-endpoint-checkin, E-rule-station-capacity]
+  tier: executed
+  carriers:
+  - document: code/dockyard/api/rides.py
+    location: checkin_endpoint
+    version: c1
+  - document: code/tests/e2e/test_checkin.py
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: run/pytest-c2
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: run/pytest-c3
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: run/pytest-c4
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: run/pytest-c5
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: run/pytest-c6
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: wiki/dockyard-api
+    location: '#checkin'
+    version: 5
+  - document: wiki/station-capacity
+    location: '#error'
+    version: 3
+- id: F-052
+  statement: GET /stations/{id}/status returns the station's available bikes, empty docks and fill ratio.
+  category: technical-implementation
+  entities: [E-dockyard, E-endpoint-station-status, E-table-stations, E-table-docks]
+  tier: executed
+  carriers:
+  - document: code/dockyard/services/station_status.py
+    location: station_status
+    version: c1
+  - document: code/tests/e2e/test_station_status.py
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+    version: c1
+  - document: run/pytest-c1
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: run/pytest-c2
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: run/pytest-c3
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: run/pytest-c4
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: run/pytest-c5
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: run/pytest-c6
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: wiki/dockyard-api
+    location: '#station-status'
+    version: 5
+- id: F-053
+  statement: dispatch counts each ride.completed event toward the demand of the ride's return station.
+  category: technical-implementation
+  entities: [E-dispatch, E-queue-ride-events]
+  tier: executed
+  carriers:
+  - document: code/dispatch/src/consumers/rideEvents.ts
+    location: onRideEvent
+    version: c1
+  - document: code/dispatch/test/rideEvents.test.ts
+    location: rideEvents > counts ride.completed toward the return station's demand
+    version: c1
+  - document: run/vitest-c1
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: run/vitest-c2
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: run/vitest-c3
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: run/vitest-c4
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: run/vitest-c5
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: run/vitest-c6
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: wiki/ride-events
+    location: '#consumers'
+    version: 3
+- id: F-054
+  statement: The rides table stores the check-in station in the column return_station_id.
+  category: technical-implementation
+  entities: [E-dockyard, E-table-rides]
+  tier: code
+  carriers:
+  - document: code/dockyard/models/ride.py
+    location: Ride
+    version: c1
+  - document: wiki/data-model
+    location: '#rides'
+    version: 6
+- id: F-055
+  statement: At check-in, dockyard calls farebox's POST /internal/rides/{id}/close to price and close the ride.
+  category: technical-implementation
+  entities: [E-dockyard, E-farebox, E-endpoint-checkin]
+  tier: code
+  carriers:
+  - document: code/dockyard/clients/farebox.py
+    location: FareboxClient.close_ride
+    version: c1
+  - document: code/farebox/api/rides.py
+    location: close_ride_endpoint
+    version: c1
+  - document: wiki/farebox-architecture
+    location: '#close-ride'
+    version: 4
+  - document: wiki/farebox-api
+    location: '#close-ride'
+    version: 4
+- id: F-056
+  statement: farebox publishes a ride.refunded event to the ride.events queue when a refund is paid.
+  category: technical-implementation
+  entities: [E-farebox, E-queue-ride-events, E-table-refunds]
+  tier: code
+  carriers:
+  - document: code/farebox/services/refunds.py
+    location: pay_refund
+    version: c1
+  - document: wiki/ride-events
+    location: '#producers'
+    version: 3
+- id: F-057
+  statement: A ride.completed event carries ride_id, rider_id, bike_id, return_station_id, ended_at and amount_cents.
+  category: technical-implementation
+  entities: [E-farebox, E-queue-ride-events]
+  tier: code
+  carriers:
+  - document: code/farebox/events.py
+    location: publish_ride_completed
+    version: c1
+  - document: wiki/ride-events
+    location: '#payload'
+    version: 3
+- id: F-058
+  statement: dispatch consumes the ride.events queue in the consumer group dispatch-demand.
+  category: technical-implementation
+  entities: [E-dispatch, E-queue-ride-events]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/consumers/rideEvents.ts
+    location: CONSUMER_GROUP
+    version: c1
+  - document: wiki/ride-events
+    location: '#consumers'
+    version: 3
+- id: F-059
+  statement: Every Tollbooth Pay capture sends the ride id as its idempotency key.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay]
+  tier: code
+  carriers:
+  - document: code/farebox/clients/tollbooth.py
+    location: TollboothClient.capture
+    version: c1
+  - document: wiki/tollbooth-pay
+    location: '#idempotency'
+    version: 4
+  - document: doc/tollbooth-integration
+    location: '#idempotency'
+    version: 6Gv5Ur22
+- id: F-060
+  statement: Each Tollbooth Pay call times out after 5 seconds.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay]
+  tier: code
+  carriers:
+  - document: code/farebox/config.py
+    location: TOLLBOOTH_TIMEOUT_SECONDS
+    version: c1
+  - document: wiki/tollbooth-pay
+    location: '#timeouts'
+    version: 4
+- id: F-061
+  statement: The Tollbooth Pay client waits 0.5, 1 and 2 seconds before its three retries.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay, E-rule-payment-retry]
+  tier: code
+  carriers:
+  - document: code/farebox/clients/tollbooth.py
+    location: BACKOFF_SECONDS
+    version: c1
+  - document: doc/tollbooth-integration
+    location: '#retries'
+    version: 6Gv5Ur22
+- id: F-062
+  statement: The Tollbooth Pay client retries only after a timeout or a 5xx response, never after a 4xx response.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay, E-rule-payment-retry]
+  tier: code
+  carriers:
+  - document: code/farebox/clients/tollbooth.py
+    location: should_retry
+    version: c1
+- id: F-063
+  statement: farebox and dockyard cache feature_flags rows for 60 seconds.
+  category: technical-implementation
+  entities: [E-farebox, E-dockyard, E-table-feature-flags]
+  tier: code
+  carriers:
+  - document: code/farebox/flags.py
+    location: CACHE_TTL_SECONDS
+    version: c1
+  - document: code/dockyard/flags.py
+    location: CACHE_TTL_SECONDS
+    version: c1
+  - document: wiki/farebox-architecture
+    location: '#flags-cache'
+    version: 4
+- id: F-064
+  statement: A flag with no row in the feature_flags table is treated as off.
+  category: technical-implementation
+  entities: [E-farebox, E-table-feature-flags]
+  tier: code
+  carriers:
+  - document: code/farebox/flags.py
+    location: is_enabled
+    version: c1
+  - document: wiki/feature-flags
+    location: '#defaults'
+    version: 4
+- id: F-065
+  statement: 'The feature_flags table holds four flags: dynamic_pricing, ebike_surcharge, overflow_parking and refund_auto_approve.'
+  category: technical-implementation
+  entities:
+  - E-farebox
+  - E-table-feature-flags
+  - E-flag-refund-auto-approve
+  - E-flag-dynamic-pricing
+  - E-flag-ebike-surcharge
+  - E-flag-overflow-parking
+  tier: code
+  valid_from: c6
+  carriers:
+  - document: code/farebox/flags.py
+    location: FLAGS
+    version: c6
+  - document: wiki/refunds-auto-approval
+    location: '#flag'
+    version: 1
+  - document: pull/19
+    location: body
+- id: F-066
+  statement: farebox reads the weather_readings table, which dispatch owns, to compute the surge multiplier.
+  category: technical-implementation
+  entities: [E-farebox, E-dispatch, E-table-weather-readings, E-flag-dynamic-pricing]
+  tier: code
+  carriers:
+  - document: code/farebox/services/surge.py
+    location: latest_severity
+    version: c1
+  - document: wiki/farebox-architecture
+    location: '#weather-readings'
+    version: 4
+  - document: wiki/dynamic-pricing
+    location: '#weather-source'
+    version: 2
+- id: F-067
+  statement: dispatch locks a bike by calling dockyard's POST /bikes/{id}/lock.
+  category: technical-implementation
+  entities: [E-dispatch, E-dockyard, E-table-bikes]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/clients/dockyard.ts
+    location: DockyardClient.lockBike
+    version: c1
+  - document: code/dockyard/api/bikes.py
+    location: lock_bike_endpoint
+    version: c1
+- id: F-068
+  statement: The Skyglass client calls GET /v2/severity with the station's latitude and longitude and times out
+    after 3 seconds.
+  category: technical-implementation
+  entities: [E-dispatch, E-int-skyglass]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/clients/skyglass.ts
+    location: SkyglassClient.fetchSeverity
+    version: c1
+  - document: wiki/skyglass
+    location: '#endpoint'
+    version: 3
+- id: F-069
+  statement: The maintenance-sweep job asks farebox to close lost rides through POST /internal/rides/close-lost
+    on every run.
+  category: technical-implementation
+  entities: [E-dispatch, E-farebox, E-job-maintenance-sweep, E-rule-lost-bike-fee]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/jobs/maintenanceSweep.ts
+    location: maintenanceSweep
+    version: c1
+  - document: code/dispatch/src/clients/farebox.ts
+    location: FareboxClient.closeLostRides
+    version: c1
+  - document: wiki/runbook-maintenance-sweep
+    location: '#lost-rides'
+    version: 2
+- id: F-070
+  statement: POST /rides/checkout returns HTTP 409 with error code checkout_limit_reached when the rider already
+    holds 2 bikes.
+  category: technical-implementation
+  entities: [E-dockyard, E-endpoint-checkout, E-rule-checkout-limit]
+  tier: code
+  carriers:
+  - document: code/dockyard/api/rides.py
+    location: checkout_endpoint
+    version: c1
+  - document: wiki/dockyard-api
+    location: '#checkout'
+    version: 5
+- id: F-071
+  statement: POST /refunds returns HTTP 422 with error code refund_window_expired when the ride ended more than
+    14 days ago.
+  category: technical-implementation
+  entities: [E-farebox, E-endpoint-refund, E-rule-refund-window]
+  tier: code
+  carriers:
+  - document: code/farebox/api/refunds.py
+    location: create_refund_endpoint
+    version: c1
+  - document: wiki/farebox-api
+    location: '#refunds'
+    version: 4
+- id: F-072
+  statement: farebox stores money as integer cents in amount_cents columns.
+  category: technical-implementation
+  entities: [E-farebox, E-table-invoices, E-table-invoice-lines, E-table-payments, E-table-refunds]
+  tier: code
+  carriers:
+  - document: code/farebox/models/payment.py
+    location: Payment
+    version: c1
+  - document: code/farebox/models/invoice.py
+    location: InvoiceLine
+    version: c1
+  - document: wiki/data-model
+    location: '#money'
+    version: 6
+- id: F-073
+  statement: A rider's fault report is stored as a maintenance_tickets row of kind fault_report.
+  category: technical-implementation
+  entities: [E-dispatch, E-table-maintenance-tickets]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/db/maintenanceTickets.ts
+    location: countFaultReports
+    version: c1
+  - document: wiki/glossary
+    location: '#fault-report'
+    version: 8
+- id: F-074
+  statement: 'A membership has one of three statuses: active, grace or lapsed.'
+  category: technical-implementation
+  entities: [E-farebox, E-table-memberships]
+  tier: code
+  carriers:
+  - document: code/farebox/models/membership.py
+    location: MembershipStatus
+    version: c1
+  - document: wiki/membership-lifecycle
+    location: '#statuses'
+    version: 6
+- id: F-075
+  statement: A failed renewal reported by the Tollbooth Pay webhook moves the membership to status grace and sets
+    grace_ends_at.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay, E-table-memberships, E-rule-membership-grace]
+  tier: code
+  carriers:
+  - document: code/farebox/services/memberships.py
+    location: handle_failed_renewal
+    version: c1
+  - document: code/farebox/api/webhooks.py
+    location: tollbooth_webhook
+    version: c1
+  - document: wiki/membership-lifecycle
+    location: '#renewal-failures'
+    version: 6
+- id: F-076
+  statement: A casual ride is charged to the rider's card through Tollbooth Pay when the ride closes.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay, E-table-payments]
+  tier: code
+  carriers:
+  - document: code/farebox/services/rides.py
+    location: close_ride
+    version: c1
+  - document: wiki/invoicing
+    location: '#casual'
+    version: 3
+- id: F-077
+  statement: Each Tollbooth Pay call times out after 10 seconds.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay]
+  tier: documented
+  carriers:
+  - document: doc/tollbooth-integration
+    location: '#timeouts'
+    version: 6Gv5Ur22
+- id: F-078
+  statement: Each service caches feature flags for 5 minutes.
+  category: technical-implementation
+  entities: [E-farebox, E-dockyard, E-dispatch, E-table-feature-flags]
+  tier: documented
+  carriers:
+  - document: ticket/GW-143
+    location: comment-2
+- id: F-079
+  statement: The rides table stores the return station in a column named end_station.
+  category: technical-implementation
+  entities: [E-dockyard, E-table-rides]
+  tier: documented
+  carriers:
+  - document: doc/dockyard-design
+    location: '#rides-table'
+    version: 7Hc2Xr31
+- id: F-080
+  statement: dockyard publishes ride.completed when a bike is checked in.
+  category: technical-implementation
+  entities: [E-dockyard, E-queue-ride-events]
+  tier: documented
+  carriers:
+  - document: doc/dockyard-design
+    location: '#events'
+    version: 7Hc2Xr31
+- id: F-081
+  statement: 'Gearwell has three feature flags: dynamic_pricing, ebike_surcharge and overflow_parking.'
+  category: technical-implementation
+  entities: [E-table-feature-flags, E-flag-dynamic-pricing, E-flag-ebike-surcharge, E-flag-overflow-parking]
+  tier: documented
+  valid_to: c6
+  carriers:
+  - document: wiki/feature-flags
+    location: '#flags'
+    version: 4
+- id: F-082
+  statement: Tollbooth Pay pays captured amounts out to Gearwell two business days after capture.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay]
+  tier: documented
+  carriers:
+  - document: doc/tollbooth-integration
+    location: '#settlement'
+    version: 6Gv5Ur22
+- id: F-083
+  statement: The ride.events queue keeps messages for 7 days.
+  category: technical-implementation
+  entities: [E-queue-ride-events]
+  tier: documented
+  carriers:
+  - document: wiki/ride-events
+    location: '#retention'
+    version: 3
+- id: F-084
+  statement: Skyglass reports severity on a scale from 0, clear, to 5, a severe storm warning.
+  category: technical-implementation
+  entities: [E-int-skyglass]
+  tier: documented
+  carriers:
+  - document: wiki/skyglass
+    location: '#scale'
+    version: 3
+- id: F-085
+  statement: Tollbooth Pay sends farebox a webhook for every failed membership renewal charge.
+  category: technical-implementation
+  entities: [E-farebox, E-int-tollbooth-pay, E-table-memberships]
+  tier: documented
+  carriers:
+  - document: doc/tollbooth-integration
+    location: '#webhooks'
+    version: 6Gv5Ur22
+  - document: ticket/GW-136
+    location: comment-1
+- id: F-086
+  statement: Each service has its own database user that can write only its own tables.
+  category: technical-implementation
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/data-model
+    location: '#access'
+    version: 6
+  - document: wiki/gearwell-overview
+    location: '#data'
+    version: 7
+- id: F-087
+  statement: The nightly-rebalance job runs every day at 03:00 America/New_York time.
+  category: operations
+  entities: [E-dispatch, E-job-nightly-rebalance]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/scheduler.ts
+    location: SCHEDULES
+    version: c1
+  - document: wiki/dispatch-jobs
+    location: '#schedules'
+    version: 3
+- id: F-088
+  statement: The maintenance-sweep job runs every hour on the hour.
+  category: operations
+  entities: [E-dispatch, E-job-maintenance-sweep]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/scheduler.ts
+    location: SCHEDULES
+    version: c1
+  - document: wiki/dispatch-jobs
+    location: '#schedules'
+    version: 3
+- id: F-089
+  statement: The weather-poll job runs every 15 minutes.
+  category: operations
+  entities: [E-dispatch, E-job-weather-poll, E-int-skyglass]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/scheduler.ts
+    location: SCHEDULES
+    version: c1
+  - document: wiki/dispatch-jobs
+    location: '#schedules'
+    version: 3
+- id: F-090
+  statement: Each dispatch job holds a database lock named after the job while it runs, so only one instance runs
+    it at a time.
+  category: operations
+  entities: [E-dispatch, E-job-nightly-rebalance, E-job-maintenance-sweep, E-job-weather-poll]
+  tier: code
+  carriers:
+  - document: code/dispatch/src/scheduler.ts
+    location: withJobLock
+    version: c1
+  - document: wiki/dispatch-jobs
+    location: '#locking'
+    version: 3
+- id: F-091
+  statement: When the latest Skyglass reading is more than 60 minutes old, the storm pause does not pause rebalancing.
+  category: operations
+  entities: [E-dispatch, E-rule-storm-pause, E-table-weather-readings, E-job-weather-poll]
+  tier: code
+  valid_from: c6
+  carriers:
+  - document: code/dispatch/src/rules/stormPause.ts
+    location: MAX_READING_AGE_MINUTES
+    version: c6
+  - document: wiki/runbook-weather-poll
+    location: '#stale-readings'
+    version: 2
+  - document: ticket/GW-177
+    location: comment-2
+- id: F-092
+  statement: If the nightly rebalance fails, the ops on-call engineer re-runs it by hand before 06:00.
+  category: operations
+  entities: [E-dispatch, E-job-nightly-rebalance, E-team-ops]
+  tier: documented
+  carriers:
+  - document: wiki/runbook-nightly-rebalance
+    location: '#rerun'
+    version: 5
+  - document: ticket/GW-165
+    location: comment-1
+- id: F-093
+  statement: The nightly rebalance runs at 02:00.
+  category: operations
+  entities: [E-dispatch, E-job-nightly-rebalance]
+  tier: documented
+  carriers:
+  - document: wiki/runbook-nightly-rebalance
+    location: '#schedule'
+    version: 5
+- id: F-094
+  statement: A mechanic returns a locked bike to service by closing its maintenance ticket and then unlocking the
+    bike in dockyard.
+  category: operations
+  entities: [E-dispatch, E-dockyard, E-table-maintenance-tickets, E-table-bikes]
+  tier: documented
+  carriers:
+  - document: wiki/runbook-maintenance-sweep
+    location: '#returning-bikes'
+    version: 2
+- id: F-095
+  statement: The maintenance sweep runs every 30 minutes.
+  category: operations
+  entities: [E-dispatch, E-job-maintenance-sweep]
+  tier: documented
+  carriers:
+  - document: doc/dispatch-design
+    location: '#jobs'
+    version: 3Tz9Kr18
+- id: F-096
+  statement: The weather poll runs every 5 minutes.
+  category: operations
+  entities: [E-dispatch, E-job-weather-poll]
+  tier: documented
+  carriers:
+  - document: doc/dispatch-design
+    location: '#jobs'
+    version: 3Tz9Kr18
+- id: F-097
+  statement: Four consecutive weather-poll failures raise a warning alert for the ops team.
+  category: operations
+  entities: [E-dispatch, E-job-weather-poll, E-team-ops]
+  tier: documented
+  carriers:
+  - document: wiki/alerts-dispatch
+    location: '#weather'
+    version: 2
+  - document: wiki/runbook-weather-poll
+    location: '#alert'
+    version: 2
+- id: F-098
+  statement: A failed nightly rebalance pages the ops on-call engineer.
+  category: operations
+  entities: [E-dispatch, E-job-nightly-rebalance, E-team-ops]
+  tier: documented
+  carriers:
+  - document: wiki/alerts-dispatch
+    location: '#job-failures'
+    version: 2
+  - document: doc/oncall-rota
+    location: '#escalation'
+    version: 9Kd1Mr57
+  - document: ticket/GW-165
+    location: comment-1
+- id: F-099
+  statement: A payment failure rate above 5% over 10 minutes pages the fares on-call engineer.
+  category: operations
+  entities: [E-farebox, E-table-payments, E-team-fares]
+  tier: documented
+  carriers:
+  - document: wiki/alerts-farebox
+    location: '#payment-failures'
+    version: 3
+  - document: doc/q3-ops-review
+    location: '#paging'
+    version: 0Ya2Wr03
+- id: F-100
+  statement: On-call rotates weekly, with the handover on Monday at 10:00.
+  category: operations
+  entities: [E-team-ops, E-team-fares, E-team-fleet]
+  tier: documented
+  carriers:
+  - document: doc/oncall-rota
+    location: '#rotation'
+    version: 9Kd1Mr57
+- id: F-101
+  statement: The on-call handover happens on Monday at 09:00.
+  category: operations
+  entities: [E-team-ops, E-team-fares, E-team-fleet]
+  tier: documented
+  carriers:
+  - document: wiki/oncall
+    location: '#handover'
+    version: 4
+- id: F-102
+  statement: A snapshot of the shared database is taken every night at 01:00.
+  category: operations
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/database-backups
+    location: '#schedule'
+    version: 2
+- id: F-103
+  statement: Database snapshots are kept for 14 days.
+  category: operations
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/database-backups
+    location: '#retention'
+    version: 2
+- id: F-104
+  statement: Database snapshots are kept for 30 days.
+  category: operations
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: doc/data-retention-policy
+    location: '#backups'
+    version: 5Wb7Nr06
+  - document: ticket/GW-156
+    location: description
+- id: F-105
+  statement: Deploys are allowed Monday to Thursday, and on Friday only before 12:00.
+  category: operations
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/deploys
+    location: '#windows'
+    version: 5
+- id: F-106
+  statement: A bad deploy is rolled back by redeploying the previous release, because database migrations are forward-only.
+  category: operations
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/deploys
+    location: '#rollback'
+    version: 5
+- id: F-107
+  statement: Rebalancing vans start their shift at 06:00.
+  category: operations
+  entities: [E-team-ops, E-table-rebalance-orders]
+  tier: documented
+  carriers:
+  - document: wiki/rebalancing-overview
+    location: '#vans'
+    version: 4
+- id: F-108
+  statement: Rebalancing vans start their shift at 05:30.
+  category: operations
+  entities: [E-team-ops, E-table-rebalance-orders]
+  tier: documented
+  carriers:
+  - document: wiki/van-operations
+    location: '#shift'
+    version: 3
+  - document: ticket/GW-168
+    location: description
+- id: F-109
+  statement: During a storm pause, van drivers return to the depot and wait for the pause to lift.
+  category: operations
+  entities: [E-team-ops, E-rule-storm-pause]
+  tier: documented
+  valid_from: c6
+  carriers:
+  - document: wiki/storm-pause
+    location: '#vans'
+    version: 1
+  - document: doc/storm-policy
+    location: '#vans'
+    version: 8Fx3Sr09
+- id: F-110
+  statement: The weather poll was down for 6 hours on 2026-08-12 because the Skyglass API key was rotated without
+    updating dispatch's configuration.
+  category: operations
+  entities: [E-dispatch, E-job-weather-poll, E-int-skyglass]
+  tier: documented
+  carriers:
+  - document: wiki/incident-2026-08-12-weather-poll
+    location: '#summary'
+    version: 1
+  - document: doc/q3-ops-review
+    location: '#incidents'
+    version: 0Ya2Wr03
+  - document: ticket/GW-173
+    location: description
+- id: F-111
+  statement: The spring promotion's dates are 2026-02-20 to 2026-06-10.
+  category: history
+  entities: [E-farebox, E-rule-member-free-minutes]
+  tier: documented
+  carriers:
+  - document: wiki/spring-promotion
+    location: '#dates'
+    version: 2
+  - document: doc/spring-promotion-retro
+    location: '#dates'
+    version: 2Lp8Qr04
+  - document: pull/12
+    location: comment-1
+  - document: ticket/GW-155
+    location: comment-1
+- id: F-112
+  statement: Membership grace is 7 days rather than 3 because members whose cards expired were lapsing before their
+    renewal could be retried.
+  category: history
+  entities: [E-farebox, E-rule-membership-grace, E-int-tollbooth-pay]
+  tier: documented
+  carriers:
+  - document: ticket/GW-136
+    location: description
+  - document: pull/11
+    location: comment-1
+- id: F-113
+  statement: The single-ride cap is $30.00 rather than $25.00 because a $25.00 cap let casual riders keep bikes
+    all day and empty the busiest stations by noon.
+  category: history
+  entities: [E-farebox, E-rule-single-ride-cap]
+  tier: documented
+  carriers:
+  - document: pull/14
+    location: comment-2
+- id: F-114
+  statement: The storm pause starts at severity 3 because that is the level at which ops already recalled vans by
+    hand before the pause existed.
+  category: history
+  entities: [E-dispatch, E-rule-storm-pause, E-int-skyglass]
+  tier: documented
+  carriers:
+  - document: pull/19
+    location: comment-1
+- id: F-115
+  statement: The dynamic_pricing flag stays off in production until legal review of rain surge pricing is complete.
+  category: history
+  entities: [E-farebox, E-flag-dynamic-pricing]
+  tier: documented
+  carriers:
+  - document: pull/21
+    location: comment-3
+- id: F-116
+  statement: The Tollbooth Pay client retries 3 times, not 5, because Tollbooth Pay rate-limits a merchant that
+    retries one failed capture more than 3 times within a minute.
+  category: history
+  entities: [E-farebox, E-rule-payment-retry, E-int-tollbooth-pay]
+  tier: documented
+  carriers:
+  - document: pull/16
+    location: comment-2
+- id: F-117
+  statement: The ops team has owned the Skyglass integration since PR 19, taking it over from the fleet team.
+  category: history
+  entities: [E-int-skyglass, E-team-ops, E-team-fleet]
+  tier: documented
+  carriers:
+  - document: pull/19
+    location: comment-4
+- id: F-118
+  statement: dockyard, farebox and dispatch have lived in one repository since 2026-01-12.
+  category: history
+  entities: [E-dockyard, E-farebox, E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/gearwell-overview
+    location: '#services'
+    version: 7
+  - document: wiki/onboarding-engineers
+    location: '#repository'
+    version: 9
+- id: F-119
+  statement: dispatch has been written in TypeScript since a 2025 rewrite from Python.
+  category: history
+  entities: [E-dispatch]
+  tier: documented
+  carriers:
+  - document: wiki/dispatch-history
+    location: '#rewrite'
+    version: 1
+- id: F-120
+  statement: A dock is a single bike slot at a station.
+  category: history
+  entities: [E-dockyard, E-table-docks, E-table-stations]
+  tier: documented
+  carriers:
+  - document: wiki/glossary
+    location: '#dock'
+    version: 8

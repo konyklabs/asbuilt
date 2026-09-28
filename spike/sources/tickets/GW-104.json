@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-104",
+  "key": "GW-104",
+  "summary": "Add a dark mode to the ops console",
+  "status": "Done",
+  "type": "task",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2025-10-14T21:08:00-04:00",
+  "updated": "2025-10-21T00:08:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Ops has asked for a dark mode on the ops console so the overnight on-call shift isn't staring at a bright white dashboard for hours. Straightforward theme toggle, no backend changes expected.",
+  "comments": []
+}

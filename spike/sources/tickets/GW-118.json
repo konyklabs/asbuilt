@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-118",
+  "key": "GW-118",
+  "summary": "Dashboard: rides per hour by station",
+  "status": "Done",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2025-12-16T21:46:00-05:00",
+  "updated": "2025-12-19T00:46:00-05:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Ops wants a small dashboard panel showing rides per hour broken down by station, mostly to spot demand spikes before they turn into empty stations.",
+  "comments": []
+}

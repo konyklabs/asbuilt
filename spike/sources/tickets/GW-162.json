@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-162",
+  "key": "GW-162",
+  "summary": "Raise the single-ride cap to $30",
+  "status": "Done",
+  "type": "story",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2026-07-01T10:30:00-04:00",
+  "updated": "2026-07-22T14:10:00-04:00",
+  "labels": [
+    "product",
+    "story"
+  ],
+  "description": "Finance and fleet both want the ceiling on what a single ride can cost raised for the summer season, up to a $30.00 cap per ride.",
+  "comments": []
+}

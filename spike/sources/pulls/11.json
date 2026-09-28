@@ -1,0 +1,24 @@
+{
+  "id": "pull/11",
+  "number": 11,
+  "title": "Extend membership grace from 3 to 7 days",
+  "state": "merged",
+  "author": "kasia.brandt",
+  "opened": "2026-03-30T14:00:00-04:00",
+  "closed": "2026-04-03T11:15:00-04:00",
+  "merged_step": "c3",
+  "head_ref": "feat/extend-membership-grace-7-days",
+  "body": "## Change\n\nA lapsed membership now waits 7 days out from a failed renewal instead of 3, giving a second retry attempt more room to land before the account falls over. See GW-136.\n\n## Testing\n\nUnit coverage on the grace-period window updated for the new figure; suite passes.",
+  "files": [
+    "farebox/services/memberships.py",
+    "tests/unit/test_memberships.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-03-31T10:30:00-04:00",
+      "body": "Worth noting for the log: members whose cards had expired were lapsing before we'd even gotten a retry in on the renewal, per GW-136 -- that's the whole reason the window is moving from 3 days to 7."
+    }
+  ]
+}

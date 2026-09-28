@@ -1,0 +1,34 @@
+# The built repository's history, oldest first. build.py commits these in
+# order with fixed author, committer and dates, so the SHAs are reproducible.
+# A file listed under `files` has its content at that step in
+# history/<step>/<path>; a file not listed keeps its previous content; the
+# final content of every file is system/<path>.
+- id: c1
+  date: "2026-01-12T10:00:00-05:00"
+  message: "Import dockyard, farebox and dispatch"
+  note: "member free minutes 30; membership grace 3 days; single-ride cap $25; lost-bike fee $100; no storm pause; three flags"
+- id: c2
+  date: "2026-02-20T15:30:00-05:00"
+  message: "Raise member free minutes to 45 for the spring promotion"
+  changes: [E-rule-member-free-minutes]
+  pull: 9
+- id: c3
+  date: "2026-04-03T11:15:00-04:00"
+  message: "Extend membership grace from 3 to 7 days"
+  changes: [E-rule-membership-grace]
+  pull: 11
+- id: c4
+  date: "2026-06-10T09:45:00-04:00"
+  message: "End the spring promotion: member free minutes back to 30"
+  changes: [E-rule-member-free-minutes]
+  pull: 12
+- id: c5
+  date: "2026-07-22T14:00:00-04:00"
+  message: "Raise the single-ride cap to $30 and the lost-bike fee to $150"
+  changes: [E-rule-single-ride-cap, E-rule-lost-bike-fee]
+  pull: 14
+- id: c6
+  date: "2026-08-30T16:20:00-04:00"
+  message: "Pause rebalancing in storms; add the refund_auto_approve flag"
+  changes: [E-rule-storm-pause, E-rule-refund-auto-approve, E-flag-refund-auto-approve]
+  pull: 19

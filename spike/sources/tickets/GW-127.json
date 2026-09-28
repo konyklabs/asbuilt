@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-127",
+  "key": "GW-127",
+  "summary": "Ops console: filter maintenance tickets by station",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": null,
+  "created": "2026-01-26T09:49:00-05:00",
+  "updated": "2026-01-28T12:49:00-05:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "The ops console's maintenance ticket list has no way to filter by station, so anyone triaging a specific station's bikes has to scroll through everything.",
+  "comments": []
+}

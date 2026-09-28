@@ -1,0 +1,9 @@
+- id: E-farebox
+  kind: service
+  name: farebox
+  summary: "Ride pricing for Gearwell's members and guests."
+- id: E-rule-member-free-minutes
+  kind: rule
+  name: member-free-minutes
+  owner: E-farebox
+  summary: "How many free minutes a member gets before billing starts."

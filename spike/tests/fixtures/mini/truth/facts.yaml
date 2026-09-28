@@ -1,0 +1,150 @@
+# Ground-truth facts for the mini fixture. Format: ../../../truth/SCHEMA.md.
+# F-001/F-002/F-003 exercise valid_from/valid_to and the version-disambiguation
+# case (F-001 and F-003 share a statement and a code document at different
+# versions). F-004/F-005 exercise the wiki contradiction/staleness surfaces.
+# F-006..F-010 exercise doc/ticket/pull carrier resolution. F-011 exercises a
+# vitest run carrier. F-012 exercises a code carrier with a vitest test title
+# location; F-013 exercises a code carrier with a dotted-symbol location.
+- id: F-001
+  statement: "A member's free minutes are 15."
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes]
+  tier: executed
+  valid_to: c2
+  carriers:
+    - document: code/farebox/pricing.py
+      location: FREE_MINUTES
+      version: c1
+    - document: code/tests/test_pricing.py
+      location: "tests/test_pricing.py::test_free_minutes_matches_expected"
+      version: c1
+    - document: run/pytest-c1
+      location: "tests/test_pricing.py::test_free_minutes_matches_expected"
+
+- id: F-002
+  statement: "A member's free minutes are 25."
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes]
+  tier: executed
+  valid_from: c2
+  valid_to: c4
+  carriers:
+    - document: code/farebox/pricing.py
+      location: FREE_MINUTES
+      version: c2
+    - document: code/tests/test_pricing.py
+      location: "tests/test_pricing.py::test_free_minutes_matches_expected"
+      version: c2
+    - document: run/pytest-c2
+      location: "tests/test_pricing.py::test_free_minutes_matches_expected"
+
+- id: F-003
+  statement: "A member's free minutes are 15."
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes]
+  tier: executed
+  valid_from: c4
+  carriers:
+    - document: code/farebox/pricing.py
+      location: FREE_MINUTES
+      version: c4
+    - document: code/tests/test_pricing.py
+      location: "tests/test_pricing.py::test_free_minutes_matches_expected"
+      version: c4
+    - document: run/pytest-c4
+      location: "tests/test_pricing.py::test_free_minutes_matches_expected"
+
+- id: F-004
+  statement: "Farebox computes ride pricing for members and guests."
+  category: technical-implementation
+  entities: [E-farebox]
+  tier: documented
+  carriers:
+    - document: wiki/pricing-rules
+      location: "#overview"
+      version: "2"
+
+- id: F-005
+  statement: "A member's free minutes are 20."
+  category: business-logic
+  entities: [E-farebox, E-rule-member-free-minutes]
+  tier: documented
+  carriers:
+    - document: wiki/pricing-rules-2025
+      location: "#free-minutes"
+      version: "1"
+
+- id: F-006
+  statement: "Refunds are processed within 5 business days."
+  category: operations
+  entities: [E-farebox]
+  tier: documented
+  carriers:
+    - document: doc/DOC-1
+      location: "#refund-policy"
+      version: "1"
+
+- id: F-007
+  statement: "The refunds module was added to support automatic processing."
+  category: history
+  entities: [E-farebox]
+  tier: documented
+  carriers:
+    - document: ticket/GW-1
+      location: description
+
+- id: F-008
+  statement: "Refund fee is waived for memberships over one year."
+  category: business-logic
+  entities: [E-farebox]
+  tier: documented
+  carriers:
+    - document: ticket/GW-1
+      location: comment-1
+
+- id: F-009
+  statement: "The refunds module was reviewed by the payments team before merge."
+  category: history
+  entities: [E-farebox]
+  tier: documented
+  carriers:
+    - document: pull/1
+      location: body
+
+- id: F-010
+  statement: "The module now also handles partial refunds."
+  category: business-logic
+  entities: [E-farebox]
+  tier: documented
+  carriers:
+    - document: pull/1
+      location: comment-1
+
+- id: F-011
+  statement: "Dispatch tests confirm the refunds module publishes a refund.completed event."
+  category: technical-implementation
+  entities: [E-farebox]
+  tier: executed
+  carriers:
+    - document: run/vitest-c1
+      location: "refunds > publishes a refund.completed event"
+
+- id: F-012
+  statement: "A dispatch test confirms the refunds watcher locks a bike with three fault reports."
+  category: technical-implementation
+  entities: [E-farebox]
+  tier: code
+  carriers:
+    - document: code/dispatch/test/refundsWatcher.test.ts
+      location: "refundsWatcher > locks a bike with 3 fault reports in 7 days and opens a ticket"
+      version: c1
+
+- id: F-013
+  statement: "PricingClient.fetch_rate returns the current per-minute rate."
+  category: technical-implementation
+  entities: [E-farebox]
+  tier: code
+  carriers:
+    - document: code/farebox/client.py
+      location: "PricingClient.fetch_rate"
+      version: c1

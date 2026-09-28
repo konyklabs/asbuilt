@@ -1,0 +1,31 @@
+{
+  "id": "pull/14",
+  "number": 14,
+  "title": "Raise the single-ride cap to $30 and the lost-bike fee to $150",
+  "state": "merged",
+  "author": "kasia.brandt",
+  "opened": "2026-07-16T10:00:00-04:00",
+  "closed": "2026-07-22T14:00:00-04:00",
+  "merged_step": "c5",
+  "head_ref": "feat/raise-ride-cap-and-lost-bike-fee",
+  "body": "## Change\n\nTwo fee ceilings move up together in this one:\n\n- A ride can no longer run past $30.00 total.\n- A ride that closes as lost now carries a $150.00 fee.\n\nLinks GW-162 and GW-163.\n\n## Testing\n\nUnit cases for both ceilings updated to the new figures; full pricing and lost-bikes suites pass.",
+  "files": [
+    "farebox/pricing.py",
+    "tests/unit/test_pricing.py",
+    "tests/unit/test_lost_bikes.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-07-17T09:10:00-04:00",
+      "body": "Why $30 and not $35?"
+    },
+    {
+      "id": "comment-2",
+      "author": "dana.whitlock",
+      "created": "2026-07-17T13:40:00-04:00",
+      "body": "We moved off $25.00 because at that ceiling casual riders could just keep a bike out all day, and the busiest stations were empty by noon. $30.00 was the number that kept a full-day rider from coming out ahead of paying by the minute, without pricing out anyone doing a normal errand run."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-106",
+  "key": "GW-106",
+  "summary": "Flaky test: station status under parallel runs",
+  "status": "To Do",
+  "type": "bug",
+  "reporter": "sami.haddad",
+  "assignee": null,
+  "created": "2025-10-23T21:22:00-04:00",
+  "updated": "2025-11-01T00:22:00-04:00",
+  "labels": [
+    "fleet",
+    "bug"
+  ],
+  "description": "Expected: the station-status suite passes the same way whether it runs alone or alongside the rest of the suite. Actual: it flakes under `pytest -n auto` -- looks like two workers are hitting the same seeded station and racing on its dock counts.",
+  "comments": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-154",
+  "key": "GW-154",
+  "summary": "Replace the pager escalation spreadsheet",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "tobin.achebe",
+  "assignee": null,
+  "created": "2026-05-27T21:58:00-04:00",
+  "updated": "2026-05-30T00:58:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "The pager escalation list still lives in a shared spreadsheet that's easy to forget to update when someone changes teams. Worth moving it into the on-call tool instead.",
+  "comments": []
+}

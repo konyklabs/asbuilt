@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-119",
+  "key": "GW-119",
+  "summary": "Remove dead code in the station seeder",
+  "status": "To Do",
+  "type": "task",
+  "reporter": "priya.lund",
+  "assignee": null,
+  "created": "2025-12-21T09:53:00-05:00",
+  "updated": "2025-12-24T12:53:00-05:00",
+  "labels": [
+    "fleet",
+    "task"
+  ],
+  "description": "The station seeder script used for local development still has a branch for an old CSV import format nobody uses anymore. Worth deleting so new engineers don't trip over it.",
+  "comments": []
+}

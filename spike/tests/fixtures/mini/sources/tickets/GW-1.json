@@ -1,0 +1,12 @@
+{
+  "key": "GW-1",
+  "summary": "Add a refunds module",
+  "description": "The refunds module was added to support automatic processing.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "test.author",
+      "body": "Refund fee is waived for memberships over one year."
+    }
+  ]
+}

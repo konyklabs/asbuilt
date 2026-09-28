@@ -1,0 +1,123 @@
+{
+  "numTotalTestSuites": 8,
+  "numPassedTestSuites": 8,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 4,
+  "numPassedTests": 4,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1790603019429,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "maintenanceSweep"
+          ],
+          "fullName": "maintenanceSweep locks a bike with 3 fault reports in 7 days and opens a ticket",
+          "status": "passed",
+          "title": "locks a bike with 3 fault reports in 7 days and opens a ticket",
+          "duration": 2.543582999999998,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1790603019541,
+      "endTime": 1790603019543.5437,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/maintenanceSweep.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "nightlyRebalance"
+          ],
+          "fullName": "nightlyRebalance orders a rebalance for a station under 20% or over 90% full",
+          "status": "passed",
+          "title": "orders a rebalance for a station under 20% or over 90% full",
+          "duration": 2.2849590000000006,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1790603019535,
+      "endTime": 1790603019537.285,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/nightlyRebalance.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "rideEvents"
+          ],
+          "fullName": "rideEvents counts ride.completed toward the return station's demand",
+          "status": "passed",
+          "title": "counts ride.completed toward the return station's demand",
+          "duration": 1.8322080000000085,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1790603019530,
+      "endTime": 1790603019531.8323,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/rideEvents.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "stormPause"
+          ],
+          "fullName": "stormPause pauses rebalancing while the latest Skyglass severity is 3 or more",
+          "status": "passed",
+          "title": "pauses rebalancing while the latest Skyglass severity is 3 or more",
+          "duration": 1.924082999999996,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1790603019533,
+      "endTime": 1790603019534.924,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/stormPause.test.ts"
+    }
+  ],
+  "metadata": {
+    "commit": "2cb7ba0df8b825fc642f3eab40d084d19ccdc6c9",
+    "step": "c6"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-115",
+  "key": "GW-115",
+  "summary": "Allow check-in at the full stadium station on event nights",
+  "status": "Done",
+  "type": "story",
+  "reporter": "priya.lund",
+  "assignee": "priya.lund",
+  "created": "2025-12-02T10:30:00-05:00",
+  "updated": "2026-01-08T15:00:00-05:00",
+  "labels": [
+    "fleet",
+    "story"
+  ],
+  "description": "During the stadium concert series, the station nearby fills up early in the evening and turned-away riders end up dumping bikes on the sidewalk. Fleet wants check-ins allowed there even once the station shows full on event nights.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "sami.haddad",
+      "created": "2025-12-04T11:10:00-05:00",
+      "body": "We already have a lever for this. Flip overflow_parking on for that station and a bike can dock there even once it's showing full -- no new code needed for event nights."
+    }
+  ]
+}

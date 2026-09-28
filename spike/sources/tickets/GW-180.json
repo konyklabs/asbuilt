@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-180",
+  "key": "GW-180",
+  "summary": "Rider app: larger tap targets on the station list",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "mara.voss",
+  "assignee": "mara.voss",
+  "created": "2026-09-21T21:00:00-04:00",
+  "updated": "2026-09-23T00:00:00-04:00",
+  "labels": [
+    "fares",
+    "bug"
+  ],
+  "description": "Riders on the station list screen have complained the tap targets are too small to hit reliably one-handed.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2026-09-22T21:00:00-04:00",
+      "body": "Agreed, bumping the row height should fix most of it."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-169",
+  "key": "GW-169",
+  "summary": "Load test the check-out endpoint before the summer",
+  "status": "Done",
+  "type": "task",
+  "reporter": "sami.haddad",
+  "assignee": "sami.haddad",
+  "created": "2026-08-03T09:43:00-04:00",
+  "updated": "2026-08-11T12:43:00-04:00",
+  "labels": [
+    "fleet",
+    "task"
+  ],
+  "description": "Fleet wants the check-out endpoint load tested before the summer ridership surge, to make sure it holds up under morning-commute traffic.",
+  "comments": []
+}

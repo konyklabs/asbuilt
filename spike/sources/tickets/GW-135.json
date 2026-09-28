@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-135",
+  "key": "GW-135",
+  "summary": "Rider app crashes on older phones when opening the map",
+  "status": "To Do",
+  "type": "bug",
+  "reporter": "mara.voss",
+  "assignee": null,
+  "created": "2026-03-03T09:45:00-05:00",
+  "updated": "2026-03-04T12:45:00-05:00",
+  "labels": [
+    "fares",
+    "bug"
+  ],
+  "description": "The rider app crashes on some older phone models specifically when opening the station map, most reports coming from a couple of years-old budget devices.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2026-03-04T09:45:00-05:00",
+      "body": "Can repro on one of the older loaner phones -- will attach a crash log."
+    }
+  ]
+}

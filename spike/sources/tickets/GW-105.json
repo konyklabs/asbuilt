@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-105",
+  "key": "GW-105",
+  "summary": "E-bike surcharge behind a flag",
+  "status": "Done",
+  "type": "story",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2025-10-20T10:00:00-04:00",
+  "updated": "2025-11-30T16:00:00-05:00",
+  "labels": [
+    "product",
+    "story"
+  ],
+  "description": "Product wants an e-bike per-minute surcharge that fares can turn on and off without a deploy, so it needs its own flag. The ask: once ebike_surcharge is flipped on, every minute of an e-bike ride that actually gets billed should pick up an extra $0.10 on top of the normal rate.",
+  "comments": []
+}

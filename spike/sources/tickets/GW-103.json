@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-103",
+  "key": "GW-103",
+  "summary": "Typo on the membership sign-up page",
+  "status": "To Do",
+  "type": "bug",
+  "reporter": "kasia.brandt",
+  "assignee": null,
+  "created": "2025-10-10T09:01:00-04:00",
+  "updated": "2025-10-15T12:01:00-04:00",
+  "labels": [
+    "fares",
+    "bug"
+  ],
+  "description": "\"recieve\" should be \"receive\" in the confirmation copy on the membership sign-up page.",
+  "comments": []
+}

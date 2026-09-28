@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-149",
+  "key": "GW-149",
+  "summary": "Refund request from an annual member for a ride three weeks ago",
+  "status": "Done",
+  "type": "task",
+  "reporter": "joel.ferraz",
+  "assignee": "joel.ferraz",
+  "created": "2026-05-04T09:20:00-04:00",
+  "updated": "2026-05-06T17:00:00-04:00",
+  "labels": [
+    "support",
+    "task"
+  ],
+  "description": "An annual member is asking for a refund on a ride from a few weeks back, saying the bike's brakes felt unsafe the whole way.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "joel.ferraz",
+      "created": "2026-05-04T09:40:00-04:00",
+      "body": "Checked our policy -- riders get a 30-day window after the ride to ask for a refund, so this one's well inside it. Processing it."
+    }
+  ]
+}

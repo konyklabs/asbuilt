@@ -1,0 +1,5 @@
+- id: X-001
+  facts: [F-005, F-003]
+  kind: wiki-vs-test
+  winner: F-003
+  label: refutes

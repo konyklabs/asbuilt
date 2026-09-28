@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-179",
+  "key": "GW-179",
+  "summary": "Retire the old station kiosk screens",
+  "status": "In Progress",
+  "type": "task",
+  "reporter": "lev.anand",
+  "assignee": "lev.anand",
+  "created": "2026-09-17T09:53:00-04:00",
+  "updated": "2026-09-26T12:53:00-04:00",
+  "labels": [
+    "platform",
+    "task"
+  ],
+  "description": "The old kiosk screens at a handful of legacy stations are past end of life and increasingly unreliable; fleet wants them retired now that most riders use the app.",
+  "comments": []
+}

@@ -1,0 +1,24 @@
+{
+  "id": "ticket/GW-129",
+  "key": "GW-129",
+  "summary": "Spring promotion: 45 free minutes for members",
+  "status": "Done",
+  "type": "story",
+  "reporter": "dana.whitlock",
+  "assignee": "dana.whitlock",
+  "created": "2026-02-02T10:00:00-05:00",
+  "updated": "2026-02-20T15:40:00-05:00",
+  "labels": [
+    "product",
+    "story"
+  ],
+  "description": "Marketing wants a headline offer for the spring promotion: more free riding time for members, starting as soon as fares can ship it. The ask is 45 minutes of free riding at the front of every ride, up from what members get today.",
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "kasia.brandt",
+      "created": "2026-02-17T10:10:00-05:00",
+      "body": "Shipped in PR 9."
+    }
+  ]
+}

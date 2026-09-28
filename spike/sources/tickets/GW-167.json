@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-167",
+  "key": "GW-167",
+  "summary": "Payment captures failing during Tollbooth Pay brownouts",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "kasia.brandt",
+  "assignee": "kasia.brandt",
+  "created": "2026-07-25T11:20:00-04:00",
+  "updated": "2026-08-04T16:00:00-04:00",
+  "labels": [
+    "fares",
+    "bug"
+  ],
+  "description": "During a recent Tollbooth Pay brownout, a batch of payment captures failed outright instead of quietly recovering once the provider came back. Expected: the client rides out a brownout by retrying before giving up. Actual: today's behaviour is 3 retries with backoff before a call gets marked failed for good, and that's exactly what played out here -- captures that didn't recover inside those 3 attempts ended up marked failed and needed a manual re-run once Tollbooth Pay came back.",
+  "comments": []
+}

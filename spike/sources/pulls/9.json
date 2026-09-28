@@ -1,0 +1,24 @@
+{
+  "id": "pull/9",
+  "number": 9,
+  "title": "Raise member free minutes to 45 for the spring promotion",
+  "state": "merged",
+  "author": "kasia.brandt",
+  "opened": "2026-02-17T10:05:00-05:00",
+  "closed": "2026-02-20T15:30:00-05:00",
+  "merged_step": "c2",
+  "head_ref": "feat/spring-promo-45-free-minutes",
+  "body": "## Change\n\nDuring the spring promotion, members get 45 minutes of free riding at the top of every trip instead of the usual free window.\n\n## Testing\n\nUpdated the pricing e2e suite for the new free-minutes case and reran it locally; green.",
+  "files": [
+    "farebox/pricing.py",
+    "tests/e2e/test_pricing.py"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "mara.voss",
+      "created": "2026-02-18T09:20:00-05:00",
+      "body": "Looks good. Can you link the promotion copy so support has the same numbers we're shipping?"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# Mini fixture history: four steps, exercising the "content through that
+# step" overlay rule — see bench/build.py's module docstring. farebox/pricing.py
+# has two overlays (c1, c3) plus a final content; farebox/refunds.py is added
+# at c3 via a history/c2/farebox/refunds.py.absent marker.
+- id: c1
+  date: "2026-01-01T09:00:00-05:00"
+  message: "Import farebox with member free minutes at 15"
+- id: c2
+  date: "2026-02-01T09:00:00-05:00"
+  message: "Raise member free minutes to 25 for a trial promotion"
+- id: c3
+  date: "2026-03-01T09:00:00-05:00"
+  message: "Add the refunds module"
+- id: c4
+  date: "2026-04-01T09:00:00-05:00"
+  message: "End the trial promotion: member free minutes back to 15"

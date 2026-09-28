@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-168",
+  "key": "GW-168",
+  "summary": "Van shifts start at 05:30 from August",
+  "status": "Done",
+  "type": "story",
+  "reporter": "tobin.achebe",
+  "assignee": "tobin.achebe",
+  "created": "2026-07-27T08:00:00-04:00",
+  "updated": "2026-08-03T09:00:00-04:00",
+  "labels": [
+    "ops",
+    "story"
+  ],
+  "description": "Ops is adjusting the rebalancing schedule for the summer heat, moving the van shift earlier in the day: 05:30 start, effective from August.",
+  "comments": []
+}

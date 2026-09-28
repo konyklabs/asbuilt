@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-158",
+  "key": "GW-158",
+  "summary": "Bike serial numbers with leading zeros are truncated",
+  "status": "Done",
+  "type": "bug",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2026-06-14T21:26:00-04:00",
+  "updated": "2026-06-21T00:26:00-04:00",
+  "labels": [
+    "ops",
+    "bug"
+  ],
+  "description": "Some bike serial numbers with leading zeros are getting truncated somewhere in the import pipeline, so a handful of bikes show up with the wrong serial in the ops console.",
+  "comments": []
+}

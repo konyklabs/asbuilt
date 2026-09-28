@@ -1,0 +1,24 @@
+{
+  "id": "pull/17",
+  "number": 17,
+  "title": "Bump test dependencies",
+  "state": "closed",
+  "author": "lev.anand",
+  "opened": "2026-08-06T09:00:00-04:00",
+  "closed": "2026-08-07T12:00:00-04:00",
+  "merged_step": null,
+  "head_ref": "chore/bump-test-deps",
+  "body": "## Change\n\nRoutine dependency bump for the test toolchain.",
+  "files": [
+    "pyproject.toml",
+    "uv.lock"
+  ],
+  "comments": [
+    {
+      "id": "comment-1",
+      "author": "ren.okafor",
+      "created": "2026-08-07T12:00:00-04:00",
+      "body": "Closing in favour of the follow-up bump -- this one's already a version behind."
+    }
+  ]
+}

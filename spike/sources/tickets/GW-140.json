@@ -1,0 +1,17 @@
+{
+  "id": "ticket/GW-140",
+  "key": "GW-140",
+  "summary": "Translate the rider app into Spanish",
+  "status": "Done",
+  "type": "task",
+  "reporter": "ren.okafor",
+  "assignee": "ren.okafor",
+  "created": "2026-03-25T21:20:00-04:00",
+  "updated": "2026-04-01T00:20:00-04:00",
+  "labels": [
+    "ops",
+    "task"
+  ],
+  "description": "Product wants the rider app translated into Spanish ahead of the fall marketing push in a couple of the bigger metro markets.",
+  "comments": []
+}

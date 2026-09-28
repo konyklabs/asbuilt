@@ -1,0 +1,19 @@
+{
+  "_comment": "Hand-authored stub in the vitest JSON reporter's shape, to test check_consistency's vitest-format handling. Unlike runs/pytest-c*.json (genuine pytest --json-report output), this file is not produced by an actual vitest run — the mini fixture has no dispatch/package.json, so bench/runs.py never invokes vitest for it. The fullName field's single-space join (not ' > ') matches genuine vitest 5.0.2 output, confirmed 2026-09-28 by capturing real `npx vitest run --reporter=json` output from spike/system/dispatch; deliberately kept single-space here so it does NOT match truth's ' > '-joined location, proving check_consistency reconstructs ancestorTitles+title itself rather than trusting fullName.",
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["refunds"],
+          "title": "publishes a refund.completed event",
+          "fullName": "refunds publishes a refund.completed event",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "commit": "ebdf27d3ec0767bd268eac7e8fb5663f4bf32ff2",
+    "step": "c1"
+  }
+}
