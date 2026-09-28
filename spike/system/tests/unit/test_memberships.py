@@ -1,4 +1,4 @@
-"""Membership grace period after a failed renewal."""
+"""Membership transition after a renewal charge fails."""
 
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ FAILED_AT = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 @pytest.mark.unit
 def test_membership_lapses_7_days_after_failed_renewal():
-    """F-016: a membership lapses 7 days after a failed renewal."""
+    """Single failed-charge event on a healthy record; asserts the exact
+    date math behind the new deadline field."""
     membership = Membership(
         id="membership-1",
         rider_id="rider-1",

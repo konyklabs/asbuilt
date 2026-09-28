@@ -24,5 +24,16 @@ describe("nightlyRebalance", () => {
     const stationIds = plans.map((plan) => plan.stationId).sort();
     expect(stationIds).toEqual(["station-high", "station-low"]);
     expect(listRebalanceOrders()).toHaveLength(2);
+
+    resetRebalanceOrders();
+    const boundaryPlans = await nightlyRebalance({
+      stationFills: async () => [
+        { stationId: "station-low-edge", fillRatio: 0.2 },
+        { stationId: "station-high-edge", fillRatio: 0.9 },
+      ],
+      now: () => now,
+    });
+    expect(boundaryPlans).toEqual([]);
+    expect(listRebalanceOrders()).toHaveLength(0);
   });
 });

@@ -30,9 +30,13 @@ def _current_commit() -> str | None:
     return result.stdout.strip()
 
 
+@pytest.hookimpl(optionalhook=True)
 def pytest_json_modifyreport(json_report):
     """Record the commit and step a run was executed against, so the
-    harness can attribute a run to the tree it ran against."""
+    harness can attribute a run to the tree it ran against. Marked
+    optional so pytest doesn't reject this hookimpl when pytest-json-report
+    itself hasn't registered the hookspec (i.e. --json-report was not
+    passed)."""
     json_report["metadata"] = {
         "commit": _current_commit(),
         "step": os.environ.get("GEARWELL_STEP"),
@@ -48,9 +52,8 @@ class System:
 
 
 def _farebox_transport_for(farebox_app: FareboxApp):
-    """A dockyard->farebox transport that calls farebox's own endpoint
-    functions in-process, standing in for the wire call between the two
-    services (F-055)."""
+    """Build a callable that routes a dockyard outbound call to the
+    matching farebox handler, in-process, standing in for the network."""
 
     def transport(method: str, path: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         if method == "POST" and path.startswith("/internal/rides/") and path.endswith("/close"):

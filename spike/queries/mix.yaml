@@ -1,6 +1,10 @@
 # The benchmark's fixed query mix, in bench/run.py's shape (see its docstring).
-# 20 explain, 15 search, 10 ask, 4 contradictions, 3 stale; weights are percentages.
-# explain: expected = every fact tagged with the entity (derived by bench/score.py).
+# Entities are named, never given as E- ids: explain and contradictions pass an
+# entity's `name` from truth/entities.yaml, or, for q-explain-alias-*, one of its
+# aliases; the scorer resolves both through truth/aliases.yaml, which arms never read.
+# 25 explain (20 by name, 5 by alias), 17 search and 13 ask (5 of them, q-impact-*,
+# are multi-hop impact questions), 4 contradictions, 3 stale; weights are percentages.
+# explain: expected = every fact tagged with the resolved entity (bench/score.py).
 # contradictions: expected = every X- whose facts carry the entity (every X- when null).
 # stale: expected = every S- whose changed_by step is dated after `since`.
 weights:
@@ -12,64 +16,79 @@ weights:
 queries:
 - id: q-explain-01
   surface: explain
-  entity: E-farebox
+  entity: farebox
 - id: q-explain-02
   surface: explain
-  entity: E-dockyard
+  entity: dockyard
 - id: q-explain-03
   surface: explain
-  entity: E-dispatch
+  entity: dispatch
 - id: q-explain-04
   surface: explain
-  entity: E-rule-member-free-minutes
+  entity: member-free-minutes
 - id: q-explain-05
   surface: explain
-  entity: E-rule-single-ride-cap
+  entity: single-ride-cap
 - id: q-explain-06
   surface: explain
-  entity: E-rule-lost-bike-fee
+  entity: lost-bike-fee
 - id: q-explain-07
   surface: explain
-  entity: E-rule-membership-grace
+  entity: membership-grace
 - id: q-explain-08
   surface: explain
-  entity: E-rule-refund-auto-approve
+  entity: refund-auto-approve
 - id: q-explain-09
   surface: explain
-  entity: E-rule-storm-pause
+  entity: storm-pause
 - id: q-explain-10
   surface: explain
-  entity: E-rule-fault-threshold
+  entity: fault-threshold
 - id: q-explain-11
   surface: explain
-  entity: E-rule-payment-retry
+  entity: payment-retry
 - id: q-explain-12
   surface: explain
-  entity: E-int-tollbooth-pay
+  entity: Tollbooth Pay
 - id: q-explain-13
   surface: explain
-  entity: E-int-skyglass
+  entity: Skyglass
 - id: q-explain-14
   surface: explain
-  entity: E-queue-ride-events
+  entity: ride.events
 - id: q-explain-15
   surface: explain
-  entity: E-table-rides
+  entity: rides
 - id: q-explain-16
   surface: explain
-  entity: E-table-feature-flags
+  entity: feature_flags
 - id: q-explain-17
   surface: explain
-  entity: E-job-nightly-rebalance
+  entity: nightly-rebalance
 - id: q-explain-18
   surface: explain
-  entity: E-job-maintenance-sweep
+  entity: maintenance-sweep
 - id: q-explain-19
   surface: explain
-  entity: E-flag-dynamic-pricing
+  entity: dynamic_pricing
 - id: q-explain-20
   surface: explain
-  entity: E-endpoint-refund
+  entity: POST /refunds
+- id: q-explain-alias-01
+  surface: explain
+  entity: the payment provider
+- id: q-explain-alias-02
+  surface: explain
+  entity: the weather service
+- id: q-explain-alias-03
+  surface: explain
+  entity: the ride events queue
+- id: q-explain-alias-04
+  surface: explain
+  entity: grace period
+- id: q-explain-alias-05
+  surface: explain
+  entity: the ride cap
 - id: q-search-01
   surface: search
   query: how is a ride priced for a member
@@ -182,18 +201,38 @@ queries:
   surface: ask
   question: How many bikes can one rider have checked out at the same time?
   expects: [F-019]
+- id: q-impact-01
+  surface: ask
+  question: What stops working if the weather_readings table is dropped?
+  expects: [F-022, F-091, F-066, F-024]
+- id: q-impact-02
+  surface: ask
+  question: What does a ride.completed event trigger downstream?
+  expects: [F-050, F-053, F-058]
+- id: q-impact-03
+  surface: search
+  query: what is affected when Tollbooth Pay is down
+  expects: [F-023, F-076, F-099]
+- id: q-impact-04
+  surface: ask
+  question: Which services does a lost bike touch, from detection to charge?
+  expects: [F-069, F-010, F-012, F-026]
+- id: q-impact-05
+  surface: search
+  query: what changes for check-in when the overflow_parking flag is turned off
+  expects: [F-017, F-051]
 - id: q-contradictions-01
   surface: contradictions
   entity: null
 - id: q-contradictions-02
   surface: contradictions
-  entity: E-rule-member-free-minutes
+  entity: member-free-minutes
 - id: q-contradictions-03
   surface: contradictions
-  entity: E-job-nightly-rebalance
+  entity: nightly-rebalance
 - id: q-contradictions-04
   surface: contradictions
-  entity: E-table-rides
+  entity: rides
 - id: q-stale-01
   surface: stale
   since: '2026-03-01T00:00:00-05:00'

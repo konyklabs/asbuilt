@@ -1,7 +1,4 @@
-"""Invoice and invoice line models.
-
-F-072: farebox stores money as integer cents in amount_cents columns.
-"""
+"""Invoice and invoice line models."""
 
 from __future__ import annotations
 
@@ -11,7 +8,7 @@ from datetime import date
 
 @dataclass
 class Invoice:
-    """A member's monthly invoice: one per calendar month."""
+    """Groups a rider's charges for one billing period."""
 
     id: str
     rider_id: str
@@ -21,7 +18,7 @@ class Invoice:
 
 @dataclass
 class InvoiceLine:
-    """One ride's charge on an invoice, stored as amount_cents."""
+    """A single charge row, linked back to the ride it came from."""
 
     id: str
     ride_id: str

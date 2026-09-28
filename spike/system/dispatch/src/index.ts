@@ -1,7 +1,7 @@
 /**
- * Entry point: starts the scheduler, the ride.events consumer and the
- * dispatch API.
+ * Process entry point. Left unwired for this fixture: a real deploy would
+ * construct and start each piece here instead of leaving this a no-op.
  */
 export async function main(): Promise<void> {
-  // Composition root for the dispatch process; wired at deploy time.
+  // Intentionally empty; see the module doc comment above.
 }

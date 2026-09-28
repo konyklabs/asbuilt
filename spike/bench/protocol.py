@@ -4,11 +4,14 @@ A prototype ingests the fixture once, then answers the five surfaces the
 README promises agents: search, explain, contradictions, stale, ask. Every
 fact it returns carries at least one citation; the scorer counts a fact
 without one as a false positive, by design (README, "Three properties that
-are not negotiable"). ``Fact.entities`` are entity ids from
-``truth/entities.yaml`` (``E-farebox``, ``E-rule-single-ride-cap``, ...), not
-prose names: the scorer credits a returned fact only when it shares at least
-one entity id with the truth fact, cites one of its carrier documents, and
-states the same numbers.
+are not negotiable"). ``Fact.entities`` are entity NAMES (``farebox``,
+``member-free-minutes``, ...), the ``name`` field in ``truth/entities.yaml``
+— never the ``E-`` id, and never read from ``truth/aliases.yaml``, which
+prototypes never see. The scorer aligns a returned name to a truth id
+through that alias table, so entity resolution is itself measured rather
+than handed to every arm for free (D-013). A returned fact still credits
+only when it shares a resolved entity, cites one of the truth fact's carrier
+documents, and states the same numbers.
 
 Document ids are ``<kind>/<id>`` and are shared by ``truth/``, ``sources/``
 and every prototype:
@@ -58,6 +61,18 @@ class Citation:
     version: str | None = None
 
 
+@dataclass(frozen=True)
+class Claim:
+    """A numeric fact's identity across re-ingest (D-013): (entity,
+    attribute, value, unit), e.g. (member-free-minutes, minutes, 30, None).
+    Lets a numeric contradiction be a join instead of a model call."""
+
+    entity: str
+    attribute: str
+    value: float | int | str
+    unit: str | None = None
+
+
 @dataclass
 class Fact:
     statement: str
@@ -65,6 +80,8 @@ class Fact:
     entities: tuple[str, ...]
     tier: Tier
     citations: tuple[Citation, ...]
+    id: str | None = None  # a stable id of the prototype's own choosing
+    claim: Claim | None = None  # set when the statement is a numeric claim
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     confidence: float | None = None
@@ -97,13 +114,37 @@ class IngestReport:
     dollars: float
     services: tuple[str, ...]  # what had to be running, e.g. ("postgres",) or ("neo4j",)
     documents: int  # Documents ingested, all kinds
+    model: str | None = None  # the extraction model id, e.g. "claude-sonnet-5"
+    embedder: str | None = None  # the embedding model id, if any
+    calls: int = 0  # model calls made (bench.llm.CountingClient's count)
+    embedding_tokens: int = 0
+    cache_tokens: int = 0  # prompt-cache tokens, counted separately from input/output
 
 
 @runtime_checkable
 class Prototype(Protocol):
     name: str
 
-    def ingest(self, fixture_root: Path) -> IngestReport: ...
+    def ingest(
+        self,
+        fixture_root: Path,
+        entity_kinds: tuple[str, ...],
+        incremental: bool = False,
+    ) -> IngestReport:
+        """Ingest `fixture_root` (an assembled ingest root, never the raw
+        fixture — see bench/run.py). `entity_kinds` is the fixed vocabulary
+        every arm gets (service, table, rule, job, flag, integration, queue,
+        team, endpoint), the same set truth/entities.yaml uses. When
+        `incremental` is True, `fixture_root` is a later checkout than an
+        earlier call in the same run (`bench/run.py --incremental` ingests
+        through the fixture's second-to-last step, then again through its
+        last step with this set) and this call must advance the prototype's
+        own existing store rather than start over. The harness records both
+        calls' IngestReports and their delta (`ingest_incremental` in the
+        results file); whether the resulting store avoided duplicate facts
+        and superseded correctly is for the scorer to check separately, not
+        a guarantee this call makes on its own."""
+        ...
 
     def explain(self, entity: str) -> list[Fact]: ...
 

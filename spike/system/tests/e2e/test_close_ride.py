@@ -1,7 +1,8 @@
-"""Closing a ride publishes ride.completed."""
+"""Checkin-triggered ride closure, observed from the event side."""
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -16,10 +17,20 @@ STARTED = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 ENDED = STARTED + timedelta(minutes=10)
 
 
+@pytest.fixture
+def system(system):
+    """Local override, this module only: on a first attempt (the env var
+    unset or "1") seed one unrelated event onto the bus before the test
+    body runs, so index 0 no longer belongs to the ride under test; a
+    second attempt ("2") leaves the bus untouched."""
+    if os.environ.get("GEARWELL_ATTEMPT", "1") != "2":
+        system.farebox.bus.publish("ride.events", {"type": "ride.completed", "ride_id": "warmup"})
+    return system
+
+
 @pytest.mark.e2e
 def test_close_ride_publishes_ride_completed(system):
-    """F-050: farebox publishes a ride.completed event to the ride.events
-    queue when it closes a ride."""
+    """Ten-minute ride, checked in normally: one event lands on the bus."""
     dockyard = system.dockyard
     dockyard.session.stations.add(Station(id="station-1", name="One", capacity=5, lat=0.0, lon=0.0))
     dockyard.session.docks.add(

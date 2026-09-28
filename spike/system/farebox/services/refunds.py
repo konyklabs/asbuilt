@@ -10,22 +10,17 @@ from farebox.db import Session
 from farebox.events import EventBus, publish_ride_refunded
 from farebox.models.refund import Refund, RefundStatus
 
-REFUND_WINDOW_DAYS = 14
-"""F-013: a refund requested more than 14 days after the ride ended is
-rejected."""
+REFUND_WINDOW_DAYS = 14  # days, request cutoff
 
-AUTO_APPROVE_LIMIT = Decimal("5.00")
-"""F-014: when the refund_auto_approve flag is on, a refund under $5.00 is
-approved without review."""
+AUTO_APPROVE_LIMIT = Decimal("5.00")  # dollars, strict upper bound
 
 
 class RefundWindowExpiredError(Exception):
-    """Raised when a refund is requested more than REFUND_WINDOW_DAYS after
-    the ride ended."""
+    """Raised when a request arrives after REFUND_WINDOW_DAYS has passed."""
 
 
 class RefundExceedsChargeError(Exception):
-    """Raised when a refund would exceed the ride's charge."""
+    """Guards against a refund larger than what the rider actually paid."""
 
 
 def request_refund(
@@ -37,14 +32,12 @@ def request_refund(
     now: datetime,
     auto_approve_enabled: bool = False,
 ) -> Refund:
-    """Create a refund request.
+    """Validate and record a refund request.
 
-    F-013: rejects a request made more than REFUND_WINDOW_DAYS after the
-    ride ended.
-    F-028: rejects a request for more than was charged for the ride.
-    F-014: when auto_approve_enabled and the amount is under
-    AUTO_APPROVE_LIMIT, the refund is approved without a fares agent's
-    review; otherwise it is created in status requested and waits for one.
+    Raises if the window has passed or the amount exceeds what was
+    charged. Otherwise stores the request; when `auto_approve_enabled`
+    and the amount is under AUTO_APPROVE_LIMIT it starts pre-approved,
+    else it starts pending manual review.
     """
     if now - ride_ended_at > timedelta(days=REFUND_WINDOW_DAYS):
         raise RefundWindowExpiredError(ride_id)
@@ -61,8 +54,7 @@ def request_refund(
 
 
 def pay_refund(session: Session, bus: EventBus, refund: Refund) -> Refund:
-    """F-056: farebox publishes a ride.refunded event to the ride.events
-    queue when a refund is paid."""
+    """Flip a refund to paid and emit the corresponding event."""
     refund.status = RefundStatus.PAID
     publish_ride_refunded(bus, refund)
     return refund

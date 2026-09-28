@@ -27,11 +27,8 @@ def close_ride_endpoint(
     dynamic_pricing_enabled: bool,
     latest_severity: int | None,
 ) -> tuple[int, dict[str, Any]]:
-    """POST /internal/rides/{id}/close.
-
-    F-055: at check-in, dockyard calls this endpoint to price and close
-    the ride.
-    """
+    """Handler for the internal close-ride endpoint dockyard calls at
+    check-in; unpacks its arguments onto close_ride and wraps the result."""
     result = close_ride(
         session,
         bus,
@@ -53,9 +50,7 @@ def close_ride_endpoint(
 def close_lost_rides_endpoint(
     session: Session, bus: EventBus, now: datetime, open_rides: list[OpenRide]
 ) -> tuple[int, dict[str, Any]]:
-    """POST /internal/rides/close-lost.
-
-    F-069: the maintenance-sweep job calls this endpoint on every run.
-    """
+    """Handler dispatch's maintenance job calls with the open rides it
+    found stale; delegates the closing work to close_lost_rides."""
     closed = close_lost_rides(session, bus, now, open_rides)
     return 200, {"closed": closed}

@@ -32,9 +32,9 @@ def close_ride(
     dynamic_pricing_enabled: bool,
     latest_severity: int | None,
 ) -> dict[str, Any]:
-    """Price the ride, charge a casual rider through Tollbooth Pay
-    (F-076: a casual ride is charged to the rider's card through Tollbooth
-    Pay when the ride closes), and publish ride.completed (F-050)."""
+    """Price a closing ride, record the charge, capture payment from a
+    casual rider's card via the payment client, and emit a completion
+    event either way."""
     membership = session.memberships.for_rider(rider_id)
     is_member = pricing_class(membership) == "member"
 

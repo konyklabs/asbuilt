@@ -12,7 +12,7 @@ export interface WeatherPollDeps {
   stations: () => Promise<StationLocation[]>;
 }
 
-/** Polls Skyglass for every station and stores the latest reading. */
+/** Sequential, one station at a time; a slow or failing station currently blocks the rest of the batch. */
 export async function weatherPoll(deps: WeatherPollDeps): Promise<void> {
   for (const station of await deps.stations()) {
     const reading = await deps.skyglass.fetchSeverity(station.lat, station.lon);

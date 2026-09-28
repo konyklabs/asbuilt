@@ -1,8 +1,4 @@
-"""Station status read model.
-
-F-052: GET /stations/{id}/status returns the station's available bikes,
-empty docks and fill ratio.
-"""
+"""Read model summarising one station's current dock occupancy."""
 
 from __future__ import annotations
 
@@ -17,7 +13,7 @@ class UnknownStationError(Exception):
 
 @dataclass
 class StationStatus:
-    """A station's available bikes, empty docks and fill ratio."""
+    """Tallied dock counts for one station at a point in time."""
 
     station_id: str
     available_bikes: int
@@ -26,7 +22,8 @@ class StationStatus:
 
 
 def station_status(session: Session, station_id: str) -> StationStatus:
-    """Compute a station's available bikes, empty docks and fill ratio."""
+    """Count each dock at `station_id` as filled or empty and derive the
+    fraction filled."""
     station = session.stations.get(station_id)
     if station is None:
         raise UnknownStationError(station_id)

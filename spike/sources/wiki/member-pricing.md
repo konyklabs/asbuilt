@@ -9,7 +9,7 @@ space: GW
 
 # Member pricing
 
-Members get a nicer deal than casual riders, and this page is where I keep the two numbers that make up that deal so I stop answering the same Slack question every week. If a rider or a support agent asks "what am I actually paying for," this is the page to send them.
+Members get a nicer deal than casual riders, and this page is where I keep the two numbers that make up that deal so I stop answering the same chat question every week. If a rider or a support agent asks "what am I actually paying for," this is the page to send them.
 
 ## Per Minute
 

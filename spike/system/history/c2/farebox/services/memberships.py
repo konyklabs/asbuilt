@@ -6,21 +6,21 @@ from datetime import datetime, timedelta
 
 from farebox.models.membership import Membership, MembershipStatus
 
-GRACE_DAYS = 3
-"""F-015: a membership lapses 3 days after a failed renewal."""
+GRACE_DAYS = 3  # days a lapsed-payment membership stays in grace
 
 
 def handle_failed_renewal(membership: Membership, failed_at: datetime) -> Membership:
-    """F-075: a failed renewal reported by the Tollbooth Pay webhook moves
-    the membership to status grace and sets grace_ends_at."""
+    """Transition `membership` off active billing as of `failed_at`,
+    stamping the cutoff by which the payment method needs fixing."""
     membership.status = MembershipStatus.GRACE
     membership.grace_ends_at = failed_at + timedelta(days=GRACE_DAYS)
     return membership
 
 
 def pricing_class(membership: Membership | None) -> str:
-    """F-029: a rider whose membership is in grace is priced as a member,
-    and a rider whose membership has lapsed is priced as a casual rider."""
+    """Map a membership record to the pricing tier a ride should use:
+    "member" while active or in grace, "casual" otherwise, including
+    when there's no membership at all."""
     if membership is None:
         return "casual"
     if membership.status in (MembershipStatus.ACTIVE, MembershipStatus.GRACE):

@@ -7,3 +7,11 @@
   name: member-free-minutes
   owner: E-farebox
   summary: "How many free minutes a member gets before billing starts."
+- id: E-team-fares
+  kind: team
+  name: fares
+  summary: "Owns farebox (mention-guard test fixture: konyklabs/asbuilt#7)."
+- id: E-team-ops
+  kind: team
+  name: ops
+  summary: "Owns dispatch (mention-guard test fixture: konyklabs/asbuilt#7)."

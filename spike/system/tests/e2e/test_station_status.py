@@ -1,4 +1,4 @@
-"""Station status read model."""
+"""Station status, exercised through the public read endpoint."""
 
 from __future__ import annotations
 
@@ -12,8 +12,7 @@ from dockyard.models.station import Station
 
 @pytest.mark.e2e
 def test_station_status_reports_fill_ratio(system):
-    """F-052: GET /stations/{id}/status returns the station's available
-    bikes, empty docks and fill ratio."""
+    """Four-dock station, three occupied: response matches the counts."""
     dockyard = system.dockyard
     dockyard.session.stations.add(Station(id="station-1", name="One", capacity=4, lat=0.0, lon=0.0))
     for i in range(4):

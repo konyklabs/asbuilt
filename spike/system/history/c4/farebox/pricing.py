@@ -4,31 +4,19 @@ from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
 
-MEMBER_FREE_MINUTES = 30
-"""F-003: a member's first 30 minutes of every ride are free."""
+MEMBER_FREE_MINUTES = 30  # minutes, subtracted up front
 
-MEMBER_RATE = Decimal("0.15")
-"""F-005: a member pays $0.15 per minute for every minute after the free
-minutes."""
+MEMBER_RATE = Decimal("0.15")  # USD/min
 
-CASUAL_RATE = Decimal("0.25")
-"""F-006: a rider without a membership pays $0.25 per minute from the
-first minute of the ride."""
+CASUAL_RATE = Decimal("0.25")  # USD/min
 
-CASUAL_UNLOCK_FEE = Decimal("1.00")
-"""F-004: a rider without a membership pays a $1.00 unlock fee for every
-ride."""
+CASUAL_UNLOCK_FEE = Decimal("1.00")  # USD, one-time
 
-EBIKE_SURCHARGE = Decimal("0.10")
-"""F-007: when the ebike_surcharge flag is on, every charged minute of an
-e-bike ride costs an extra $0.10. A member's free minutes are not charged,
-so they carry no surcharge."""
+EBIKE_SURCHARGE = Decimal("0.10")  # USD/min, add-on rate
 
-SINGLE_RIDE_CAP = Decimal("25.00")
-"""F-008: a single ride costs at most $25.00."""
+SINGLE_RIDE_CAP = Decimal("25.00")  # USD, upper clamp
 
-LOST_BIKE_FEE = Decimal("100.00")
-"""F-011: a ride closed as lost is charged a $100.00 lost-bike fee."""
+LOST_BIKE_FEE = Decimal("100.00")  # USD, flat add-on
 
 
 def price_ride(
@@ -38,13 +26,12 @@ def price_ride(
     ebike_surcharge_enabled: bool,
     surge_multiplier: Decimal = Decimal("1"),
 ) -> int:
-    """The ride charge in integer cents.
+    """Compute one ride's charge, in integer cents.
 
-    F-025: the single-ride cap applies to the ride charge including the
-    e-bike surcharge. The charge is the unlock fee (casual riders only)
-    plus charged minutes times the per-minute rate times the surge
-    multiplier, plus charged e-bike minutes times the surcharge, capped at
-    SINGLE_RIDE_CAP.
+    Combines a flat unlock fee (casual riders only), the per-minute rate
+    times charged minutes times the surge multiplier, and an optional
+    e-bike surcharge on those same charged minutes, then clamps the sum
+    to SINGLE_RIDE_CAP before rounding to the nearest cent.
     """
     if is_member:
         charged_minutes = max(minutes - MEMBER_FREE_MINUTES, Decimal(0))

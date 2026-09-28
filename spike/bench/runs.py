@@ -21,8 +21,39 @@ gets the same treatment unconditionally. Either report's top-level ``root``
 home; vitest reports have no such key) is rewritten to ``"."``, so the
 evidence file carries no local path.
 
-Stale-bytecode guard: the same ``repo`` checkout is reused across all six
-``git checkout`` calls, and git does not remove untracked files on checkout,
+Planted-outcome tolerance and reruns (D-013 #7; ``truth/planted-runs.yaml``'s
+own ``runner`` section is the contract this follows): every step's pytest
+suite runs once with ``GEARWELL_ATTEMPT=1``, writing ``pytest-<step>.json``.
+If that attempt has any failed/errored test, exactly those node ids are
+re-invoked with ``GEARWELL_ATTEMPT=2``, writing ``pytest-<step>-rerun.json``
+(document id ``run/pytest-<step>-rerun``) — this is *data-driven*: it is not
+looked up in ``planted-runs.yaml`` first, it happens whenever attempt 1
+actually failed something, whether planted or not, mirroring the real
+contract (``truth/planted-runs.yaml``'s P-1, a genuinely still-failing test,
+reruns exactly like P-3, a flaky one — the *rerun trigger* is "attempt 1
+failed", the *tolerance* is a separate check against the file). Vitest has
+no per-test re-invocation here (unlike pytest, selecting a specific failed
+vitest test by name across files is a name-pattern match, not a plain
+argument list); if its attempt 1 has any failure, the whole suite reruns
+with ``GEARWELL_ATTEMPT=2`` — untested against a real planted case, since
+the current planted set names three pytest tests and no vitest one.
+
+Whether a step's outcome is "unexpected" (and so makes this script exit
+non-zero) is read from ``truth/planted-runs.yaml`` if the truth author has
+written it: top-level ``planted``, a list of entries with a ``test`` (a
+pytest node id, or a vitest ``ancestorTitles + [title]`` joined with
+``" > "``), an ``outcomes`` map (step id -> the outcome attempt 1 is
+expected to report) and, when a rerun is expected, a ``reruns`` map (step id
+-> the outcome attempt 2 is expected to report — P-1's genuinely-broken test
+stays ``"failed"`` there; P-3's flaky one becomes ``"passed"``). A reported
+outcome that matches its entry's table (attempt 1 against ``outcomes``,
+attempt 2 against ``reruns``) is expected; a failed/errored test with no
+matching entry is unexpected; anything else (passed, or a skip, matching or
+not) is left alone. Without ``planted-runs.yaml``, any failure is
+unexpected and reruns still happen (the trigger doesn't need the file).
+
+Stale-bytecode guard: the same ``repo`` checkout is reused across every
+``git checkout`` call, and git does not remove untracked files on checkout,
 so a ``__pycache__/*.pyc`` written by one step's pytest run can survive into
 the next. Python's timestamp-based cache invalidation normally catches a
 changed source file, but two checkouts close enough in wall-clock time can
@@ -60,8 +91,9 @@ pytest ``uv run`` also gets ``--quiet``, so a step's output is just the
 pytest/vitest summary, not uv's own venv-creation and resolution chatter.
 
 CLI: ``uv run python bench/runs.py [--fixture .] [--out build] [--steps c1,c2]``.
-Exits non-zero if any run failed. ``--fixture``/``--out`` are additions for
-testability and default so the documented invocation is unchanged.
+Exits non-zero only on an unexpected failure (see above). ``--fixture``/
+``--out`` are additions for testability and default so the documented
+invocation is unchanged.
 """
 
 from __future__ import annotations
@@ -73,6 +105,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import yaml
+
 
 class RunsError(RuntimeError):
     pass
@@ -83,6 +117,86 @@ def load_commits(out_root: Path) -> dict[str, dict[str, str]]:
     if not commits_path.is_file():
         raise RunsError(f"no commits.json at {commits_path}; run bench/build.py first")
     return json.loads(commits_path.read_text())
+
+
+def load_planted_runs(fixture_root: Path) -> dict | None:
+    """truth/planted-runs.yaml if present, else None. See the module
+    docstring's tolerance section for the shape read here (`planted`, a list
+    of {test, outcomes, reruns})."""
+    path = fixture_root / "truth" / "planted-runs.yaml"
+    if not path.is_file():
+        return None
+    return yaml.safe_load(path.read_text()) or {}
+
+
+def _planted_entry(planted: dict | None, test_id: str) -> dict | None:
+    if not planted:
+        return None
+    for entry in planted.get("planted", []):
+        if entry.get("test") == test_id:
+            return entry
+    return None
+
+
+def _expected_outcome(
+    planted: dict | None, test_id: str, step_id: str, *, attempt: int
+) -> str | None:
+    entry = _planted_entry(planted, test_id)
+    if entry is None:
+        return None
+    table = entry.get("reruns", {}) if attempt == 2 else entry.get("outcomes", {})
+    return table.get(step_id)
+
+
+def _unexpected_pytest_outcomes(
+    report_path: Path, step_id: str, planted: dict | None, *, attempt: int
+) -> list[str]:
+    if not report_path.is_file():
+        return ["<no report written>"]
+    data = json.loads(report_path.read_text())
+    unexpected: list[str] = []
+    # exitcode 0 = all passed, 1 = some test failed — both are per-test
+    # outcomes a planted entry can explain; 2-5 (interrupted, internal
+    # error, usage error, no tests collected) are never tolerable.
+    exitcode = data.get("exitcode")
+    if exitcode not in (0, 1):
+        unexpected.append(f"<pytest exitcode {exitcode}>")
+    for t in data.get("tests", []):
+        outcome = t.get("outcome")
+        nodeid = t.get("nodeid")
+        expected = _expected_outcome(planted, nodeid, step_id, attempt=attempt)
+        if expected is not None:
+            if outcome != expected:
+                unexpected.append(f"{nodeid} (expected {expected!r}, got {outcome!r})")
+            continue
+        if outcome in ("failed", "error"):
+            unexpected.append(nodeid)
+    return unexpected
+
+
+def _unexpected_vitest_outcomes(
+    report_path: Path, step_id: str, planted: dict | None, *, attempt: int
+) -> list[str]:
+    if not report_path.is_file():
+        return ["<no report written>"]
+    data = json.loads(report_path.read_text())
+    unexpected: list[str] = []
+    if not data.get("testResults") and data.get("success") is False:
+        unexpected.append("<vitest run failed with no testResults>")
+    for suite in data.get("testResults", []):
+        for assertion in suite.get("assertionResults", []):
+            full_name = " > ".join(
+                [*assertion.get("ancestorTitles", []), assertion.get("title", "")]
+            )
+            outcome = assertion.get("status")
+            expected = _expected_outcome(planted, full_name, step_id, attempt=attempt)
+            if expected is not None:
+                if outcome != expected:
+                    unexpected.append(f"{full_name} (expected {expected!r}, got {outcome!r})")
+                continue
+            if outcome == "failed":
+                unexpected.append(full_name)
+    return unexpected
 
 
 def _inject_metadata(report_path: Path, sha: str, step_id: str) -> None:
@@ -111,9 +225,10 @@ def _inject_metadata(report_path: Path, sha: str, step_id: str) -> None:
         report_path.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def _step_env(step_id: str) -> dict[str, str]:
+def _step_env(step_id: str, *, attempt: int = 1) -> dict[str, str]:
     env = dict(os.environ)
     env["GEARWELL_STEP"] = step_id
+    env["GEARWELL_ATTEMPT"] = str(attempt)
     # Never cache bytecode in the shared repo checkout — see the module
     # docstring's stale-bytecode guard.
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -144,44 +259,83 @@ def _collect_report(temp_report: Path, report_path: Path) -> None:
         shutil.move(str(temp_report), str(report_path))
 
 
-def _run_pytest(repo: Path, runs_dir: Path, step_id: str, sha: str) -> bool:
+def _run_pytest_once(
+    repo: Path, step_id: str, *, attempt: int, nodeids: list[str] | None = None
+) -> Path:
+    suffix = "-rerun" if attempt == 2 else ""
+    temp_name = f".bench-runs-report-pytest-{step_id}{suffix}.json"
+    temp_report = repo / temp_name
+    temp_report.unlink(missing_ok=True)
+    cmd = [
+        "uv",
+        "run",
+        "--quiet",
+        "--with",
+        "pytest",
+        "--with",
+        "pytest-json-report",
+        "pytest",
+        "-q",
+    ]
+    if nodeids:
+        cmd.extend(nodeids)
+    cmd.extend(["--json-report", "--json-report-file", temp_name])
+    subprocess.run(cmd, cwd=repo, env=_step_env(step_id, attempt=attempt))
+    return temp_report
+
+
+def _run_pytest(repo: Path, runs_dir: Path, step_id: str, sha: str, planted: dict | None) -> bool:
     if not (repo / "tests").is_dir():
         print(f"[{step_id}] no tests/ directory yet, skipping pytest")
         return True
 
-    temp_name = f".bench-runs-report-pytest-{step_id}.json"
-    temp_report = repo / temp_name
-    temp_report.unlink(missing_ok=True)
-
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "--quiet",
-            "--with",
-            "pytest",
-            "--with",
-            "pytest-json-report",
-            "pytest",
-            "-q",
-            "--json-report",
-            "--json-report-file",
-            temp_name,
-        ],
-        cwd=repo,
-        env=_step_env(step_id),
-    )
+    temp_report = _run_pytest_once(repo, step_id, attempt=1)
     report_path = runs_dir / f"pytest-{step_id}.json"
     _collect_report(temp_report, report_path)
     _inject_metadata(report_path, sha, step_id)
-    if result.returncode != 0:
-        print(f"[{step_id}] pytest failed (exit {result.returncode})")
+    unexpected = _unexpected_pytest_outcomes(report_path, step_id, planted, attempt=1)
+
+    attempt_1_data = json.loads(report_path.read_text()) if report_path.is_file() else {}
+    failed_nodeids = [
+        t["nodeid"]
+        for t in attempt_1_data.get("tests", [])
+        if t.get("outcome") in ("failed", "error")
+    ]
+
+    if failed_nodeids:
+        temp_rerun = _run_pytest_once(repo, step_id, attempt=2, nodeids=failed_nodeids)
+        rerun_path = runs_dir / f"pytest-{step_id}-rerun.json"
+        _collect_report(temp_rerun, rerun_path)
+        _inject_metadata(rerun_path, sha, step_id)
+        unexpected += _unexpected_pytest_outcomes(rerun_path, step_id, planted, attempt=2)
+
+    if unexpected:
+        print(f"[{step_id}] pytest: unexpected failure(s): {sorted(set(unexpected))}")
         return False
+    print(f"[{step_id}] pytest: no unexpected failures")
     return True
 
 
+def _run_vitest_once(dispatch_dir: Path, step_id: str, *, attempt: int) -> Path:
+    suffix = "-rerun" if attempt == 2 else ""
+    temp_name = f".bench-runs-report-vitest-{step_id}{suffix}.json"
+    temp_report = dispatch_dir / temp_name
+    temp_report.unlink(missing_ok=True)
+    subprocess.run(
+        ["npx", "vitest", "run", "--reporter=json", f"--outputFile={temp_name}"],
+        cwd=dispatch_dir,
+        env=_step_env(step_id, attempt=attempt),
+    )
+    return temp_report
+
+
 def _run_vitest(
-    repo: Path, runs_dir: Path, step_id: str, sha: str, npm_installed: set[Path]
+    repo: Path,
+    runs_dir: Path,
+    step_id: str,
+    sha: str,
+    npm_installed: set[Path],
+    planted: dict | None,
 ) -> bool:
     dispatch_dir = repo / "dispatch"
     if not (dispatch_dir / "package.json").is_file():
@@ -194,28 +348,32 @@ def _run_vitest(
             return False
         npm_installed.add(dispatch_dir)
 
-    temp_name = f".bench-runs-report-vitest-{step_id}.json"
-    temp_report = dispatch_dir / temp_name
-    temp_report.unlink(missing_ok=True)
-
-    result = subprocess.run(
-        [
-            "npx",
-            "vitest",
-            "run",
-            "--reporter=json",
-            f"--outputFile={temp_name}",
-        ],
-        cwd=dispatch_dir,
-        env=_step_env(step_id),
-    )
+    temp_report = _run_vitest_once(dispatch_dir, step_id, attempt=1)
     report_path = runs_dir / f"vitest-{step_id}.json"
     _collect_report(temp_report, report_path)
     # Vitest has no metadata hook of its own; always fill it in ourselves.
     _inject_metadata(report_path, sha, step_id)
-    if result.returncode != 0:
-        print(f"[{step_id}] vitest failed (exit {result.returncode})")
+    unexpected = _unexpected_vitest_outcomes(report_path, step_id, planted, attempt=1)
+
+    attempt_1_data = json.loads(report_path.read_text()) if report_path.is_file() else {}
+    any_failed = any(
+        assertion.get("status") == "failed"
+        for suite in attempt_1_data.get("testResults", [])
+        for assertion in suite.get("assertionResults", [])
+    )
+
+    if any_failed:
+        # No per-test selection for vitest here — see the module docstring.
+        temp_rerun = _run_vitest_once(dispatch_dir, step_id, attempt=2)
+        rerun_path = runs_dir / f"vitest-{step_id}-rerun.json"
+        _collect_report(temp_rerun, rerun_path)
+        _inject_metadata(rerun_path, sha, step_id)
+        unexpected += _unexpected_vitest_outcomes(rerun_path, step_id, planted, attempt=2)
+
+    if unexpected:
+        print(f"[{step_id}] vitest: unexpected failure(s): {sorted(set(unexpected))}")
         return False
+    print(f"[{step_id}] vitest: no unexpected failures")
     return True
 
 
@@ -224,6 +382,8 @@ def run_all(fixture_root: Path, out_root: Path, steps: list[str] | None = None) 
     repo = out_root / "repo"
     runs_dir = fixture_root / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
+
+    planted = load_planted_runs(fixture_root)
 
     step_ids = steps if steps is not None else list(commits)
     ok = True
@@ -237,9 +397,9 @@ def run_all(fixture_root: Path, out_root: Path, steps: list[str] | None = None) 
         subprocess.run(["git", "checkout", "--quiet", sha], cwd=repo, check=True)
         _clear_pycache(repo)
 
-        if not _run_pytest(repo, runs_dir, step_id, sha):
+        if not _run_pytest(repo, runs_dir, step_id, sha, planted):
             ok = False
-        if not _run_vitest(repo, runs_dir, step_id, sha, npm_installed):
+        if not _run_vitest(repo, runs_dir, step_id, sha, npm_installed, planted):
             ok = False
 
     return ok

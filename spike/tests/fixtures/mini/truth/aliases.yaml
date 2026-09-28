@@ -1,0 +1,18 @@
+# Names and extra aliases for the mini fixture's two entities — the mirror
+# of the real spike's truth/aliases.yaml (owned by the truth author there;
+# this one is owned by the harness's own tests, since bench/score.py's
+# alias index must have something to load in the harness's own test suite
+# even if the real fixture's aliases.yaml isn't authored yet). Arms never
+# read this file (bench/protocol.py); only bench/score.py's alignment does.
+- id: E-farebox
+  name: farebox
+  aliases: ["Farebox", "the farebox service", "fare box"]
+- id: E-rule-member-free-minutes
+  name: member-free-minutes
+  aliases: ["member free minutes", "free minutes rule", "free-ride minutes"]
+- id: E-team-fares
+  name: fares
+  aliases: ["fares team", "the fares team"]
+- id: E-team-ops
+  name: ops
+  aliases: ["ops team", "the ops team"]

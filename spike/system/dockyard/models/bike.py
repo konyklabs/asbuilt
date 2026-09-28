@@ -7,14 +7,14 @@ from enum import StrEnum
 
 
 class BikeKind(StrEnum):
-    """A bike is either a classic pedal bike or an e-bike."""
+    """Pedal bike vs. electric-assist bike."""
 
     CLASSIC = "classic"
     EBIKE = "ebike"
 
 
 class BikeStatus(StrEnum):
-    """A bike's status: available, in a ride, locked, or lost."""
+    """The lifecycle a bike row moves through between checkouts."""
 
     AVAILABLE = "available"
     IN_RIDE = "in_ride"
@@ -24,7 +24,7 @@ class BikeStatus(StrEnum):
 
 @dataclass
 class Bike:
-    """A bike: id, kind, status, and the station it is docked at, if any."""
+    """One fleet unit; `station_id` is None while it's out on a ride."""
 
     id: str
     kind: BikeKind

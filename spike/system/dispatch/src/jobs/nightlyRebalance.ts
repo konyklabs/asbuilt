@@ -4,7 +4,7 @@ import { insertRebalanceOrder } from "../db/rebalanceOrders.js";
 export const LOW_FILL = 0.2;
 export const HIGH_FILL = 0.9;
 
-/** A rebalance order moves enough bikes to bring the station to 50% full. */
+/** Recorded on every order this job inserts; readers use the row, not this constant. */
 export const TARGET_FILL = 0.5;
 
 export interface StationFill {
@@ -22,14 +22,15 @@ export interface NightlyRebalanceDeps {
   now: () => Date;
 }
 
-/** A station under 20% or over 90% full gets a rebalance order. */
+/** Pure predicate over the two constants above; no I/O, trivial to unit test in isolation. */
 export function needsRebalance(fillRatio: number): boolean {
   return fillRatio < LOW_FILL || fillRatio > HIGH_FILL;
 }
 
 /**
- * Plans a rebalance order for every station under 20% or over 90% full,
- * unless the storm pause is in effect, in which case it plans none.
+ * Reads the clock once up front so every order from a single run shares
+ * the same timestamp, and short-circuits before touching station-fill
+ * data at all when the early-return condition above holds.
  */
 export async function nightlyRebalance(deps: NightlyRebalanceDeps): Promise<RebalancePlan[]> {
   const now = deps.now();

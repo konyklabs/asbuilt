@@ -4,7 +4,8 @@ from __future__ import annotations
 
 
 def upgrade() -> list[dict[str, object]]:
-    """Declare farebox's tables and their columns."""
+    """Return the schema this migration creates, as a list of
+    {table, columns} dicts, one per table."""
     return [
         {"table": "riders", "columns": ["id", "name", "email"]},
         {"table": "plans", "columns": ["id", "name", "price_cents", "interval"]},

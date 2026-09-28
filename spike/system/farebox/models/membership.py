@@ -1,7 +1,4 @@
-"""Membership model.
-
-F-074: a membership has one of three statuses: active, grace or lapsed.
-"""
+"""Membership model."""
 
 from __future__ import annotations
 
@@ -11,7 +8,7 @@ from enum import StrEnum
 
 
 class MembershipStatus(StrEnum):
-    """F-074: active, grace or lapsed."""
+    """Where a membership currently sits in its billing lifecycle."""
 
     ACTIVE = "active"
     GRACE = "grace"
@@ -20,7 +17,7 @@ class MembershipStatus(StrEnum):
 
 @dataclass
 class Membership:
-    """A membership: status, renews_at, grace_ends_at."""
+    """Links a rider to a plan and tracks the current renewal state."""
 
     id: str
     rider_id: str

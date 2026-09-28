@@ -28,5 +28,16 @@ describe("stormPause", () => {
     const resumedPlans = await nightlyRebalance({ stationFills, now: () => now });
     expect(resumedPlans).toEqual([{ stationId: "station-1", targetFill: 0.5 }]);
     expect(listRebalanceOrders()).toHaveLength(1);
+
+    resetWeatherReadings();
+    resetRebalanceOrders();
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+    insertReading({ stationId: "station-1", severity: 4, observedAt: fiveMinutesAgo });
+    insertReading({ stationId: "station-1", severity: 1, observedAt: now });
+    expect(isStormPaused(now)).toBe(false);
+
+    const latestReadingPlans = await nightlyRebalance({ stationFills, now: () => now });
+    expect(latestReadingPlans).toEqual([{ stationId: "station-1", targetFill: 0.5 }]);
+    expect(listRebalanceOrders()).toHaveLength(1);
   });
 });

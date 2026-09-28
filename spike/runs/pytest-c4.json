@@ -1,13 +1,14 @@
 {
-  "created": 1790604877.272039,
-  "duration": 0.0245668888092041,
+  "created": 1790612536.820491,
+  "duration": 0.026025056838989258,
   "exitcode": 0,
   "root": ".",
   "environment": {},
   "summary": {
     "passed": 18,
-    "total": 18,
-    "collected": 18
+    "skipped": 1,
+    "total": 19,
+    "collected": 19
   },
   "collectors": [
     {
@@ -32,12 +33,12 @@
         {
           "nodeid": "tests/e2e/test_checkin.py::test_checkin_full_station_returns_409",
           "type": "Function",
-          "lineno": 67
+          "lineno": 66
         },
         {
           "nodeid": "tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking",
           "type": "Function",
-          "lineno": 84
+          "lineno": 82
         }
       ]
     },
@@ -75,7 +76,7 @@
         {
           "nodeid": "tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free",
           "type": "Function",
-          "lineno": 50
+          "lineno": 49
         }
       ]
     },
@@ -154,7 +155,7 @@
         {
           "nodeid": "tests/unit/test_lost_bikes.py::test_lost_bike_fee_100",
           "type": "Function",
-          "lineno": 39
+          "lineno": 44
         }
       ]
     },
@@ -186,12 +187,12 @@
         {
           "nodeid": "tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on",
           "type": "Function",
-          "lineno": 37
+          "lineno": 36
         },
         {
           "nodeid": "tests/unit/test_pricing.py::test_single_ride_cap_25",
           "type": "Function",
-          "lineno": 47
+          "lineno": 45
         }
       ]
     },
@@ -203,6 +204,11 @@
           "nodeid": "tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails",
           "type": "Function",
           "lineno": 14
+        },
+        {
+          "nodeid": "tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx",
+          "type": "Function",
+          "lineno": 37
         }
       ]
     },
@@ -262,21 +268,21 @@
         ""
       ],
       "setup": {
-        "duration": 0.00014579202979803085,
+        "duration": 0.00013762479647994041,
         "outcome": "passed"
       },
       "call": {
-        "duration": 7.762527093291283e-05,
+        "duration": 7.066735997796059e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 5.283299833536148e-05,
+        "duration": 5.77080063521862e-05,
         "outcome": "passed"
       }
     },
     {
       "nodeid": "tests/e2e/test_checkin.py::test_checkin_full_station_returns_409",
-      "lineno": 67,
+      "lineno": 66,
       "outcome": "passed",
       "keywords": [
         "test_checkin_full_station_returns_409",
@@ -288,21 +294,21 @@
         ""
       ],
       "setup": {
-        "duration": 6.716698408126831e-05,
+        "duration": 7.566716521978378e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.224999040365219e-05,
+        "duration": 6.137508898973465e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 4.808325320482254e-05,
+        "duration": 4.7291629016399384e-05,
         "outcome": "passed"
       }
     },
     {
       "nodeid": "tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking",
-      "lineno": 84,
+      "lineno": 82,
       "outcome": "passed",
       "keywords": [
         "test_checkin_at_full_station_allowed_with_overflow_parking",
@@ -314,15 +320,15 @@
         ""
       ],
       "setup": {
-        "duration": 5.804188549518585e-05,
+        "duration": 6.100023165345192e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 0.00011637480929493904,
+        "duration": 0.00011941744014620781,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 4.174979403614998e-05,
+        "duration": 4.1540712118148804e-05,
         "outcome": "passed"
       }
     },
@@ -340,15 +346,15 @@
         ""
       ],
       "setup": {
-        "duration": 5.245860666036606e-05,
+        "duration": 5.391659215092659e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.5165961384773254e-05,
+        "duration": 6.420817226171494e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 4.025036469101906e-05,
+        "duration": 4.337495192885399e-05,
         "outcome": "passed"
       }
     },
@@ -366,15 +372,15 @@
         ""
       ],
       "setup": {
-        "duration": 5.191704258322716e-05,
+        "duration": 5.2415765821933746e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 7.462501525878906e-05,
+        "duration": 7.095886394381523e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.9250124245882034e-05,
+        "duration": 4.262477159500122e-05,
         "outcome": "passed"
       }
     },
@@ -392,21 +398,21 @@
         ""
       ],
       "setup": {
-        "duration": 6.108265370130539e-05,
+        "duration": 5.741603672504425e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.3042080253362656e-05,
+        "duration": 5.224999040365219e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.5250093787908554e-05,
+        "duration": 4.187505692243576e-05,
         "outcome": "passed"
       }
     },
     {
       "nodeid": "tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free",
-      "lineno": 50,
+      "lineno": 49,
       "outcome": "passed",
       "keywords": [
         "test_member_first_thirty_minutes_free",
@@ -418,15 +424,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.958314821124077e-05,
+        "duration": 4.987465217709541e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.687493830919266e-05,
+        "duration": 6.912508979439735e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.716582432389259e-05,
+        "duration": 3.5624951124191284e-05,
         "outcome": "passed"
       }
     },
@@ -444,15 +450,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.974985495209694e-05,
+        "duration": 5.175033584237099e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.041707143187523e-05,
+        "duration": 5.258386954665184e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 4.16669063270092e-05,
+        "duration": 4.179216921329498e-05,
         "outcome": "passed"
       }
     },
@@ -470,15 +476,15 @@
         ""
       ],
       "setup": {
-        "duration": 5.2208080887794495e-05,
+        "duration": 5.6167133152484894e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.04576601088047e-05,
+        "duration": 4.604225978255272e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.920821473002434e-05,
+        "duration": 3.929203376173973e-05,
         "outcome": "passed"
       }
     },
@@ -496,15 +502,15 @@
         ""
       ],
       "setup": {
-        "duration": 3.187498077750206e-05,
+        "duration": 3.2791867852211e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.77078540623188e-05,
+        "duration": 3.550015389919281e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.441702574491501e-05,
+        "duration": 3.600027412176132e-05,
         "outcome": "passed"
       }
     },
@@ -522,21 +528,21 @@
         ""
       ],
       "setup": {
-        "duration": 3.4708064049482346e-05,
+        "duration": 3.200024366378784e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 6.449967622756958e-05,
+        "duration": 5.9959013015031815e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.9791146516799927e-05,
+        "duration": 3.8790982216596603e-05,
         "outcome": "passed"
       }
     },
     {
       "nodeid": "tests/unit/test_lost_bikes.py::test_lost_bike_fee_100",
-      "lineno": 39,
+      "lineno": 44,
       "outcome": "passed",
       "keywords": [
         "test_lost_bike_fee_100",
@@ -548,15 +554,15 @@
         ""
       ],
       "setup": {
-        "duration": 3.683287650346756e-05,
+        "duration": 3.470759838819504e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.987519398331642e-05,
+        "duration": 5.150027573108673e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.11252661049366e-05,
+        "duration": 3.6874786019325256e-05,
         "outcome": "passed"
       }
     },
@@ -574,7 +580,7 @@
         ""
       ],
       "setup": {
-        "duration": 3.350013867020607e-05,
+        "duration": 3.2458920031785965e-05,
         "outcome": "passed"
       },
       "call": {
@@ -582,7 +588,7 @@
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.174971789121628e-05,
+        "duration": 3.5457778722047806e-05,
         "outcome": "passed"
       }
     },
@@ -600,15 +606,15 @@
         ""
       ],
       "setup": {
-        "duration": 3.179209306836128e-05,
+        "duration": 3.075040876865387e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.316726699471474e-05,
+        "duration": 4.0499959141016006e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.370828926563263e-05,
+        "duration": 4.299962893128395e-05,
         "outcome": "passed"
       }
     },
@@ -626,21 +632,21 @@
         ""
       ],
       "setup": {
-        "duration": 3.337487578392029e-05,
+        "duration": 3.870902583003044e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.095910117030144e-05,
+        "duration": 4.254188388586044e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.116624429821968e-05,
+        "duration": 3.4207943826913834e-05,
         "outcome": "passed"
       }
     },
     {
       "nodeid": "tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on",
-      "lineno": 37,
+      "lineno": 36,
       "outcome": "passed",
       "keywords": [
         "test_ebike_surcharge_when_flag_on",
@@ -652,21 +658,21 @@
         ""
       ],
       "setup": {
-        "duration": 3.2582785934209824e-05,
+        "duration": 3.7458259612321854e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.8292258977890015e-05,
+        "duration": 3.733299672603607e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.158301115036011e-05,
+        "duration": 3.5791657865047455e-05,
         "outcome": "passed"
       }
     },
     {
       "nodeid": "tests/unit/test_pricing.py::test_single_ride_cap_25",
-      "lineno": 47,
+      "lineno": 45,
       "outcome": "passed",
       "keywords": [
         "test_single_ride_cap_25",
@@ -678,15 +684,15 @@
         ""
       ],
       "setup": {
-        "duration": 3.254227340221405e-05,
+        "duration": 3.454182296991348e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.78340482711792e-05,
+        "duration": 3.791600465774536e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.2333191484212875e-05,
+        "duration": 3.858422860503197e-05,
         "outcome": "passed"
       }
     },
@@ -704,21 +710,45 @@
         ""
       ],
       "setup": {
-        "duration": 3.2833777368068695e-05,
+        "duration": 3.237510100007057e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 7.229205220937729e-05,
+        "duration": 6.629200652241707e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.4207943826913834e-05,
+        "duration": 3.2791867852211e-05,
+        "outcome": "passed"
+      }
+    },
+    {
+      "nodeid": "tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx",
+      "lineno": 37,
+      "outcome": "skipped",
+      "keywords": [
+        "test_capture_does_not_retry_a_4xx",
+        "skip",
+        "unit",
+        "pytestmark",
+        "test_tollbooth_client.py",
+        "tests",
+        "repo",
+        ""
+      ],
+      "setup": {
+        "duration": 5.2957795560359955e-05,
+        "outcome": "skipped",
+        "longrepr": "('/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/tests/unit/test_tollbooth_client.py', 38, 'Skipped: the transport fake cannot model a declined card yet')"
+      },
+      "teardown": {
+        "duration": 4.6084169298410416e-05,
         "outcome": "passed"
       }
     }
   ],
   "metadata": {
-    "commit": "6f879125089fd589e454855c3552a71bb25ec736",
+    "commit": "dc19c7912d62a3b537fbefffcfd35c5eee1553b1",
     "step": "c4"
   }
 }

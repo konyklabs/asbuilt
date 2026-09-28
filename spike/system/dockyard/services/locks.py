@@ -11,11 +11,8 @@ class UnknownBikeError(Exception):
 
 
 def lock_bike(session: Session, bike_id: str) -> None:
-    """Lock a bike so it cannot be checked out.
-
-    Called by dispatch's maintenance sweep when a bike crosses the fault
-    threshold.
-    """
+    """Set a bike's status field so check_out's availability lookup skips
+    it going forward. Invoked by dispatch's maintenance job."""
     bike = session.bikes.get(bike_id)
     if bike is None:
         raise UnknownBikeError(bike_id)

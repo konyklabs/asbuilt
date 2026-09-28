@@ -14,8 +14,11 @@ from bench.protocol import Answer, Category, Contradiction, Fact, IngestReport
 
 
 def _count_documents(fixture_root: Path) -> int:
+    """Counts files under the assembled ingest root's own directories —
+    `repo/` (the built checkout, not `system/`, which never enters it — see
+    bench/run.py's `assemble_ingest_root`), `sources/`, `runs/`."""
     total = 0
-    for dirname in ("sources", "system", "runs"):
+    for dirname in ("repo", "sources", "runs"):
         directory = fixture_root / dirname
         if directory.is_dir():
             total += sum(1 for p in directory.rglob("*") if p.is_file())
@@ -25,7 +28,12 @@ def _count_documents(fixture_root: Path) -> int:
 class NullPrototype:
     name = "null"
 
-    def ingest(self, fixture_root: Path) -> IngestReport:
+    def ingest(
+        self,
+        fixture_root: Path,
+        entity_kinds: tuple[str, ...] = (),
+        incremental: bool = False,
+    ) -> IngestReport:
         return IngestReport(
             seconds=0.0,
             input_tokens=0,
@@ -33,6 +41,11 @@ class NullPrototype:
             dollars=0.0,
             services=(),
             documents=_count_documents(fixture_root),
+            model=None,
+            embedder=None,
+            calls=0,
+            embedding_tokens=0,
+            cache_tokens=0,
         )
 
     def explain(self, entity: str) -> list[Fact]:

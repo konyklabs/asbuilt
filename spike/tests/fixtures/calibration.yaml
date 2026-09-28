@@ -1,0 +1,384 @@
+# Matcher calibration set (konyklabs/asbuilt#7): labelled (truth, candidate,
+# expect) triples for bench/score.py's `_statement_matches`, run via
+# `uv run python bench/score.py --calibrate`. All content is invented for
+# this fixture (Gearwell, a made-up bike-share back office — see
+# ../../../AGENTS.md's cleanroom rule) and independent of truth/facts.yaml:
+# these pairs exist to calibrate the matcher itself, not to restate planted
+# facts. Composition: ~40 correct prose paraphrases, ~20 correct short
+# subject-verb-object graph-edge-style paraphrases, ~40 hard negatives
+# (polarity flip, different owner/team, different unit, near number,
+# different rule on the same entity).
+
+# -- correct paraphrases, prose (expect: true) --------------------------
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "Members get their first 30 minutes free on every ride."
+  expect: true
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "The first 30 minutes of a ride are free for members."
+  expect: true
+- truth: "A casual rider pays $1.00 to unlock a bike."
+  candidate: "Unlocking a bike costs a casual rider $1.00."
+  expect: true
+- truth: "A casual rider pays $1.00 to unlock a bike."
+  candidate: "It costs $1.00 for a casual rider to unlock a bike."
+  expect: true
+- truth: "The most a single ride can cost is $30."
+  candidate: "A single ride is capped at $30."
+  expect: true
+- truth: "The most a single ride can cost is $30."
+  candidate: "The cap on what a single ride can cost is $30."
+  expect: true
+- truth: "A bike not docked within 24 hours closes the ride with a $150 fee."
+  candidate: "If a bike isn't docked within 24 hours, the ride closes with a $150 fee."
+  expect: true
+- truth: "A bike not docked within 24 hours closes the ride with a $150 fee."
+  candidate: "A bike that is not docked within 24 hours closes the ride and triggers a $150 fee."
+  expect: true
+- truth: "A refund may be requested within 14 days of the ride's end."
+  candidate: "Within 14 days of a ride's end, a refund may be requested."
+  expect: true
+- truth: "A refund may be requested within 14 days of the ride's end."
+  candidate: "Refund requests are accepted within 14 days of ride end."
+  expect: true
+- truth: "Refunds under $5 are approved without review when the flag is on."
+  candidate: "When the flag is on, refunds under $5 get approved without review."
+  expect: true
+- truth: "A membership lapses 7 days after a failed renewal."
+  candidate: "After a failed renewal, a membership lapses in 7 days."
+  expect: true
+- truth: "A membership lapses 7 days after a failed renewal."
+  candidate: "7 days after a renewal fails, the membership lapses."
+  expect: true
+- truth: "A rider holds at most 2 bikes at once."
+  candidate: "At most 2 bikes may be checked out by a single rider at a time."
+  expect: true
+- truth: "3 fault reports in 7 days lock the bike and open a maintenance ticket."
+  candidate: "A bike gets locked and a maintenance ticket opens after 3 fault reports in 7 days."
+  expect: true
+- truth: "A station under 20% or over 90% full gets a rebalance order."
+  candidate: "Stations below 20% full or above 90% full receive a rebalance order."
+  expect: true
+- truth: "Rebalancing pauses while Skyglass severity is 3 or more."
+  candidate: "While Skyglass reports a severity of 3 or higher, rebalancing pauses."
+  expect: true
+- truth: "A Tollbooth Pay call is retried 3 times with backoff."
+  candidate: "Tollbooth Pay calls get retried 3 times, with backoff between attempts."
+  expect: true
+- truth: "The nightly rebalance job runs at 03:00."
+  candidate: "The rebalance job runs nightly, starting at 3am."
+  expect: true
+- truth: "The nightly rebalance job runs at 03:00."
+  candidate: "The rebalance job runs nightly, starting at 3:00am."
+  expect: true
+- truth: "The maintenance sweep job runs every hour."
+  candidate: "Every hour, the maintenance sweep job runs."
+  expect: true
+- truth: "The weather poll job runs every 15 minutes."
+  candidate: "Every fifteen minutes, the weather poll job runs."
+  expect: true
+- truth: "An e-bike ride costs an extra $0.10 per minute when the surcharge flag is on."
+  candidate: "When the surcharge flag is on, e-bike rides cost an extra $0.10 a minute."
+  expect: true
+- truth: "Members pay $0.15 per minute after their free minutes."
+  candidate: "After free minutes end, members are charged $0.15 per minute."
+  expect: true
+- truth: "Casual riders pay $0.25 per minute starting from the first minute."
+  candidate: "From the first minute, casual riders are charged $0.25 per minute."
+  expect: true
+- truth: "Check-in at a full station is refused unless overflow parking is on."
+  candidate: "Unless overflow parking is on, a full station refuses check-in."
+  expect: true
+- truth: "The single-ride cap was raised from $25 to $30."
+  candidate: "The cap on a single ride went up from $25 to $30."
+  expect: true
+- truth: "The lost-bike fee was raised from $100 to $150."
+  candidate: "The fee for a lost bike increased from $100 to $150."
+  expect: true
+- truth: "Membership grace was extended from 3 days to 7 days."
+  candidate: "Grace for a membership grew from 3 to 7 days."
+  expect: true
+- truth: "The spring promotion raised member free minutes to 45."
+  candidate: "During the spring promotion, member free minutes went up to 45."
+  expect: true
+- truth: "Dynamic pricing adds a surge rate per minute during rain."
+  candidate: "During rain, dynamic pricing adds a per-minute surge rate."
+  expect: true
+- truth: "The refund endpoint is POST /refunds."
+  candidate: "POST /refunds is the endpoint used for refunds."
+  expect: true
+- truth: "Database snapshots are kept for 30 days."
+  candidate: "Snapshots of the database are retained for 30 days."
+  expect: true
+- truth: "The on-call engineer is paged when a job fails twice in a row."
+  candidate: "When a job fails two times in a row, the on-call engineer gets paged."
+  expect: true
+- truth: "A rider without a membership pays a $1.00 unlock fee."
+  candidate: "The unlock fee for a rider without a membership is $1.00."
+  expect: true
+- truth: "The fares team owns farebox."
+  candidate: "Farebox is owned by the fares team."
+  expect: true
+- truth: "The ops team owns dispatch."
+  candidate: "Dispatch is owned by the ops team."
+  expect: true
+- truth: "The fleet team owns dockyard."
+  candidate: "Dockyard is owned by the fleet team."
+  expect: true
+- truth: "A refund is not approved automatically unless the flag is on."
+  candidate: "Unless the flag is on, a refund does not get automatic approval."
+  expect: true
+- truth: "Rebalancing does not resume until Skyglass severity drops below 3."
+  candidate: "Rebalancing does not resume before Skyglass severity drops below 3."
+  expect: true
+
+# -- correct paraphrases where a team name is used as an ordinary word, not
+# a mention of that team (expect: true) — konyklabs/asbuilt#7 review: a bare
+# single-word team name/alias must not be read as a team mention unless
+# adjacent to a marker phrase ("<name> team", "owned by <name>", ...), or a
+# correct paraphrase that happens to use the word for something else gets
+# vetoed by the entity-mention guard.
+- truth: "If the nightly rebalance fails, the ops on-call engineer re-runs it by hand before 06:00."
+  candidate: "If the nightly rebalance of the fleet fails, an on-call engineer re-runs it by hand before 06:00."
+  expect: true
+- truth: "Maintenance sweeps are triggered automatically without manual ops intervention."
+  candidate: "Maintenance sweeps trigger automatically, without any manual ops step."
+  expect: true
+- truth: "Casual riders are charged per-minute fares from the very first minute."
+  candidate: "Casual riders pay per-minute fares starting from the first minute of the ride."
+  expect: true
+
+# -- correct paraphrases, short SVO / graph-edge style (expect: true) ---
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "member -> free_minutes -> 30"
+  expect: true
+- truth: "A casual rider pays $1.00 to unlock a bike."
+  candidate: "casual_rider -> unlock_fee -> $1.00"
+  expect: true
+- truth: "The most a single ride can cost is $30."
+  candidate: "ride -> cost_cap -> $30"
+  expect: true
+- truth: "Leaving a bike undocked for 24 hours triggers a $150 fee."
+  candidate: "bike -> lost_bike_fee -> $150 after 24 hours undocked"
+  expect: true
+- truth: "A refund may be requested within 14 days of the ride's end."
+  candidate: "refund -> window_days -> 14"
+  expect: true
+- truth: "Refunds under $5 are approved without review when the flag is on."
+  candidate: "refund -> approved_without_review_under -> $5"
+  expect: true
+- truth: "A membership lapses 7 days after a failed renewal."
+  candidate: "membership -> grace_days -> 7"
+  expect: true
+- truth: "A rider holds at most 2 bikes at once."
+  candidate: "rider -> max_bikes_at_once -> 2"
+  expect: true
+- truth: "3 fault reports in 7 days lock the bike and open a maintenance ticket."
+  candidate: "bike -> fault_threshold -> 3 reports in 7 days"
+  expect: true
+- truth: "A station under 20% or over 90% full gets a rebalance order."
+  candidate: "station -> rebalance_trigger -> 20% or 90%"
+  expect: true
+- truth: "Rebalancing pauses while Skyglass severity is 3 or more."
+  candidate: "rebalance -> storm_pause_severity -> 3"
+  expect: true
+- truth: "A Tollbooth Pay call is retried 3 times with backoff."
+  candidate: "tollbooth_pay -> retry_count -> 3"
+  expect: true
+- truth: "The nightly rebalance job runs at 03:00."
+  candidate: "nightly_rebalance -> run_time -> 03:00"
+  expect: true
+- truth: "The maintenance sweep job runs every hour."
+  candidate: "maintenance_sweep -> interval -> every_hour"
+  expect: true
+- truth: "An e-bike ride costs an extra $0.10 per minute when the surcharge flag is on."
+  candidate: "ebike -> surcharge_per_minute -> $0.10"
+  expect: true
+- truth: "Members pay $0.15 per minute after their free minutes."
+  candidate: "member -> per_minute_rate -> $0.15"
+  expect: true
+- truth: "Casual riders pay $0.25 per minute starting from the first minute."
+  candidate: "casual_rider -> per_minute_rate -> $0.25"
+  expect: true
+- truth: "The single-ride cap was raised from $25 to $30."
+  candidate: "single_ride_cap -> raised -> $25 to $30"
+  expect: true
+- truth: "The lost-bike fee was raised from $100 to $150."
+  candidate: "lost_bike_fee -> raised -> $100 to $150"
+  expect: true
+- truth: "Database snapshots are kept for 30 days."
+  candidate: "db_snapshot -> retention_days -> 30"
+  expect: true
+
+# -- hard negatives: polarity flipped (expect: false) --------------------
+- truth: "A refund is approved automatically when the flag is on."
+  candidate: "A refund is not approved automatically when the flag is on."
+  expect: false
+- truth: "Check-in at a full station is refused unless overflow parking is on."
+  candidate: "Check-in at a full station is allowed even when overflow parking is off."
+  expect: false
+- truth: "Rebalancing pauses while Skyglass severity is 3 or more."
+  candidate: "Rebalancing never pauses no matter the Skyglass severity."
+  expect: false
+- truth: "A membership lapses after a failed renewal."
+  candidate: "A membership never lapses after a failed renewal."
+  expect: false
+- truth: "Dynamic pricing is on in production."
+  candidate: "Dynamic pricing is off in production."
+  expect: false
+- truth: "The refund endpoint requires authentication."
+  candidate: "The refund endpoint does not require authentication."
+  expect: false
+- truth: "A lost bike closes the ride with a fee."
+  candidate: "A lost bike does not close the ride."
+  expect: false
+- truth: "The on-call engineer is paged when a job fails twice."
+  candidate: "The on-call engineer is never paged when a job fails."
+  expect: false
+- truth: "Casual riders can unlock a bike without a membership."
+  candidate: "Casual riders cannot unlock a bike without a membership."
+  expect: false
+- truth: "Storm pause stops rebalance orders from being created."
+  candidate: "Storm pause does not stop rebalance orders from being created."
+  expect: false
+
+# -- hard negatives: different owner / team (expect: false) --------------
+# NB: a lexical/numeric matcher has no general way to tell "the fares team"
+# from "the ops team" apart when nothing else in the sentence differs and no
+# number is involved — these three are kept, and measured as failures (see
+# module docstring and this deliverable's report), specifically so that
+# limitation stays visible rather than being tuned out of the set. The
+# category is still represented at ~40 hard negatives overall by leaning on
+# unit/near-number/different-rule variants below, which the matcher's
+# number-set check *can* separate.
+- truth: "The fares team owns the refund-auto-approve rule."
+  candidate: "The ops team owns the refund-auto-approve rule."
+  expect: false
+- truth: "The fleet team owns the station-capacity rule."
+  candidate: "The fares team owns the station-capacity rule."
+  expect: false
+- truth: "The ops team owns the storm-pause rule."
+  candidate: "The fleet team owns the storm-pause rule."
+  expect: false
+- truth: "Farebox publishes the ride.completed event, effective from c1."
+  candidate: "Dispatch publishes the ride.completed event, effective from c3."
+  expect: false
+- truth: "Dockyard began writing to the rides table at c1."
+  candidate: "Dispatch began writing to the rides table at c2."
+  expect: false
+- truth: "The fares team reviews refund disputes filed within 14 days."
+  candidate: "The ops team reviews refund disputes filed within 21 days."
+  expect: false
+- truth: "Skyglass is owned by the ops team."
+  candidate: "Skyglass is owned by the fares team."
+  expect: false
+- truth: "Tollbooth Pay integration is owned by the fares team."
+  candidate: "Tollbooth Pay integration is owned by the fleet team."
+  expect: false
+- truth: "Farebox writes ride pricing to the invoices table."
+  candidate: "Dockyard writes ride pricing to the invoices table."
+  expect: false
+- truth: "Skyglass is polled every 15 minutes for weather severity."
+  candidate: "Tollbooth Pay is polled every 15 minutes for weather severity."
+  expect: false
+
+# -- hard negatives: different unit (expect: false) -----------------------
+- truth: "The single-ride cap is $30."
+  candidate: "The single-ride cap is 30%."
+  expect: false
+- truth: "Rebalancing pauses at Skyglass severity 3."
+  candidate: "Rebalancing pauses at Skyglass severity 3:00."
+  expect: false
+- truth: "The nightly rebalance job runs at 03:00."
+  candidate: "The nightly rebalance job runs after 3 failed attempts."
+  expect: false
+- truth: "A member's free minutes are 30."
+  candidate: "A member's free minutes cost $30."
+  expect: false
+- truth: "The lost-bike fee is $150."
+  candidate: "The lost-bike window is 150 minutes."
+  expect: false
+- truth: "Database snapshots are kept for 30 days."
+  candidate: "Database snapshots cost $30 to restore."
+  expect: false
+- truth: "The refund window is 14 days."
+  candidate: "The refund window is 14%."
+  expect: false
+- truth: "The e-bike surcharge is $0.10 per minute."
+  candidate: "The e-bike surcharge is 10% per minute."
+  expect: false
+
+# -- hard negatives: near number (expect: false) ---------------------------
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "A member's first 45 minutes of every ride are free."
+  expect: false
+- truth: "The most a single ride can cost is $25.00."
+  candidate: "A single ride costs at most $30.00."
+  expect: false
+- truth: "A membership lapses 7 days after a failed renewal."
+  candidate: "A membership lapses 3 days after a failed renewal."
+  expect: false
+- truth: "The lost-bike fee is $150."
+  candidate: "The lost-bike fee is $100."
+  expect: false
+- truth: "3 fault reports in 7 days lock the bike."
+  candidate: "5 fault reports in 7 days lock the bike."
+  expect: false
+- truth: "A rider holds at most 2 bikes at once."
+  candidate: "A rider holds at most 3 bikes at once."
+  expect: false
+- truth: "A Tollbooth Pay call is retried 3 times with backoff."
+  candidate: "A Tollbooth Pay call is retried 5 times with backoff."
+  expect: false
+- truth: "A station under 20% full gets a rebalance order."
+  candidate: "A station under 30% full gets a rebalance order."
+  expect: false
+- truth: "Refunds under $5 are approved without review."
+  candidate: "Refunds under $10 are approved without review."
+  expect: false
+- truth: "The nightly rebalance job runs at 03:00."
+  candidate: "The nightly rebalance job runs at 04:00."
+  expect: false
+- truth: "The weather poll job runs every 15 minutes."
+  candidate: "The weather poll job runs every 20 minutes."
+  expect: false
+- truth: "The spring promotion raised member free minutes to 45."
+  candidate: "The spring promotion raised member free minutes to 40."
+  expect: false
+
+# -- hard negatives: different rule on the same entity (expect: false) ----
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "A member pays $0.15 per minute after their free minutes."
+  expect: false
+- truth: "The most a single ride can cost is $30."
+  candidate: "A bike not docked within 24 hours closes the ride with a $150 fee."
+  expect: false
+- truth: "A refund may be requested within 14 days of the ride's end."
+  candidate: "Refunds under $5 are approved without review when the flag is on."
+  expect: false
+- truth: "A rider holds at most 2 bikes at once."
+  candidate: "3 fault reports in 7 days lock the bike and open a maintenance ticket."
+  expect: false
+- truth: "Rebalancing pauses while Skyglass severity is 3 or more."
+  candidate: "A station under 20% or over 90% full gets a rebalance order."
+  expect: false
+- truth: "A Tollbooth Pay call is retried 3 times with backoff."
+  candidate: "A Tollbooth Pay call captures payment at ride end."
+  expect: false
+- truth: "An e-bike ride costs an extra $0.10 per minute when the surcharge flag is on."
+  candidate: "Casual riders pay $0.25 per minute from minute one."
+  expect: false
+- truth: "Check-in at a full station is refused unless overflow parking is on."
+  candidate: "A rider holds at most 2 bikes at once."
+  expect: false
+- truth: "The single-ride cap was raised from $25 to $30."
+  candidate: "The lost-bike fee was raised from $100 to $150."
+  expect: false
+- truth: "Membership grace was extended from 3 days to 7 days."
+  candidate: "The spring promotion raised member free minutes to 45."
+  expect: false
+- truth: "The maintenance sweep job runs every hour."
+  candidate: "The weather poll job runs every 15 minutes."
+  expect: false
+- truth: "The nightly rebalance job runs at 03:00."
+  candidate: "The maintenance sweep job runs every hour."
+  expect: false

@@ -20,8 +20,8 @@ def _add_bike(system, bike_id: str) -> None:
 
 @pytest.mark.e2e
 def test_third_checkout_refused(system):
-    """F-019: a rider can hold at most 2 bikes at once, so a third
-    check-out is refused."""
+    """Sequential checkouts for one rider, watching where the endpoint
+    switches from success to the limit-reached error."""
     rider_id = "rider-1"
     for bike_id in ("bike-1", "bike-2", "bike-3"):
         _add_bike(system, bike_id)

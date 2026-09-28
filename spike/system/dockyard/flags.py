@@ -1,7 +1,7 @@
-"""Reads feature_flags with a cache.
+"""Client-side cache over a read-only snapshot of feature_flags.
 
-dockyard does not own feature_flags (farebox does); it reads a snapshot of
-that table the same way farebox does, cached client-side.
+dockyard does not own the table; `read_rows` is whatever cross-service
+fetch the caller wires up, and this module only decides when to re-fetch.
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-CACHE_TTL_SECONDS = 60
-"""F-063: farebox and dockyard cache feature_flags rows for 60 seconds."""
+CACHE_TTL_SECONDS = 60  # seconds before a cached snapshot is re-fetched
 
 
 class FlagCache:
-    """Caches a snapshot of feature_flags rows for CACHE_TTL_SECONDS."""
+    """Wraps a `read_rows` callback and only re-invokes it once
+    CACHE_TTL_SECONDS has elapsed since the last fetch."""
 
     def __init__(
         self,
@@ -27,6 +27,8 @@ class FlagCache:
         self._rows: dict[str, bool] = {}
 
     def rows(self) -> dict[str, bool]:
+        """Return the cached snapshot, refreshing it first if it has aged
+        past CACHE_TTL_SECONDS."""
         now = self._clock()
         if self._cached_at is None or now - self._cached_at >= CACHE_TTL_SECONDS:
             self._rows = self._read_rows()
@@ -35,5 +37,6 @@ class FlagCache:
 
 
 def is_enabled(cache: FlagCache, name: str) -> bool:
-    """F-064: a flag with no row in feature_flags is treated as off."""
+    """Look up `name` in the cached snapshot; a key that isn't present
+    reads as False rather than raising."""
     return cache.rows().get(name, False)

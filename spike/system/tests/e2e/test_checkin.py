@@ -50,8 +50,7 @@ def _full_station_with_open_ride(system, capacity: int = 1) -> Ride:
 
 @pytest.mark.e2e
 def test_checkin_at_full_station_refused(system):
-    """F-017: a check-in at a full station is refused when the
-    overflow_parking flag is off."""
+    """One-capacity station, already occupied, flag off: checkin fails."""
     ride = _full_station_with_open_ride(system)
     status, body = checkin_endpoint(
         system.dockyard.session,
@@ -67,8 +66,7 @@ def test_checkin_at_full_station_refused(system):
 
 @pytest.mark.e2e
 def test_checkin_full_station_returns_409(system):
-    """F-051: POST /rides/{id}/checkin at a full station returns HTTP 409
-    with error code station_full."""
+    """Same setup; checks the exact response shape the client would see."""
     ride = _full_station_with_open_ride(system)
     status, body = checkin_endpoint(
         system.dockyard.session,
@@ -84,8 +82,7 @@ def test_checkin_full_station_returns_409(system):
 
 @pytest.mark.e2e
 def test_checkin_at_full_station_allowed_with_overflow_parking(system):
-    """F-018: when the overflow_parking flag is on, a bike can be checked
-    in at a full station."""
+    """Same occupied station, flag switched on: checkin now succeeds."""
     ride = _full_station_with_open_ride(system)
     status, body = checkin_endpoint(
         system.dockyard.session,

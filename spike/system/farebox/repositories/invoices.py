@@ -6,7 +6,8 @@ from farebox.models.invoice import Invoice, InvoiceLine
 
 
 class InvoiceRepository:
-    """CRUD over in-memory tables of Invoice and InvoiceLine rows."""
+    """In-memory storage for both invoices and their line items, keyed by
+    id."""
 
     def __init__(
         self,

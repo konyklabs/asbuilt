@@ -1,0 +1,83 @@
+# The three planted run outcomes (asbuilt#7, item 11): one failing test, one skipped
+# test and one flaky test, with the D-013 rule applied to the facts they touch.
+# Wave 2 implements the fixture changes; truth/validate.py checks this file against
+# facts.yaml, contradictions.yaml and truth/PLAN.yaml.
+rules:
+- 'D-013: a statement is executed when a test ran and passed at a commit and the asserted code is unchanged since;
+  a statement with no passing run is a code-tier claim.'
+- 'D-013: a later failure demotes the statement and opens a contradiction candidate.'
+- 'D-013: skipped and expected-failure tests never lift anything; the test is a code carrier, never a run carrier.'
+- 'This fixture''s reading for flaky tests (D-013 is silent; to confirm with Oleg): a step whose attempts disagree
+  is inconclusive. It neither lifts nor demotes, and neither of its runs is cited for the test''s facts; the fact
+  keeps the tier its latest conclusive step gives it.'
+runner:
+  env: GEARWELL_ATTEMPT
+  attempt_1: every suite runs whole with GEARWELL_ATTEMPT=1 and writes runs/<framework>-<step>.json (document run/<framework>-<step>)
+  attempt_2: when attempt 1 had a failure, only the failed tests rerun with GEARWELL_ATTEMPT=2, written to runs/<framework>-<step>-rerun.json
+    (document run/<framework>-<step>-rerun)
+  exit: the outcomes below are expected; bench/runs.py treats them as success and any other failure as an error
+  plan: truth/PLAN.yaml runs and tests sections carry every outcome below
+planted:
+- id: P-1
+  kind: failing
+  file: tests/unit/test_lost_bikes.py
+  test: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  outcomes:
+    c1: passed
+    c2: passed
+    c3: passed
+    c4: passed
+    c5: failed
+    c6: absent
+  reruns:
+    c5: failed
+  fixture_change:
+  - add system/history/c5/tests/unit/test_lost_bikes.py, identical to system/history/c4/tests/unit/test_lost_bikes.py
+  - at c5 LOST_BIKE_FEE is 150.00 but this test still asserts 10000 cents, so it fails in both attempts
+  - the final file (c6) keeps test_lost_bike_fee_150, which therefore exists and passes only at c6
+  facts:
+    F-011: 'demoted: tier code (was executed), demoted_by run/pytest-c5; its passing runs c1-c4 stay carriers'
+    F-012: 'executed from c6 only: at c5 no passing test asserts $150.00, so c5 carries it at code tier'
+  contradiction: X-021 (F-011 vs F-012, kind run-vs-code, winner F-012)
+- id: P-2
+  kind: skipped
+  file: tests/unit/test_tollbooth_client.py
+  test: tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx
+  marker: '@pytest.mark.skip(reason="the transport fake cannot model a declined card yet")'
+  asserts: a capture whose transport answers 402 makes exactly one call and raises TollboothPaymentFailed (it would
+    pass if unskipped)
+  outcomes:
+    c1: skipped
+    c2: skipped
+    c3: skipped
+    c4: skipped
+    c5: skipped
+    c6: skipped
+  fixture_change:
+  - add the test to system/tests/unit/test_tollbooth_client.py; the file has no overlays, so it exists c1-c6
+  facts:
+    F-062: 'stays code: the skipped test is a code carrier (version c1), never a run carrier'
+  contradiction: null
+- id: P-3
+  kind: flaky
+  file: tests/e2e/test_close_ride.py
+  test: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
+  outcomes:
+    c1: passed
+    c2: passed
+    c3: passed
+    c4: passed
+    c5: passed
+    c6: failed
+  reruns:
+    c6: passed
+  mechanism: the c6 version reads the first event on a bus that a new warm-up fixture seeds with an unrelated event
+    when GEARWELL_ATTEMPT is unset or 1; with GEARWELL_ATTEMPT=2 the fixture seeds nothing, so the rerun passes
+  fixture_change:
+  - add system/history/c5/tests/e2e/test_close_ride.py, identical to today's final file (stable, c1-c5)
+  - the final file (c6) carries the order dependence; farebox/services/rides.py and the dockyard check-in path stay
+    unchanged
+  facts:
+    F-050: stays executed on its c1-c5 runs (latest conclusive step c5, asserted code unchanged since); run/pytest-c6
+      and run/pytest-c6-rerun are not its carriers; no demotion, no contradiction
+  contradiction: null

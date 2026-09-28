@@ -1,8 +1,5 @@
-"""Flag registry and cached reads.
-
-F-065: the feature_flags table holds four flags: dynamic_pricing,
-ebike_surcharge, overflow_parking and refund_auto_approve.
-"""
+"""Registry of the flags this service knows about, plus a client-side
+cache over the feature_flags table."""
 
 from __future__ import annotations
 
@@ -15,15 +12,14 @@ FLAGS = {
     "overflow_parking": False,
     "refund_auto_approve": False,
 }
-"""F-049: dynamic_pricing is off by default. Every registered flag's
-default is off."""
+# Registered flag names and their fallback value when no override exists.
 
-CACHE_TTL_SECONDS = 60
-"""F-063: farebox and dockyard cache feature_flags rows for 60 seconds."""
+CACHE_TTL_SECONDS = 60  # seconds before a cached snapshot is re-fetched
 
 
 class FlagCache:
-    """Caches a snapshot of feature_flags rows for CACHE_TTL_SECONDS."""
+    """Wraps a `read_rows` callback and only re-invokes it once
+    CACHE_TTL_SECONDS has elapsed since the last fetch."""
 
     def __init__(
         self,
@@ -36,6 +32,8 @@ class FlagCache:
         self._rows: dict[str, bool] = {}
 
     def rows(self) -> dict[str, bool]:
+        """Return the cached snapshot, refreshing it first if it has aged
+        past CACHE_TTL_SECONDS."""
         now = self._clock()
         if self._cached_at is None or now - self._cached_at >= CACHE_TTL_SECONDS:
             self._rows = self._read_rows()
@@ -44,5 +42,6 @@ class FlagCache:
 
 
 def is_enabled(cache: FlagCache, name: str) -> bool:
-    """F-064: a flag with no row in feature_flags is treated as off."""
+    """Look up `name` in the cached snapshot; a key that isn't present
+    reads as False rather than raising."""
     return cache.rows().get(name, False)

@@ -11,8 +11,9 @@ Spike. There is no product code yet. The driving idea is
 spike is [konyklabs/roadmap#154](https://github.com/konyklabs/roadmap/issues/154),
 recorded in D-013 (build, Python, benchmark two stacks). The harness and the
 invented system live under `spike/` (#2); the prototypes are #3 and #4; the
-benchmark report and the engine ADR are #5. Nothing lands under `src/` before
-that ADR exists. `spike/` is its own `uv` project: `cd spike && uv run pytest`.
+benchmark report and the pipeline-and-schema ADR are #5 (with #7, #8 and #9
+in between: hardening, the test connector, the baseline arm). Nothing lands
+under `src/` before that ADR exists. `spike/` is its own `uv` project: `cd spike && uv run pytest`.
 
 ## What this repository must never contain
 

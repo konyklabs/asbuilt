@@ -33,8 +33,9 @@ def check_in(
     now: datetime,
     overflow_parking_enabled: bool,
 ) -> dict[str, Any]:
-    """Return a bike at `station_id`, closing its ride through farebox
-    (F-055)."""
+    """Dock a bike, close out its ride record, and hand the ride details
+    to farebox to price and close on its side. Raises if the ride or
+    station is unknown, or if the station has no room."""
     ride = session.rides.get(ride_id)
     if ride is None:
         raise UnknownRideError(ride_id)
@@ -49,7 +50,7 @@ def check_in(
     bike = session.bikes.get(ride.bike_id)
     dock = session.docks.empty_at(station_id)
     if dock is None:
-        # Every normal-capacity dock is full: overflow parking (F-018).
+        # Nothing free to reuse: mint an extra slot for this bike.
         dock = Dock(id=str(uuid4()), station_id=station_id, bike_id=None, state="empty")
         session.docks.add(dock)
     dock.bike_id = bike.id

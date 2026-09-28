@@ -13,7 +13,7 @@ Write-up for the weather-poll outage on 2026-08-12, while it's still fresh. Fili
 
 ## Summary
 
-The weather poll was down for 6 hours on 2026-08-12. Root cause was a Skyglass API key rotation that went out without a matching update to dispatch's own configuration — the old key simply stopped working the moment the rotation completed on Skyglass's side, and every poll call started failing from that point until someone caught it and pushed the new key through to dispatch.
+On 2026-08-12, dispatch's connection to Skyglass sat broken for a 6-hour stretch. Root cause was a Skyglass API key rotation that went out without a matching update to dispatch's own configuration — the old key simply stopped working the moment the rotation completed on Skyglass's side, and every poll call started failing from that point until someone caught it and pushed the new key through to dispatch.
 
 ## What we're changing
 

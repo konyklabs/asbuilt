@@ -9,8 +9,8 @@ from dockyard.services.station_status import station_status
 
 
 def station_status_endpoint(session: Session, station_id: str) -> tuple[int, dict[str, Any]]:
-    """F-052: returns the station's available bikes, empty docks and fill
-    ratio."""
+    """Handler for the station-status endpoint; shapes the read model into
+    a JSON-friendly dict."""
     status = station_status(session, station_id)
     return 200, {
         "station_id": status.station_id,

@@ -1,15 +1,14 @@
 import { latestReading } from "../db/weatherReadings.js";
 
-/** Rebalancing pauses while the latest Skyglass severity is at least this value. */
+/** Compared with >=, not >, against the latest reading's severity. */
 export const STORM_SEVERITY = 3;
 
-/** A reading older than this many minutes is stale and does not pause rebalancing. */
+/** Guards against acting on a reading the weather-poll job hasn't refreshed recently. */
 export const MAX_READING_AGE_MINUTES = 60;
 
 /**
- * True while the latest Skyglass severity is 3 or more and that reading is
- * no more than 60 minutes old. Consulted only by the nightly-rebalance job;
- * the maintenance sweep keeps running in a storm.
+ * Looks up the single latest reading on every call; there is no caching,
+ * so a burst of calls in the same tick all hit the in-memory store again.
  */
 export function isStormPaused(now: Date): boolean {
   const reading = latestReading();

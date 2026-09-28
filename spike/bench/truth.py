@@ -54,6 +54,7 @@ ENTITIES_FILE = "entities.yaml"
 FACTS_FILE = "facts.yaml"
 CONTRADICTIONS_FILE = "contradictions.yaml"
 STALE_FILE = "stale.yaml"
+ALIASES_FILE = "aliases.yaml"
 
 _HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 
@@ -104,12 +105,26 @@ class StaleEntry:
     superseded_by: str | None = None
 
 
+@dataclass(frozen=True)
+class AliasEntry:
+    """One entity's name and its extra aliases, as arms never see them (D-013):
+    `score.py` is the only reader, aligning a returned entity NAME to this
+    entity's id. `name` here is expected to match the corresponding
+    `Entity.name` in ``entities.yaml``, but that agreement isn't enforced by
+    the loader — a mismatch is a fixture-authoring bug, not a load error."""
+
+    id: str
+    name: str
+    aliases: tuple[str, ...] = ()
+
+
 @dataclass
 class Truth:
     entities: dict[str, Entity] = field(default_factory=dict)
     facts: dict[str, TruthFact] = field(default_factory=dict)
     contradictions: dict[str, TruthContradiction] = field(default_factory=dict)
     stale: dict[str, StaleEntry] = field(default_factory=dict)
+    aliases: dict[str, AliasEntry] = field(default_factory=dict)
 
 
 def _load_raw(path: Path) -> list[dict]:
@@ -184,12 +199,27 @@ def load_stale(path: Path) -> dict[str, StaleEntry]:
     }
 
 
+def load_aliases(path: Path) -> dict[str, AliasEntry]:
+    """Tolerant of a missing file (returns {}) — the real fixture's
+    ``truth/aliases.yaml`` is authored separately and may not exist yet;
+    ``score.py``'s alias index then falls back to entity id/name alone."""
+    return {
+        raw["id"]: AliasEntry(
+            id=raw["id"],
+            name=raw["name"],
+            aliases=tuple(raw.get("aliases", [])),
+        )
+        for raw in _load_raw(path)
+    }
+
+
 def load_truth(truth_root: Path) -> Truth:
     return Truth(
         entities=load_entities(truth_root / ENTITIES_FILE),
         facts=load_facts(truth_root / FACTS_FILE),
         contradictions=load_contradictions(truth_root / CONTRADICTIONS_FILE),
         stale=load_stale(truth_root / STALE_FILE),
+        aliases=load_aliases(truth_root / ALIASES_FILE),
     )
 
 

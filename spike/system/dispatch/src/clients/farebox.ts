@@ -6,7 +6,7 @@ export class FareboxClient {
     private readonly fetchImpl: FetchLike,
   ) {}
 
-  /** Asks farebox to close lost rides through POST /internal/rides/close-lost. */
+  /** No request body; the server decides which rides qualify. */
   async closeLostRides(): Promise<void> {
     await this.fetchImpl(`${this.baseUrl}/internal/rides/close-lost`, { method: "POST" });
   }

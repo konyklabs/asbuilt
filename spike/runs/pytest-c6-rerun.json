@@ -1,0 +1,57 @@
+{
+  "created": 1790612539.373688,
+  "duration": 0.006917238235473633,
+  "exitcode": 0,
+  "root": ".",
+  "environment": {},
+  "summary": {
+    "passed": 1,
+    "total": 1,
+    "collected": 1
+  },
+  "collectors": [
+    {
+      "nodeid": "",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": "tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed",
+          "type": "Function",
+          "lineno": 30
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "nodeid": "tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed",
+      "lineno": 30,
+      "outcome": "passed",
+      "keywords": [
+        "test_close_ride_publishes_ride_completed",
+        "e2e",
+        "pytestmark",
+        "test_close_ride.py",
+        "tests",
+        "repo",
+        ""
+      ],
+      "setup": {
+        "duration": 0.00016875006258487701,
+        "outcome": "passed"
+      },
+      "call": {
+        "duration": 0.00013083266094326973,
+        "outcome": "passed"
+      },
+      "teardown": {
+        "duration": 5.8416277170181274e-05,
+        "outcome": "passed"
+      }
+    }
+  ],
+  "metadata": {
+    "commit": "1ab33e0eca9b2ec15c77ebe84b3bba04f1d1d87e",
+    "step": "c6"
+  }
+}

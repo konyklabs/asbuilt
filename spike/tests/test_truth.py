@@ -8,6 +8,7 @@ from bench.truth import (
     _check_run_carrier,
     check_consistency,
     github_slugify,
+    load_aliases,
     load_contradictions,
     load_entities,
     load_facts,
@@ -21,7 +22,12 @@ from tests._support import MINI_ROOT
 
 def test_load_entities():
     entities = load_entities(MINI_ROOT / "truth" / "entities.yaml")
-    assert set(entities) == {"E-farebox", "E-rule-member-free-minutes"}
+    assert set(entities) == {
+        "E-farebox",
+        "E-rule-member-free-minutes",
+        "E-team-fares",
+        "E-team-ops",
+    }
     assert entities["E-rule-member-free-minutes"].owner == "E-farebox"
 
 
@@ -52,10 +58,32 @@ def test_load_contradictions_and_stale():
 
 def test_load_truth_bundles_all_four():
     truth = load_truth(MINI_ROOT / "truth")
-    assert len(truth.entities) == 2
+    assert len(truth.entities) == 4
     assert len(truth.facts) == 13
     assert len(truth.contradictions) == 1
     assert len(truth.stale) == 1
+
+
+def test_load_aliases():
+    aliases = load_aliases(MINI_ROOT / "truth" / "aliases.yaml")
+    assert set(aliases) == {
+        "E-farebox",
+        "E-rule-member-free-minutes",
+        "E-team-fares",
+        "E-team-ops",
+    }
+    assert aliases["E-farebox"].name == "farebox"
+    assert "fare box" in aliases["E-farebox"].aliases
+
+
+def test_load_aliases_tolerates_missing_file(tmp_path: Path):
+    assert load_aliases(tmp_path / "no-such-aliases.yaml") == {}
+
+
+def test_load_truth_includes_aliases():
+    truth = load_truth(MINI_ROOT / "truth")
+    assert len(truth.aliases) == 4
+    assert truth.aliases["E-rule-member-free-minutes"].name == "member-free-minutes"
 
 
 def test_resolve_step():
