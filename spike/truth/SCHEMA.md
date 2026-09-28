@@ -58,6 +58,27 @@ the present tense, and say exactly what the strongest carrier asserts, no
 more (a passing test proves what it asserted; `executed-audit.md` records how
 each executed statement was checked against its assertion).
 
+Structured claims (D-013, "every fact has an identity"). A fact whose
+statement carries a number, a money amount, a clock time or a duration (a
+digit, a number word from "two" up, or "every hour" and the like) has exactly
+one `claim`; a fact without one has none:
+
+```yaml
+  claim:
+    entity: E-rule-single-ride-cap   # one of the fact's own entities
+    attribute: cap                   # snake_case
+    value: 30.0                      # a number (money in USD as a number), or a string for clock times, dates and codes
+    unit: usd                        # usd | minute | day | hour | second | percent | count | clock | null
+```
+
+The value appears in the statement: as the same number, a number word, a
+verbatim string, or 1 for "every <unit>". Facts about one attribute at
+different times or in contradiction share `entity` and `attribute`, so a join
+on the pair finds them: every contradiction and stale pair whose facts both
+carry a claim shares both, with a different value or unit. When a claim is
+about shared infrastructure (backups, deploys), it uses the fact's first
+entity.
+
 Run outcomes (D-013; the planted cases are in `planted-runs.yaml`):
 
 - An `executed` fact cites the attempt-1 run of every step, within its

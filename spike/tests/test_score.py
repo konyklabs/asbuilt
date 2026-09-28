@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import json
 import re
 from datetime import datetime
 
@@ -10,10 +11,19 @@ from bench.run import run
 from bench.score import (
     DEFAULT_CALIBRATION,
     SPIKE_ROOT,
+    _attributes_match,
+    _boundary_numbers_ok,
+    _claim_accuracy,
+    _claim_value_as_number_token,
+    _claim_values_match,
+    _claims_match,
+    _current_at_step,
     _duplicate_count,
     _entity_mention_conflict,
     _mentioned_entities,
+    _resolve_step_or_sha,
     _statement_matches,
+    _step_order,
     aggregate_reports,
     align_entities,
     bootstrap_compare,
@@ -29,12 +39,14 @@ from bench.score import (
     print_comparison,
     print_multi_report,
     print_report,
+    print_test_connector_report,
     resolve_fact_entities,
     score,
     score_ask_query,
     score_contradictions,
     score_fact_query,
     score_stale,
+    score_test_connector,
 )
 from bench.truth import (
     Carrier,
@@ -1503,8 +1515,10 @@ def test_calibration_set_meets_precision_and_recall_bar():
     mention index from the real truth/, same as `score.py --calibrate`."""
     pairs = load_calibration(SPIKE_ROOT / DEFAULT_CALIBRATION)
     assert len(pairs) >= 90  # "about 100" per the task
-    mention_index = build_mention_index(load_truth(SPIKE_ROOT / "truth"))
-    report = calibrate(pairs, mention_index)
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    alias_index = build_alias_index(truth)
+    report = calibrate(pairs, mention_index, alias_index, truth.entities)
     assert report["precision"] >= 0.9, report["misclassified"]
     assert report["recall"] >= 0.85, report["misclassified"]
 
@@ -1583,3 +1597,322 @@ def test_print_report_labels_validity_as_supersession_when_incremental(capsys):
     assert "supersession accuracy=" in out
     assert "validity accuracy=" not in out
     assert "duplicates=" in out
+
+
+# --------------------------------------------------------------------------
+# The test connector's bag of facts (konyklabs/asbuilt#8)
+# --------------------------------------------------------------------------
+
+_MINI_COMMITS = {
+    "c1": {"sha": "sha-c1", "date": "2026-01-01T09:00:00-05:00"},
+    "c2": {"sha": "sha-c2", "date": "2026-02-01T09:00:00-05:00"},
+    "c3": {"sha": "sha-c3", "date": "2026-03-01T09:00:00-05:00"},
+    "c4": {"sha": "sha-c4", "date": "2026-04-01T09:00:00-05:00"},
+}
+
+
+def test_step_order_by_date():
+    assert _step_order(_MINI_COMMITS) == {"c1": 0, "c2": 1, "c3": 2, "c4": 3}
+
+
+def test_resolve_step_or_sha_accepts_either_or_neither():
+    assert _resolve_step_or_sha("c2", _MINI_COMMITS) == "c2"
+    assert _resolve_step_or_sha("sha-c2", _MINI_COMMITS) == "c2"
+    assert _resolve_step_or_sha("unknown", _MINI_COMMITS) == "unknown"
+
+
+def test_current_at_step_half_open_window():
+    """[valid_from, valid_to): the step that retires a fact already carries
+    the NEW value, never the old one — F-001 valid_to=c2 / F-002
+    valid_from=c2 in the mini fixture partition history this way."""
+    order = _step_order(_MINI_COMMITS)
+    retired_at_c2 = TruthFact(
+        id="F-x",
+        statement="x",
+        category="business-logic",
+        entities=(),
+        tier="executed",
+        carriers=(),
+        valid_to="c2",
+    )
+    introduced_at_c2 = TruthFact(
+        id="F-y",
+        statement="y",
+        category="business-logic",
+        entities=(),
+        tier="executed",
+        carriers=(),
+        valid_from="c2",
+    )
+    assert _current_at_step(retired_at_c2, order, order["c1"])
+    assert not _current_at_step(retired_at_c2, order, order["c2"])
+    assert not _current_at_step(introduced_at_c2, order, order["c1"])
+    assert _current_at_step(introduced_at_c2, order, order["c2"])
+
+
+def test_score_test_connector_on_mini_fixture_perfect_wrong_tier_wrong_number():
+    """At step c4, F-003 ("free minutes are 15", executed) and F-012 ("...
+    three fault reports...", code) are the two current truth facts carrying
+    a test document. One perfect match, one wrong-tier match (still a
+    match — tier isn't a facts_match criterion — but off the confusion
+    diagonal, and a hard error since it claims executed with no run/
+    citation), one wrong-number non-match (a hard false positive: same
+    entity and cited document, different value)."""
+    perfect = {
+        "statement": "A member's free minutes are 15.",
+        "category": "business-logic",
+        "entities": ["farebox", "member free minutes"],
+        "tier": "executed",
+        "citations": [
+            {"document": "code/tests/test_pricing.py", "version": "c4"},
+            {"document": "run/pytest-c4"},
+        ],
+    }
+    wrong_tier = {
+        "statement": (
+            "A dispatch test confirms the refunds watcher locks a bike with three fault reports."
+        ),
+        "category": "technical-implementation",
+        "entities": ["farebox"],
+        "tier": "executed",  # truth says "code"; also no run/ citation
+        "citations": [{"document": "code/dispatch/test/refundsWatcher.test.ts", "version": "c1"}],
+    }
+    wrong_number = {
+        "statement": "A member's free minutes are 99.",
+        "category": "business-logic",
+        "entities": ["farebox", "member free minutes"],
+        "tier": "executed",
+        "citations": [{"document": "code/tests/test_pricing.py", "version": "c4"}],
+    }
+    payload = {"facts": [perfect, wrong_tier, wrong_number], "contradiction_candidates": []}
+    report = score_test_connector(payload, MINI_ROOT / "truth", "c4", _MINI_COMMITS)
+
+    assert report["step"] == "c4"
+    assert report["expected"] == 2  # F-003, F-012
+    assert report["tp"] == 2  # perfect + wrong_tier both match; tier isn't a match criterion
+    assert report["hard_false_positives"] == 1
+    assert report["tier_confusion"]["confusion"] == {
+        "executed": {"executed": 1},
+        "code": {"executed": 1},
+    }
+    # Both wrong_tier and wrong_number claim "executed" with no run/
+    # citation — every such claim is a hard error, matched or not.
+    assert report["tier_confusion"]["hard_errors"] == 2
+    assert report["by_tier"]["executed"]["tp"] == 1
+    assert report["by_tier"]["code"]["tp"] == 0
+    assert report["missed"] == []
+    assert report["contradiction_candidates"]["expected"] == 0  # mini has no run-vs-code kind
+
+
+def test_score_test_connector_bare_list_skips_contradiction_candidates():
+    report = score_test_connector([], MINI_ROOT / "truth", "c4", _MINI_COMMITS)
+    assert report["returned"] == 0
+    assert report["contradiction_candidates"]["expected"] == 0
+
+
+def test_print_test_connector_report_smoke(capsys):
+    report = score_test_connector([], MINI_ROOT / "truth", "c4", _MINI_COMMITS)
+    print_test_connector_report(report)
+    out = capsys.readouterr().out
+    assert "step: c4" in out
+    assert "missed truth facts: 2" in out
+
+
+def test_claim_accuracy_uses_claims_match_not_exact_attribute_equality():
+    """konyklabs/asbuilt#8 review: the earlier version required exact
+    attribute-string equality, scoring a constant-derived "lost_bike_fee"
+    against truth's "fee" as wrong even though _claims_match's word-overlap
+    rule already accepts that pair — _claim_accuracy must reuse
+    _claims_match, not a separate, stricter check."""
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="x",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(),
+        claim={"entity": "E-farebox", "attribute": "fee", "value": 150.0, "unit": "usd"},
+    )
+    accepted_by_overlap = {
+        "claim": {
+            "attribute": "lost_bike_fee",
+            "value": "150.0",
+            "unit": "usd",
+            "_resolved_entities": ["E-farebox"],
+        }
+    }
+    result = _claim_accuracy([(accepted_by_overlap, "F-1")], {"F-1": truth_fact})
+    assert result == {"accepted": 1, "compared": 1, "accuracy": 1.0}
+
+    wrong_value = {
+        "claim": {
+            "attribute": "fee",
+            "value": "100.0",
+            "unit": "usd",
+            "_resolved_entities": ["E-farebox"],
+        }
+    }
+    result_wrong = _claim_accuracy([(wrong_value, "F-1")], {"F-1": truth_fact})
+    assert result_wrong == {"accepted": 0, "compared": 1, "accuracy": 0.0}
+
+
+def test_claim_accuracy_zero_when_truth_has_no_claim():
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="x",
+        category="business-logic",
+        entities=("E-x",),
+        tier="executed",
+        carriers=(),
+    )
+    returned = {
+        "claim": {"attribute": "a", "value": 1, "unit": None, "_resolved_entities": ["E-x"]}
+    }
+    result = _claim_accuracy([(returned, "F-1")], {"F-1": truth_fact})
+    assert result == {"accepted": 0, "compared": 0, "accuracy": None}
+
+
+# --------------------------------------------------------------------------
+# Claim-first matching (konyklabs/asbuilt#8 review)
+# --------------------------------------------------------------------------
+
+
+def test_claim_values_match_numeric_and_text():
+    assert _claim_values_match(30, 30.0)
+    assert _claim_values_match("30", 30)
+    assert not _claim_values_match(30, 45)
+    assert _claim_values_match("03:00", "03:00")
+    assert _claim_values_match("Station_Full", "station_full")
+    assert not _claim_values_match("station_full", "too_many_faults")
+
+
+def test_claim_values_match_dollar_formatted_string():
+    """konyklabs/asbuilt#8 trace: a real connector payload emitted a claim
+    value of "$150.00" for a usd claim, against truth's plain 150.0 — the
+    schema fixes value as a plain number, but the scorer's own "money as a
+    number" unit-normalisation promise should still accept the common
+    deviation, not just the conformant form."""
+    assert _claim_values_match("$150.00", 150.0)
+    assert _claim_values_match("$1,250", 1250)
+    assert not _claim_values_match("$150.00", 100.0)
+
+
+def test_attributes_match_the_tasks_own_worked_examples():
+    assert _attributes_match("member_free_minutes", "free_minutes")
+    assert _attributes_match("cap", "single_ride_cap")
+    assert not _attributes_match("fee", "retries")
+
+
+def test_claims_match_requires_resolved_entity_value_unit_and_attribute():
+    truth_claim = {"entity": "E-x", "attribute": "free_minutes", "value": 30, "unit": "minute"}
+    matching = {
+        "entity": "y",
+        "attribute": "member_free_minutes",
+        "value": "30",
+        "unit": "minute",
+        "_resolved_entities": ["E-x"],
+    }
+    assert _claims_match(matching, truth_claim)
+
+    wrong_entity = {**matching, "_resolved_entities": ["E-other"]}
+    assert not _claims_match(wrong_entity, truth_claim)
+
+    wrong_value = {**matching, "value": "45"}
+    assert not _claims_match(wrong_value, truth_claim)
+
+    wrong_unit = {**matching, "unit": "hour"}
+    assert not _claims_match(wrong_unit, truth_claim)
+
+    # An unset unit on either side never blocks a match.
+    unset_unit = {**matching, "unit": None}
+    assert _claims_match(unset_unit, truth_claim)
+
+    wrong_attribute = {**matching, "attribute": "retries"}
+    assert not _claims_match(wrong_attribute, truth_claim)
+
+
+def test_claim_value_as_number_token_renders_by_unit():
+    assert _claim_value_as_number_token(30.0, "usd") == "$30"
+    assert _claim_value_as_number_token(20, "percent") == "20%"
+    assert _claim_value_as_number_token(14, "day") == "14"
+    assert _claim_value_as_number_token("03:00", "clock") == "03:00"
+    assert _claim_value_as_number_token(None, "day") is None
+
+
+def test_boundary_numbers_ok_requires_subset_and_membership():
+    truth_claim = {"value": 30, "unit": "minute"}
+    # returned names extra numbers but contains everything truth's own
+    # statement names, and the claim's own value is among them.
+    assert _boundary_numbers_ok({"30", "31", "$0.15"}, {"30"}, None, truth_claim)
+    # returned is missing one of truth's own numbers -> not a superset.
+    assert not _boundary_numbers_ok({"31", "$0.15"}, {"30", "99"}, None, truth_claim)
+    # the claim's value never appears in the other side's numbers at all.
+    assert not _boundary_numbers_ok({"31", "$0.15"}, {"31"}, None, truth_claim)
+    # neither/both sides carry a claim -> never relaxed.
+    assert not _boundary_numbers_ok({"30"}, {"30", "31"}, None, None)
+
+
+def test_facts_match_claim_first_overrides_dissimilar_statement_text():
+    """Both sides carry a claim: the match is decided by the claim alone —
+    a completely different statement text is irrelevant once the claim
+    agrees, and a matching statement doesn't save a disagreeing claim."""
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A member's first 30 minutes of every ride are free.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="executed",
+        carriers=(Carrier(document="wiki/x"),),
+        claim={"entity": "E-x", "attribute": "free_minutes", "value": 30, "unit": "minute"},
+    )
+    returned_matching_claim = {
+        "statement": "Totally different phrasing sharing hardly any vocabulary.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+        "claim": {
+            "attribute": "free_minutes",
+            "value": 30,
+            "unit": "minute",
+            "_resolved_entities": ["E-x"],
+        },
+    }
+    assert facts_match(returned_matching_claim, truth_fact)
+
+    returned_disagreeing_claim = {
+        "statement": "A member's first 30 minutes of every ride are free.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+        "claim": {
+            "attribute": "free_minutes",
+            "value": 45,
+            "unit": "minute",
+            "_resolved_entities": ["E-x"],
+        },
+    }
+    assert not facts_match(returned_disagreeing_claim, truth_fact)
+
+
+def test_resolve_fact_entities_resolves_the_claims_own_entity():
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    fact = {
+        "entities": ["Farebox"],
+        "category": "business-logic",
+        "statement": "x",
+        "claim": {"entity": "Farebox", "attribute": "a", "value": 1, "unit": None},
+    }
+    resolved = resolve_fact_entities(fact, index, truth.entities)
+    assert resolved["claim"]["_resolved_entities"] == ["E-farebox"]
+
+
+@pytest.mark.fixture
+def test_real_fixture_score_test_connector_smoke():
+    facts_path = SPIKE_ROOT / "build" / "connector" / "tests-c6.json"
+    if not facts_path.is_file():
+        pytest.skip()
+    commits_path = SPIKE_ROOT / "build" / "commits.json"
+    commits = json.loads(commits_path.read_text()) if commits_path.is_file() else {}
+    payload = json.loads(facts_path.read_text())
+    report = score_test_connector(payload, SPIKE_ROOT / "truth", "c6", commits)
+    assert report["expected"] > 0
+    assert report["precision"] is None or 0.0 <= report["precision"] <= 1.0

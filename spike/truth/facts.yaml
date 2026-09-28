@@ -10,6 +10,11 @@
   entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
   valid_to: c2
+  claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
   carriers:
   - document: code/farebox/pricing.py
     location: MEMBER_FREE_MINUTES
@@ -26,6 +31,11 @@
   tier: executed
   valid_from: c2
   valid_to: c4
+  claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 45
+    unit: minute
   carriers:
   - document: code/farebox/pricing.py
     location: MEMBER_FREE_MINUTES
@@ -47,6 +57,11 @@
   entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
   valid_from: c4
+  claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
   carriers:
   - document: code/farebox/pricing.py
     location: MEMBER_FREE_MINUTES
@@ -72,6 +87,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-casual-unlock-fee, E-table-riders]
   tier: executed
+  claim:
+    entity: E-rule-casual-unlock-fee
+    attribute: unlock_fee
+    value: 1.0
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: CASUAL_UNLOCK_FEE
@@ -99,6 +119,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-per-minute-rate, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
+  claim:
+    entity: E-rule-per-minute-rate
+    attribute: member_rate_per_minute
+    value: 0.15
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: MEMBER_RATE
@@ -129,6 +154,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-per-minute-rate]
   tier: executed
+  claim:
+    entity: E-rule-per-minute-rate
+    attribute: casual_rate_per_minute
+    value: 0.25
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: CASUAL_RATE
@@ -159,6 +189,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-ebike-surcharge, E-flag-ebike-surcharge, E-table-bikes]
   tier: executed
+  claim:
+    entity: E-rule-ebike-surcharge
+    attribute: surcharge_per_minute
+    value: 0.1
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: EBIKE_SURCHARGE
@@ -195,6 +230,11 @@
   entities: [E-farebox, E-rule-single-ride-cap]
   tier: executed
   valid_to: c5
+  claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 25.0
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: SINGLE_RIDE_CAP
@@ -216,6 +256,11 @@
   entities: [E-farebox, E-rule-single-ride-cap]
   tier: executed
   valid_from: c5
+  claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 30.0
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: SINGLE_RIDE_CAP
@@ -239,6 +284,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-lost-bike-fee, E-table-rides]
   tier: executed
+  claim:
+    entity: E-rule-lost-bike-fee
+    attribute: lost_after
+    value: 24
+    unit: hour
   carriers:
   - document: code/farebox/services/lost_bikes.py
     location: LOST_BIKE_HOURS
@@ -270,6 +320,11 @@
   demoted_by:
     document: run/pytest-c5
     location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
+  claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 100.0
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: LOST_BIKE_FEE
@@ -291,6 +346,11 @@
   entities: [E-farebox, E-rule-lost-bike-fee, E-table-invoice-lines]
   tier: executed
   valid_from: c5
+  claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
   carriers:
   - document: code/farebox/pricing.py
     location: LOST_BIKE_FEE
@@ -309,6 +369,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-refund-window, E-endpoint-refund, E-table-refunds]
   tier: executed
+  claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
   carriers:
   - document: code/farebox/services/refunds.py
     location: REFUND_WINDOW_DAYS
@@ -340,6 +405,11 @@
   entities: [E-farebox, E-rule-refund-auto-approve, E-flag-refund-auto-approve, E-table-refunds]
   tier: executed
   valid_from: c6
+  claim:
+    entity: E-rule-refund-auto-approve
+    attribute: limit
+    value: 5.0
+    unit: usd
   carriers:
   - document: code/farebox/services/refunds.py
     location: AUTO_APPROVE_LIMIT
@@ -365,6 +435,11 @@
   entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
   tier: executed
   valid_to: c3
+  claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 3
+    unit: day
   carriers:
   - document: code/farebox/services/memberships.py
     location: GRACE_DAYS
@@ -382,6 +457,11 @@
   entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
   tier: executed
   valid_from: c3
+  claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 7
+    unit: day
   carriers:
   - document: code/farebox/services/memberships.py
     location: GRACE_DAYS
@@ -476,6 +556,11 @@
   category: business-logic
   entities: [E-dockyard, E-rule-checkout-limit, E-endpoint-checkout, E-table-rides]
   tier: executed
+  claim:
+    entity: E-rule-checkout-limit
+    attribute: max_bikes
+    value: 2
+    unit: count
   carriers:
   - document: code/dockyard/services/checkout.py
     location: CHECKOUT_LIMIT
@@ -510,6 +595,11 @@
   - E-table-maintenance-tickets
   - E-table-bikes
   tier: executed
+  claim:
+    entity: E-rule-fault-threshold
+    attribute: fault_reports
+    value: 3
+    unit: count
   carriers:
   - document: code/dispatch/src/jobs/maintenanceSweep.ts
     location: FAULT_THRESHOLD
@@ -537,6 +627,11 @@
   category: business-logic
   entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance, E-table-rebalance-orders]
   tier: executed
+  claim:
+    entity: E-rule-rebalance-trigger
+    attribute: low_fill
+    value: 20
+    unit: percent
   carriers:
   - document: code/dispatch/src/jobs/nightlyRebalance.ts
     location: needsRebalance
@@ -565,6 +660,11 @@
   entities: [E-dispatch, E-rule-storm-pause, E-job-nightly-rebalance, E-int-skyglass, E-table-weather-readings]
   tier: executed
   valid_from: c6
+  claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
   carriers:
   - document: code/dispatch/src/rules/stormPause.ts
     location: STORM_SEVERITY
@@ -592,6 +692,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-payment-retry, E-int-tollbooth-pay, E-table-payments]
   tier: executed
+  claim:
+    entity: E-rule-payment-retry
+    attribute: retries
+    value: 3
+    unit: count
   carriers:
   - document: code/farebox/clients/tollbooth.py
     location: MAX_RETRIES
@@ -630,6 +735,11 @@
   - E-int-skyglass
   - E-table-weather-readings
   tier: code
+  claim:
+    entity: E-flag-dynamic-pricing
+    attribute: surge_multiplier
+    value: 1.25
+    unit: null
   carriers:
   - document: code/farebox/services/surge.py
     location: surge_multiplier
@@ -704,6 +814,11 @@
   category: business-logic
   entities: [E-farebox, E-table-plans]
   tier: code
+  claim:
+    entity: E-table-plans
+    attribute: monthly_price
+    value: 15.0
+    unit: usd
   carriers:
   - document: code/farebox/migrations/0002_seed_plans.py
     location: PLANS
@@ -730,6 +845,11 @@
   category: business-logic
   entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance, E-table-rebalance-orders]
   tier: code
+  claim:
+    entity: E-rule-rebalance-trigger
+    attribute: target_fill
+    value: 50
+    unit: percent
   carriers:
   - document: code/dispatch/src/jobs/nightlyRebalance.ts
     location: TARGET_FILL
@@ -787,6 +907,11 @@
   tier: documented
   valid_from: c2
   valid_to: c4
+  claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 45
+    unit: minute
   carriers:
   - document: wiki/member-pricing
     location: '#free-minutes'
@@ -800,6 +925,11 @@
   entities: [E-farebox, E-rule-membership-grace]
   tier: documented
   valid_to: c3
+  claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 3
+    unit: day
   carriers:
   - document: wiki/membership-faq
     location: '#grace'
@@ -810,6 +940,11 @@
   entities: [E-farebox, E-rule-single-ride-cap]
   tier: documented
   valid_to: c5
+  claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 25.0
+    unit: usd
   carriers:
   - document: wiki/fares-overview
     location: '#cap'
@@ -823,6 +958,11 @@
   entities: [E-farebox, E-rule-lost-bike-fee]
   tier: documented
   valid_to: c5
+  claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 100.0
+    unit: usd
   carriers:
   - document: wiki/lost-and-stolen-bikes
     location: '#lost-fee'
@@ -855,6 +995,11 @@
   category: business-logic
   entities: [E-dockyard, E-rule-checkout-limit]
   tier: documented
+  claim:
+    entity: E-rule-checkout-limit
+    attribute: max_bikes
+    value: 3
+    unit: count
   carriers:
   - document: wiki/checkout-rules
     location: '#limit'
@@ -864,6 +1009,11 @@
   category: business-logic
   entities: [E-dispatch, E-rule-fault-threshold]
   tier: documented
+  claim:
+    entity: E-rule-fault-threshold
+    attribute: fault_reports
+    value: 2
+    unit: count
   carriers:
   - document: ticket/GW-134
     location: comment-3
@@ -872,6 +1022,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-refund-window]
   tier: documented
+  claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 30
+    unit: day
   carriers:
   - document: ticket/GW-149
     location: comment-1
@@ -880,6 +1035,11 @@
   category: business-logic
   entities: [E-farebox, E-flag-dynamic-pricing]
   tier: documented
+  claim:
+    entity: E-flag-dynamic-pricing
+    attribute: surge_multiplier
+    value: 1.5
+    unit: null
   carriers:
   - document: ticket/GW-112
     location: description
@@ -888,6 +1048,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-casual-unlock-fee]
   tier: documented
+  claim:
+    entity: E-rule-casual-unlock-fee
+    attribute: unlock_fee
+    value: 2.0
+    unit: usd
   carriers:
   - document: doc/fares-price-sheet
     location: '#casual-rates'
@@ -897,6 +1062,11 @@
   category: business-logic
   entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance]
   tier: documented
+  claim:
+    entity: E-rule-rebalance-trigger
+    attribute: low_fill
+    value: 25
+    unit: percent
   carriers:
   - document: wiki/rebalancing-overview
     location: '#trigger'
@@ -906,6 +1076,11 @@
   category: business-logic
   entities: [E-farebox, E-rule-lost-bike-fee]
   tier: documented
+  claim:
+    entity: E-rule-lost-bike-fee
+    attribute: waiver_window
+    value: 72
+    unit: hour
   carriers:
   - document: wiki/support-playbook
     location: '#lost-bike-waiver'
@@ -969,6 +1144,11 @@
   category: technical-implementation
   entities: [E-dockyard, E-endpoint-checkin, E-rule-station-capacity]
   tier: executed
+  claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
   carriers:
   - document: code/dockyard/api/rides.py
     location: checkin_endpoint
@@ -1134,6 +1314,11 @@
   category: technical-implementation
   entities: [E-farebox, E-int-tollbooth-pay]
   tier: code
+  claim:
+    entity: E-int-tollbooth-pay
+    attribute: timeout
+    value: 5
+    unit: second
   carriers:
   - document: code/farebox/config.py
     location: TOLLBOOTH_TIMEOUT_SECONDS
@@ -1146,6 +1331,11 @@
   category: technical-implementation
   entities: [E-farebox, E-int-tollbooth-pay, E-rule-payment-retry]
   tier: code
+  claim:
+    entity: E-rule-payment-retry
+    attribute: backoff_schedule
+    value: 0.5, 1 and 2
+    unit: second
   carriers:
   - document: code/farebox/clients/tollbooth.py
     location: BACKOFF_SECONDS
@@ -1158,6 +1348,11 @@
   category: technical-implementation
   entities: [E-farebox, E-int-tollbooth-pay, E-rule-payment-retry]
   tier: code
+  claim:
+    entity: E-rule-payment-retry
+    attribute: retry_on
+    value: 5xx
+    unit: null
   carriers:
   - document: code/farebox/clients/tollbooth.py
     location: should_retry
@@ -1170,6 +1365,11 @@
   category: technical-implementation
   entities: [E-farebox, E-dockyard, E-table-feature-flags]
   tier: code
+  claim:
+    entity: E-table-feature-flags
+    attribute: cache_ttl
+    value: 60
+    unit: second
   carriers:
   - document: code/farebox/flags.py
     location: CACHE_TTL_SECONDS
@@ -1204,6 +1404,11 @@
   - E-flag-overflow-parking
   tier: code
   valid_from: c6
+  claim:
+    entity: E-table-feature-flags
+    attribute: flag_count
+    value: 4
+    unit: count
   carriers:
   - document: code/farebox/flags.py
     location: FLAGS
@@ -1246,6 +1451,11 @@
   category: technical-implementation
   entities: [E-dispatch, E-int-skyglass]
   tier: code
+  claim:
+    entity: E-int-skyglass
+    attribute: timeout
+    value: 3
+    unit: second
   carriers:
   - document: code/dispatch/src/clients/skyglass.ts
     location: SkyglassClient.fetchSeverity
@@ -1275,6 +1485,11 @@
   category: technical-implementation
   entities: [E-dockyard, E-endpoint-checkout, E-rule-checkout-limit]
   tier: code
+  claim:
+    entity: E-endpoint-checkout
+    attribute: limit_reached_status
+    value: 409
+    unit: null
   carriers:
   - document: code/dockyard/api/rides.py
     location: checkout_endpoint
@@ -1288,6 +1503,11 @@
   category: technical-implementation
   entities: [E-farebox, E-endpoint-refund, E-rule-refund-window]
   tier: code
+  claim:
+    entity: E-endpoint-refund
+    attribute: window_expired_status
+    value: 422
+    unit: null
   carriers:
   - document: code/farebox/api/refunds.py
     location: create_refund_endpoint
@@ -1327,6 +1547,11 @@
   category: technical-implementation
   entities: [E-farebox, E-table-memberships]
   tier: code
+  claim:
+    entity: E-table-memberships
+    attribute: status_count
+    value: 3
+    unit: count
   carriers:
   - document: code/farebox/models/membership.py
     location: MembershipStatus
@@ -1367,6 +1592,11 @@
   category: technical-implementation
   entities: [E-farebox, E-int-tollbooth-pay]
   tier: documented
+  claim:
+    entity: E-int-tollbooth-pay
+    attribute: timeout
+    value: 10
+    unit: second
   carriers:
   - document: doc/tollbooth-integration
     location: '#timeouts'
@@ -1376,6 +1606,11 @@
   category: technical-implementation
   entities: [E-farebox, E-dockyard, E-dispatch, E-table-feature-flags]
   tier: documented
+  claim:
+    entity: E-table-feature-flags
+    attribute: cache_ttl
+    value: 5
+    unit: minute
   carriers:
   - document: ticket/GW-143
     location: comment-2
@@ -1403,6 +1638,11 @@
   entities: [E-table-feature-flags, E-flag-dynamic-pricing, E-flag-ebike-surcharge, E-flag-overflow-parking]
   tier: documented
   valid_to: c6
+  claim:
+    entity: E-table-feature-flags
+    attribute: flag_count
+    value: 3
+    unit: count
   carriers:
   - document: wiki/feature-flags
     location: '#flags'
@@ -1412,6 +1652,11 @@
   category: technical-implementation
   entities: [E-farebox, E-int-tollbooth-pay]
   tier: documented
+  claim:
+    entity: E-int-tollbooth-pay
+    attribute: settlement_delay
+    value: 2
+    unit: day
   carriers:
   - document: doc/tollbooth-integration
     location: '#settlement'
@@ -1421,6 +1666,11 @@
   category: technical-implementation
   entities: [E-queue-ride-events]
   tier: documented
+  claim:
+    entity: E-queue-ride-events
+    attribute: retention
+    value: 7
+    unit: day
   carriers:
   - document: wiki/ride-events
     location: '#retention'
@@ -1430,6 +1680,11 @@
   category: technical-implementation
   entities: [E-int-skyglass]
   tier: documented
+  claim:
+    entity: E-int-skyglass
+    attribute: severity_max
+    value: 5
+    unit: null
   carriers:
   - document: wiki/skyglass
     location: '#scale'
@@ -1462,6 +1717,11 @@
   category: operations
   entities: [E-dispatch, E-job-nightly-rebalance]
   tier: code
+  claim:
+    entity: E-job-nightly-rebalance
+    attribute: schedule
+    value: 03:00
+    unit: clock
   carriers:
   - document: code/dispatch/src/scheduler.ts
     location: SCHEDULES
@@ -1474,6 +1734,11 @@
   category: operations
   entities: [E-dispatch, E-job-maintenance-sweep]
   tier: code
+  claim:
+    entity: E-job-maintenance-sweep
+    attribute: interval
+    value: 1
+    unit: hour
   carriers:
   - document: code/dispatch/src/scheduler.ts
     location: SCHEDULES
@@ -1486,6 +1751,11 @@
   category: operations
   entities: [E-dispatch, E-job-weather-poll, E-int-skyglass]
   tier: code
+  claim:
+    entity: E-job-weather-poll
+    attribute: interval
+    value: 15
+    unit: minute
   carriers:
   - document: code/dispatch/src/scheduler.ts
     location: SCHEDULES
@@ -1512,6 +1782,11 @@
   entities: [E-dispatch, E-rule-storm-pause, E-table-weather-readings, E-job-weather-poll]
   tier: code
   valid_from: c6
+  claim:
+    entity: E-rule-storm-pause
+    attribute: max_reading_age
+    value: 60
+    unit: minute
   carriers:
   - document: code/dispatch/src/rules/stormPause.ts
     location: MAX_READING_AGE_MINUTES
@@ -1526,6 +1801,11 @@
   category: operations
   entities: [E-dispatch, E-job-nightly-rebalance, E-team-ops]
   tier: documented
+  claim:
+    entity: E-job-nightly-rebalance
+    attribute: rerun_deadline
+    value: 06:00
+    unit: clock
   carriers:
   - document: wiki/runbook-nightly-rebalance
     location: '#rerun'
@@ -1537,6 +1817,11 @@
   category: operations
   entities: [E-dispatch, E-job-nightly-rebalance]
   tier: documented
+  claim:
+    entity: E-job-nightly-rebalance
+    attribute: schedule
+    value: 02:00
+    unit: clock
   carriers:
   - document: wiki/runbook-nightly-rebalance
     location: '#schedule'
@@ -1556,6 +1841,11 @@
   category: operations
   entities: [E-dispatch, E-job-maintenance-sweep]
   tier: documented
+  claim:
+    entity: E-job-maintenance-sweep
+    attribute: interval
+    value: 30
+    unit: minute
   carriers:
   - document: doc/dispatch-design
     location: '#jobs'
@@ -1565,6 +1855,11 @@
   category: operations
   entities: [E-dispatch, E-job-weather-poll]
   tier: documented
+  claim:
+    entity: E-job-weather-poll
+    attribute: interval
+    value: 5
+    unit: minute
   carriers:
   - document: doc/dispatch-design
     location: '#jobs'
@@ -1574,6 +1869,11 @@
   category: operations
   entities: [E-dispatch, E-job-weather-poll, E-team-ops]
   tier: documented
+  claim:
+    entity: E-job-weather-poll
+    attribute: failures_before_alert
+    value: 4
+    unit: count
   carriers:
   - document: wiki/alerts-dispatch
     location: '#weather'
@@ -1600,6 +1900,11 @@
   category: operations
   entities: [E-farebox, E-table-payments, E-team-fares]
   tier: documented
+  claim:
+    entity: E-table-payments
+    attribute: failure_rate_alert
+    value: 5
+    unit: percent
   carriers:
   - document: wiki/alerts-farebox
     location: '#payment-failures'
@@ -1612,6 +1917,11 @@
   category: operations
   entities: [E-team-ops, E-team-fares, E-team-fleet]
   tier: documented
+  claim:
+    entity: E-team-ops
+    attribute: oncall_handover
+    value: '10:00'
+    unit: clock
   carriers:
   - document: doc/oncall-rota
     location: '#rotation'
@@ -1621,6 +1931,11 @@
   category: operations
   entities: [E-team-ops, E-team-fares, E-team-fleet]
   tier: documented
+  claim:
+    entity: E-team-ops
+    attribute: oncall_handover
+    value: 09:00
+    unit: clock
   carriers:
   - document: wiki/oncall
     location: '#handover'
@@ -1630,6 +1945,11 @@
   category: operations
   entities: [E-dockyard, E-farebox, E-dispatch]
   tier: documented
+  claim:
+    entity: E-dockyard
+    attribute: snapshot_time
+    value: 01:00
+    unit: clock
   carriers:
   - document: wiki/database-backups
     location: '#schedule'
@@ -1639,6 +1959,11 @@
   category: operations
   entities: [E-dockyard, E-farebox, E-dispatch]
   tier: documented
+  claim:
+    entity: E-dockyard
+    attribute: snapshot_retention
+    value: 14
+    unit: day
   carriers:
   - document: wiki/database-backups
     location: '#retention'
@@ -1648,6 +1973,11 @@
   category: operations
   entities: [E-dockyard, E-farebox, E-dispatch]
   tier: documented
+  claim:
+    entity: E-dockyard
+    attribute: snapshot_retention
+    value: 30
+    unit: day
   carriers:
   - document: doc/data-retention-policy
     location: '#backups'
@@ -1659,6 +1989,11 @@
   category: operations
   entities: [E-dockyard, E-farebox, E-dispatch]
   tier: documented
+  claim:
+    entity: E-dockyard
+    attribute: friday_deploy_cutoff
+    value: '12:00'
+    unit: clock
   carriers:
   - document: wiki/deploys
     location: '#windows'
@@ -1677,6 +2012,11 @@
   category: operations
   entities: [E-team-ops, E-table-rebalance-orders]
   tier: documented
+  claim:
+    entity: E-team-ops
+    attribute: van_shift_start
+    value: 06:00
+    unit: clock
   carriers:
   - document: wiki/rebalancing-overview
     location: '#vans'
@@ -1686,6 +2026,11 @@
   category: operations
   entities: [E-team-ops, E-table-rebalance-orders]
   tier: documented
+  claim:
+    entity: E-team-ops
+    attribute: van_shift_start
+    value: 05:30
+    unit: clock
   carriers:
   - document: wiki/van-operations
     location: '#shift'
@@ -1711,6 +2056,11 @@
   category: operations
   entities: [E-dispatch, E-job-weather-poll, E-int-skyglass]
   tier: documented
+  claim:
+    entity: E-job-weather-poll
+    attribute: outage_duration
+    value: 6
+    unit: hour
   carriers:
   - document: wiki/incident-2026-08-12-weather-poll
     location: '#summary'
@@ -1725,6 +2075,11 @@
   category: history
   entities: [E-farebox, E-rule-member-free-minutes]
   tier: documented
+  claim:
+    entity: E-rule-member-free-minutes
+    attribute: promotion_dates
+    value: 2026-02-20 to 2026-06-10
+    unit: null
   carriers:
   - document: wiki/spring-promotion
     location: '#dates'
@@ -1742,6 +2097,11 @@
   category: history
   entities: [E-farebox, E-rule-membership-grace, E-int-tollbooth-pay]
   tier: documented
+  claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 7
+    unit: day
   carriers:
   - document: ticket/GW-136
     location: description
@@ -1753,6 +2113,11 @@
   category: history
   entities: [E-farebox, E-rule-single-ride-cap]
   tier: documented
+  claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 30.0
+    unit: usd
   carriers:
   - document: pull/14
     location: comment-2
@@ -1762,6 +2127,11 @@
   category: history
   entities: [E-dispatch, E-rule-storm-pause, E-int-skyglass]
   tier: documented
+  claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
   carriers:
   - document: pull/19
     location: comment-1
@@ -1779,6 +2149,11 @@
   category: history
   entities: [E-farebox, E-rule-payment-retry, E-int-tollbooth-pay]
   tier: documented
+  claim:
+    entity: E-rule-payment-retry
+    attribute: retries
+    value: 3
+    unit: count
   carriers:
   - document: pull/16
     location: comment-2
@@ -1787,6 +2162,11 @@
   category: history
   entities: [E-int-skyglass, E-team-ops, E-team-fleet]
   tier: documented
+  claim:
+    entity: E-int-skyglass
+    attribute: owner_since_pull
+    value: 19
+    unit: null
   carriers:
   - document: pull/19
     location: comment-4
@@ -1795,6 +2175,11 @@
   category: history
   entities: [E-dockyard, E-farebox, E-dispatch]
   tier: documented
+  claim:
+    entity: E-dockyard
+    attribute: one_repository_since
+    value: '2026-01-12'
+    unit: null
   carriers:
   - document: wiki/gearwell-overview
     location: '#services'
@@ -1807,6 +2192,11 @@
   category: history
   entities: [E-dispatch]
   tier: documented
+  claim:
+    entity: E-dispatch
+    attribute: typescript_since
+    value: 2025
+    unit: null
   carriers:
   - document: wiki/dispatch-history
     location: '#rewrite'

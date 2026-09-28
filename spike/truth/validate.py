@@ -40,6 +40,15 @@ EXACT = {"contradictions": 21, "stale": 10, "pr_only": 5, "wiki": 40, "tickets":
 MIX_COUNTS = {"explain": 25, "search": 17, "ask": 13, "contradictions": 4, "stale": 3}
 EXPLAIN_BY_ALIAS, IMPACT_QUERIES = 5, 5
 AUDITED = 28
+UNITS = ("usd", "minute", "day", "hour", "second", "percent", "count", "clock", None)
+NUMBER_WORDS = {
+    w: n
+    for n, w in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve".split()
+    )
+}
+NUMERIC_WORD = re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b", re.I)
+EVERY_UNIT = re.compile(r"\bevery (minute|hour|day|week|month)\b")
 
 errors: list[str] = []
 
@@ -547,6 +556,75 @@ for fid, f in facts.items():
                     "but is not in stale.yaml"
                 )
 
+
+# ---------------------------------------------------------------- claims
+def is_numeric(statement: str) -> bool:
+    return bool(
+        re.search(r"\d", statement)
+        or NUMERIC_WORD.search(statement)
+        or EVERY_UNIT.search(statement)
+    )
+
+
+def value_in_statement(value, unit, statement: str) -> bool:
+    if isinstance(value, str):
+        return value in statement
+    numbers = {float(n) for n in re.findall(r"\d+(?:\.\d+)?", statement)}
+    numbers |= {float(NUMBER_WORDS[w.lower()]) for w in NUMERIC_WORD.findall(statement)}
+    if float(value) in numbers:
+        return True
+    every = EVERY_UNIT.search(statement)
+    return float(value) == 1 and every is not None and every.group(1) == unit
+
+
+claims = {fid: f["claim"] for fid, f in facts.items() if "claim" in f}
+for fid, f in facts.items():
+    c = f.get("claim")
+    if is_numeric(f["statement"]) != (c is not None):
+        why = "numeric statement has no claim" if c is None else "claim on a non-numeric statement"
+        fail(f"{fid}: {why}")
+    if c is None:
+        continue
+    if set(c) != {"entity", "attribute", "value", "unit"}:
+        fail(f"{fid}: claim needs exactly entity, attribute, value and unit")
+        continue
+    if c["entity"] not in f["entities"]:
+        fail(f"{fid}: claim entity {c['entity']} is not one of the fact's entities")
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", str(c["attribute"])):
+        fail(f"{fid}: claim attribute {c['attribute']!r} is not snake_case")
+    if c["unit"] not in UNITS:
+        fail(f"{fid}: claim unit {c['unit']!r} is not one of {UNITS}")
+    v = c["value"]
+    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+        fail(f"{fid}: claim value {v!r} is not a number or a string")
+    elif c["unit"] == "clock" and not (isinstance(v, str) and re.fullmatch(r"\d{2}:\d{2}", v)):
+        fail(f"{fid}: a clock claim is an HH:MM string, got {v!r}")
+    elif not value_in_statement(v, c["unit"], f["statement"]):
+        fail(f"{fid}: claim value {v!r} does not appear in the statement")
+
+
+def check_claim_pair(where: str, a: str, b: str) -> None:
+    ca, cb = claims.get(a), claims.get(b)
+    if ca is None or cb is None:
+        return
+    if (ca["entity"], ca["attribute"]) != (cb["entity"], cb["attribute"]):
+        fail(
+            f"{where}: {a} and {b} claim different things: "
+            f"{ca['entity']}.{ca['attribute']} vs {cb['entity']}.{cb['attribute']}"
+        )
+    elif (ca["value"], ca["unit"]) == (cb["value"], cb["unit"]):
+        fail(f"{where}: {a} and {b} claim the same value, so they do not disagree")
+
+
+for x in contradictions:
+    if len(x.get("facts", [])) == 2:
+        check_claim_pair(x.get("id"), *x["facts"])
+for s in stale:
+    check_claim_pair(s.get("id"), s.get("states"), s.get("superseded_by"))
+claim_pairs = sum(1 for x in contradictions if all(fid in claims for fid in x["facts"])) + sum(
+    1 for s in stale if s.get("states") in claims and s.get("superseded_by") in claims
+)
+
 # ---------------------------------------------------------------- rule history
 rules = [e for e, v in entities.items() if v["kind"] == "rule"]
 for r in rules:
@@ -964,6 +1042,11 @@ print(
     + ", ".join(f"{k} {n}" for k, n in Counter(x["kind"] for x in contradictions).items())
 )
 print(f"stale {len(stale)}; mix stale expectations {stale_counts}")
+print(
+    f"claims: {len(claims)} of {sum(1 for f in facts.values() if is_numeric(f['statement']))} "
+    f"numeric facts; {len({(c['entity'], c['attribute']) for c in claims.values()})} distinct "
+    f"entity.attribute keys; {claim_pairs} contradiction/stale pairs join on the key"
+)
 print(
     f"mix: {len(queries)} queries ({', '.join(f'{s} {len(by_surface[s])}' for s in SURFACES)}); "
     f"explain by alias {len(by_alias)}, impact {len(impact)}"
