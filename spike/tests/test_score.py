@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import difflib
+import re
 from datetime import datetime
+
+import pytest
 
 from bench.run import run
 from bench.score import (
     DEFAULT_CALIBRATION,
     SPIKE_ROOT,
+    _entity_mention_conflict,
+    _mentioned_entities,
+    _statement_matches,
     aggregate_reports,
     align_entities,
     bootstrap_compare,
     build_alias_index,
+    build_mention_index,
     calibrate,
     classify_unmatched,
     facts_match,
@@ -27,7 +34,15 @@ from bench.score import (
     score_fact_query,
     score_stale,
 )
-from bench.truth import Carrier, StaleEntry, TruthContradiction, TruthFact, load_facts, load_truth
+from bench.truth import (
+    Carrier,
+    Entity,
+    StaleEntry,
+    TruthContradiction,
+    TruthFact,
+    load_facts,
+    load_truth,
+)
 from tests._support import MINI_ROOT
 
 STATEMENT = "A member's free minutes are 20."
@@ -561,13 +576,118 @@ def test_align_entities_unresolved_name_is_reported_not_dropped():
 
 def test_align_entities_ambiguous_fuzzy_match_is_not_guessed():
     """Two entities equidistant (by SequenceMatcher ratio) from a typo at
-    the fuzzy cutoff must not be resolved to either — verified directly:
-    both "station alpha" and "station alphb" score 0.923 against "station
-    alphx", the same fuzzy match `_fuzzy_resolve` would otherwise pick."""
-    index = {"station alpha": "E-a", "station alphb": "E-b"}
-    resolved, unresolved = align_entities(["station-alphx"], index)
+    the fuzzy cutoff must not be resolved to either, and (with no `entities`/
+    `category` given to disambiguate by kind) stay unresolved."""
+    index = {"station alpha": ["E-a"], "station alphb": ["E-b"]}
+    resolved, unresolved = align_entities(["station alphx"], index)
     assert resolved == []
-    assert unresolved == ["station-alphx"]
+    assert unresolved == ["station alphx"]
+
+
+def test_align_entities_keeps_hyphen_and_underscore_distinct():
+    """konyklabs/asbuilt#7 review: `ebike_surcharge` (a flag) and
+    `ebike-surcharge` (a rule) are different entities in the real fixture;
+    normalising both separators to the same thing would collide them."""
+    index = {"ebike_surcharge": ["E-flag"], "ebike-surcharge": ["E-rule"]}
+    resolved, _ = align_entities(["ebike_surcharge"], index)
+    assert resolved == ["E-flag"]
+    resolved, _ = align_entities(["ebike-surcharge"], index)
+    assert resolved == ["E-rule"]
+
+
+def test_align_entities_disambiguates_a_tied_fuzzy_match_by_category_kind():
+    """The real collision case: a query written with a space ("ebike
+    surcharge") is equally one character away from both the flag's name
+    (underscore) and the rule's name (hyphen); the caller's category picks
+    the entity whose kind matches."""
+    flag = Entity(id="E-flag-ebike-surcharge", kind="flag", name="ebike_surcharge")
+    rule = Entity(id="E-rule-ebike-surcharge", kind="rule", name="ebike-surcharge")
+    index = {
+        "ebike_surcharge": ["E-flag-ebike-surcharge"],
+        "ebike-surcharge": ["E-rule-ebike-surcharge"],
+    }
+    entities = {flag.id: flag, rule.id: rule}
+
+    resolved, unresolved = align_entities(
+        ["ebike surcharge"], index, entities, category="technical-implementation"
+    )
+    assert resolved == ["E-flag-ebike-surcharge"]
+    assert unresolved == []
+
+    resolved, unresolved = align_entities(
+        ["ebike surcharge"], index, entities, category="business-logic"
+    )
+    assert resolved == ["E-rule-ebike-surcharge"]
+    assert unresolved == []
+
+    # No category (or one with no kind preference) -> still ambiguous -> unresolved.
+    resolved, unresolved = align_entities(["ebike surcharge"], index, entities, category=None)
+    assert resolved == []
+    assert unresolved == ["ebike surcharge"]
+
+
+def test_resolve_fact_entities_disambiguates_by_the_facts_own_category():
+    flag = Entity(id="E-flag-ebike-surcharge", kind="flag", name="ebike_surcharge")
+    rule = Entity(id="E-rule-ebike-surcharge", kind="rule", name="ebike-surcharge")
+    index = {
+        "ebike_surcharge": ["E-flag-ebike-surcharge"],
+        "ebike-surcharge": ["E-rule-ebike-surcharge"],
+    }
+    entities = {flag.id: flag, rule.id: rule}
+
+    fact = {"entities": ["ebike surcharge"], "category": "business-logic", "statement": "x"}
+    resolved = resolve_fact_entities(fact, index, entities)
+    assert resolved["entities"] == ["E-rule-ebike-surcharge"]
+    assert resolved["_unresolved_entities"] == []
+
+
+@pytest.mark.fixture
+def test_real_fixture_ebike_surcharge_flag_and_rule_resolve_distinctly():
+    """The actual collision the review flagged: truth/entities.yaml carries
+    both E-flag-ebike-surcharge (name "ebike_surcharge") and
+    E-rule-ebike-surcharge (name "ebike-surcharge") — this uses the real
+    truth/, not a synthetic index. Their canonical (underscore vs hyphen)
+    names resolve exactly, distinctly, and unambiguously."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    if not truth.entities:
+        pytest.skip()
+    index = build_alias_index(truth)
+
+    resolved, unresolved = align_entities(["ebike_surcharge"], index, truth.entities)
+    assert resolved == ["E-flag-ebike-surcharge"]
+    assert unresolved == []
+
+    resolved, unresolved = align_entities(["ebike-surcharge"], index, truth.entities)
+    assert resolved == ["E-rule-ebike-surcharge"]
+    assert unresolved == []
+
+
+@pytest.mark.fixture
+def test_real_fixture_refund_auto_approve_tied_fuzzy_match_by_category():
+    """`refund_auto_approve` (flag) and `refund-auto-approve` (rule) tie
+    exactly (0.8947 SequenceMatcher ratio, verified) against the punctuation-
+    free query "refund auto approve" — a genuine ambiguity in the real
+    index, not a synthetic one — and the category disambiguates it."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    if not truth.entities:
+        pytest.skip()
+    index = build_alias_index(truth)
+
+    resolved, unresolved = align_entities(
+        ["refund auto approve"], index, truth.entities, category="technical-implementation"
+    )
+    assert resolved == ["E-flag-refund-auto-approve"]
+    assert unresolved == []
+
+    resolved, unresolved = align_entities(
+        ["refund auto approve"], index, truth.entities, category="business-logic"
+    )
+    assert resolved == ["E-rule-refund-auto-approve"]
+    assert unresolved == []
+
+    resolved, unresolved = align_entities(["refund auto approve"], index, truth.entities)
+    assert resolved == []
+    assert unresolved == ["refund auto approve"]
 
 
 def test_resolve_fact_entities_keeps_unresolved_names_for_audit():
@@ -590,8 +710,8 @@ def test_resolve_fact_entities_keeps_unresolved_names_for_audit():
 # --------------------------------------------------------------------------
 
 
-def _identity_index(*entity_ids: str) -> dict[str, str]:
-    return {norm_entity(eid): eid for eid in entity_ids}
+def _identity_index(*entity_ids: str) -> dict[str, list[str]]:
+    return {norm_entity(eid): [eid] for eid in entity_ids}
 
 
 def test_score_fact_query_tier_confusion_and_executed_precision_recall():
@@ -1185,6 +1305,85 @@ def test_statement_matches_negation_guard_catches_a_contraction():
 
 
 # --------------------------------------------------------------------------
+# Entity-mention conflict guard (konyklabs/asbuilt#7 review): mentions of a
+# team/service/integration/queue/job/flag entity are read straight out of
+# the mini fixture's own aliases.yaml — no hardcoded vocabulary in the
+# guard, and none in these tests either.
+# --------------------------------------------------------------------------
+
+
+def test_build_mention_index_covers_mention_kinds_only():
+    truth = load_truth(MINI_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    kinds = {kind for _, _, kind in mention_index}
+    assert kinds == {"service", "team"}  # the mini fixture has no integration/queue/job/flag
+    ids = {entity_id for _, entity_id, _ in mention_index}
+    assert "E-rule-member-free-minutes" not in ids  # kind "rule" is not a mention kind
+
+
+def test_statement_matches_blocks_a_team_mention_conflict():
+    truth = load_truth(MINI_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    truth_statement = "Skyglass severity reports are reviewed by the ops team."
+    candidate = "Skyglass severity reports are reviewed by the fares team."
+    assert not _statement_matches(candidate, truth_statement, mention_index)
+    # Without a mention index, the guard is a no-op (the earlier behaviour):
+    # this pair still fails on text similarity alone here, so assert the
+    # guard specifically via the lower-level check instead.
+    assert _entity_mention_conflict(candidate, truth_statement, mention_index)
+    assert not _entity_mention_conflict(candidate, truth_statement, None)
+
+
+def test_statement_matches_allows_the_same_team_mentioned_twice():
+    truth = load_truth(MINI_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    truth_statement = "The fares team reviews Skyglass severity reports."
+    candidate = "Skyglass severity reports are reviewed by the fares team."
+    assert not _entity_mention_conflict(candidate, truth_statement, mention_index)
+
+
+def test_entity_mention_conflict_ignores_kinds_outside_the_guard_list():
+    """A rule-vs-rule difference (kind "rule", not in _MENTION_KINDS) must
+    not trip the guard — only team/service/integration/queue/job/flag do."""
+    truth = load_truth(MINI_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    truth_statement = "member-free-minutes governs how long a ride stays free."
+    candidate = "member-free-minutes and casual-unlock-fee both govern pricing."
+    assert not _entity_mention_conflict(candidate, truth_statement, mention_index)
+
+
+def test_facts_match_blocks_a_team_owner_swap_end_to_end():
+    truth_fact = TruthFact(
+        id="F-owner",
+        statement="Skyglass severity reports are reviewed by the ops team.",
+        category="operations",
+        entities=("E-farebox",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    mention_index = build_mention_index(load_truth(MINI_ROOT / "truth"))
+    returned = {
+        "statement": "Skyglass severity reports are reviewed by the fares team.",
+        "entities": ["E-farebox"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert not facts_match(returned, truth_fact, mention_index)
+
+
+def test_mentioned_entities_prefers_the_longest_alias_at_a_position():
+    """A short alias ("ops") must not steal a span already claimed by a
+    longer one naming a DIFFERENT entity ("ops team") — built from a
+    synthetic index (not the mini fixture, which has no such overlap) to
+    isolate the longest-match-first rule itself."""
+    mention_index = [
+        (re.compile(r"\bops team\b", re.IGNORECASE), "E-team-ops", "team"),
+        (re.compile(r"\bops\b", re.IGNORECASE), "E-flag-ops", "flag"),
+    ]
+    mentions = _mentioned_entities("The ops team is paged.", mention_index)
+    assert mentions == {"team": {"E-team-ops"}}  # not also {"flag": {"E-flag-ops"}}
+
+
+# --------------------------------------------------------------------------
 # Calibration
 # --------------------------------------------------------------------------
 
@@ -1208,9 +1407,11 @@ def test_calibrate_basic_precision_recall():
 def test_calibration_set_meets_precision_and_recall_bar():
     """konyklabs/asbuilt#7 deliverable 5: the matcher's own calibration set,
     measured via `calibrate()`, must clear precision >= 0.9 and
-    recall >= 0.85 (tune the rules, not the set, until it holds)."""
+    recall >= 0.85 (tune the rules, not the set, until it holds). Builds the
+    mention index from the real truth/, same as `score.py --calibrate`."""
     pairs = load_calibration(SPIKE_ROOT / DEFAULT_CALIBRATION)
     assert len(pairs) >= 90  # "about 100" per the task
-    report = calibrate(pairs)
+    mention_index = build_mention_index(load_truth(SPIKE_ROOT / "truth"))
+    report = calibrate(pairs, mention_index)
     assert report["precision"] >= 0.9, report["misclassified"]
     assert report["recall"] >= 0.85, report["misclassified"]

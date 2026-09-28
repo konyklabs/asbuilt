@@ -351,16 +351,105 @@ def _has_negation(text: str) -> bool:
     return bool(_NEGATION_RE.search(text))
 
 
-def _statement_matches(returned_statement: str, truth_statement: str) -> bool:
-    """Number-aware, negation-guarded text match: shared by `facts_match`
-    (which additionally requires a shared entity and cited document) and
-    `ask` sentence scoring (which matches by citation, not entity, so it
-    calls this directly). A negation mismatch (one side says "not"/"never"/
-    "no"/"off" and the other doesn't) vetoes the match outright; otherwise
+_MENTION_KINDS = {"team", "service", "integration", "queue", "job", "flag"}
+
+
+def build_mention_index(truth: Truth) -> list[tuple[re.Pattern[str], str, str]]:
+    """(compiled word-boundary pattern, entity id, kind) for every name/
+    alias of every entity whose kind is one the mention guard checks (team,
+    service, integration, queue, job, flag — the "who/what does X"
+    attributions a text-similarity matcher can otherwise be fooled on),
+    sorted longest-alias-first so `_mentioned_entities` prefers a longer,
+    more specific mention over a shorter one nested inside it. No hardcoded
+    vocabulary: every name/alias comes straight from the given Truth's
+    `entities`/`aliases` — the real fixture's for scoring and `--calibrate`,
+    the mini fixture's in the harness's own tests."""
+    raw: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add(text: str, entity_id: str, kind: str) -> None:
+        text = text.strip()
+        dedup_key = (text.lower(), entity_id)
+        if text and dedup_key not in seen:
+            seen.add(dedup_key)
+            raw.append((text, entity_id, kind))
+
+    for entity in truth.entities.values():
+        if entity.kind in _MENTION_KINDS:
+            _add(entity.name, entity.id, entity.kind)
+    for alias_entry in truth.aliases.values():
+        entity = truth.entities.get(alias_entry.id)
+        if entity is None or entity.kind not in _MENTION_KINDS:
+            continue
+        for alias in (alias_entry.name, *alias_entry.aliases):
+            _add(alias, alias_entry.id, entity.kind)
+
+    raw.sort(key=lambda e: len(e[0]), reverse=True)
+    return [
+        (re.compile(rf"\b{re.escape(text)}\b", re.IGNORECASE), entity_id, kind)
+        for text, entity_id, kind in raw
+    ]
+
+
+def _mentioned_entities(
+    text: str, mention_index: list[tuple[re.Pattern[str], str, str]]
+) -> dict[str, set[str]]:
+    """Entity ids mentioned in `text`, grouped by kind. Scans longest-alias-
+    first (see `build_mention_index`) and marks each matched span covered,
+    so a shorter alias nested inside an already-matched longer one — e.g.
+    "ops" inside an already-claimed "ops team" — is never matched again."""
+    covered = [False] * len(text)
+    by_kind: dict[str, set[str]] = {}
+    for pattern, entity_id, kind in mention_index:
+        for m in pattern.finditer(text):
+            start, end = m.span()
+            if any(covered[start:end]):
+                continue
+            for i in range(start, end):
+                covered[i] = True
+            by_kind.setdefault(kind, set()).add(entity_id)
+    return by_kind
+
+
+def _entity_mention_conflict(
+    statement_a: str,
+    statement_b: str,
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None,
+) -> bool:
+    """True when both statements mention an entity of the SAME kind and,
+    for that kind, the two mention sets are disjoint — "Skyglass is owned
+    by the ops team" vs "...the fares team" both mention a `team`, and
+    {E-team-ops} / {E-team-fares} share nothing, so they conflict even
+    though the rest of the sentence is identical."""
+    if not mention_index:
+        return False
+    mentions_a = _mentioned_entities(statement_a, mention_index)
+    mentions_b = _mentioned_entities(statement_b, mention_index)
+    for kind in _MENTION_KINDS:
+        ids_a, ids_b = mentions_a.get(kind), mentions_b.get(kind)
+        if ids_a and ids_b and ids_a.isdisjoint(ids_b):
+            return True
+    return False
+
+
+def _statement_matches(
+    returned_statement: str,
+    truth_statement: str,
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+) -> bool:
+    """Number-aware, negation- and entity-mention-guarded text match: shared
+    by `facts_match` (which additionally requires a shared entity and cited
+    document) and `ask` sentence scoring (which matches by citation, not
+    entity, so it calls this directly). A negation mismatch (one side says
+    "not"/"never"/"no"/"off" and the other doesn't) or an entity-mention
+    conflict (see `_entity_mention_conflict`; `mention_index` is optional —
+    omitting it just skips that check) vetoes the match outright; otherwise
     numbers named by either side must agree as sets, then text similarity
     (on the un-prenormalised, punctuation-stripped statements) must be
     >= 0.6."""
     if _has_negation(returned_statement) != _has_negation(truth_statement):
+        return False
+    if _entity_mention_conflict(returned_statement, truth_statement, mention_index):
         return False
     returned_numbers = _number_tokens(returned_statement)
     truth_numbers = _number_tokens(truth_statement)
@@ -428,12 +517,17 @@ def _destem(word: str) -> str:
     return word
 
 
-def facts_match(returned: dict[str, Any], truth_fact: TruthFact) -> bool:
+def facts_match(
+    returned: dict[str, Any],
+    truth_fact: TruthFact,
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+) -> bool:
     """(a) shared entity, (b) shared cited document, (c) `_statement_matches`
-    on the two statements (number-aware, negation-guarded). Entities here are
-    expected to already be resolved ids (see `resolve_fact_entities`) —
-    `facts_match` itself does no name alignment, so a caller working directly
-    with arm-returned names must resolve them first."""
+    on the two statements (number-aware, negation- and mention-guarded).
+    Entities here are expected to already be resolved ids (see
+    `resolve_fact_entities`) — `facts_match` itself does no name alignment,
+    so a caller working directly with arm-returned names must resolve them
+    first."""
     citations = returned.get("citations") or []
     if not citations:
         return False
@@ -444,7 +538,7 @@ def facts_match(returned: dict[str, Any], truth_fact: TruthFact) -> bool:
     truth_docs = {c.document for c in truth_fact.carriers}
     if not returned_docs & truth_docs:
         return False
-    return _statement_matches(returned.get("statement", ""), truth_fact.statement)
+    return _statement_matches(returned.get("statement", ""), truth_fact.statement, mention_index)
 
 
 # --------------------------------------------------------------------------
@@ -452,63 +546,131 @@ def facts_match(returned: dict[str, Any], truth_fact: TruthFact) -> bool:
 # --------------------------------------------------------------------------
 
 _ENTITY_PUNCT = re.compile(r"[^\w\s-]")
-_ENTITY_SEPARATORS = re.compile(r"[-_\s]+")
+_ENTITY_WHITESPACE = re.compile(r"\s+")
 _FUZZY_CUTOFF = 0.88
+
+# konyklabs/asbuilt#7 review: `ebike_surcharge` (a flag) and `ebike-surcharge`
+# (a rule) — likewise `refund_auto_approve`/`refund-auto-approve` — are two
+# DIFFERENT entities in the real fixture (truth/entities.yaml) that would
+# collide if `-`/`_` were folded to the same separator. When a name is still
+# ambiguous after normalisation (an exact multi-id hit, or a fuzzy match tied
+# between keys naming different entities), the returned fact's own category
+# picks the entity whose `kind` matches — a technical-implementation fact
+# about a flag, a business-logic fact about a rule.
+_CATEGORY_PREFERRED_KIND = {
+    "technical-implementation": "flag",
+    "business-logic": "rule",
+}
 
 
 def norm_entity(text: str) -> str:
-    """Entity-name normalisation: case-insensitive, and `-`/`_` are treated
-    as word separators (collapsed to a single space, same as whitespace) —
-    unlike statement `norm()`, which strips punctuation outright. Entity
-    names are identifiers with conventional separators ("member-free-
-    minutes" and "member free minutes" name the same thing); statement
-    `norm()` is comparing prose, where that distinction doesn't apply."""
+    """Entity-name normalisation: case-insensitive and whitespace-collapsing
+    ONLY. `-` and `_` are kept as literal, distinct characters, unlike
+    statement `norm()` (which strips punctuation outright) and unlike an
+    earlier version of this function (which treated them as separators) —
+    see `_CATEGORY_PREFERRED_KIND` above for why collapsing them is wrong
+    for entity names specifically, even though it is fine (and used) for
+    statement word-overlap in `_words()`."""
     text = text.lower().strip()
     text = _ENTITY_PUNCT.sub("", text)
-    text = _ENTITY_SEPARATORS.sub(" ", text)
+    text = _ENTITY_WHITESPACE.sub(" ", text)
     return text.strip()
 
 
-def build_alias_index(truth: Truth) -> dict[str, str]:
-    """Normalised name/alias/id -> entity id. Registers each entity's own id
-    and name from `entities.yaml`, then every name/alias from
-    `aliases.yaml` (tolerant of that file being absent — see
-    `bench.truth.load_aliases`). First registration wins on a collision
-    (stable, since dict iteration is insertion order)."""
-    index: dict[str, str] = {}
+def build_alias_index(truth: Truth) -> dict[str, list[str]]:
+    """Normalised name/alias/id -> every entity id registered under that
+    exact string (almost always one; `truth/aliases.yaml`'s own rule is "no
+    alias belongs to two entities", but the index stays multi-valued as a
+    defensive measure and because two DIFFERENT normalised keys can still
+    tie in `_fuzzy_resolve`, which reuses the same list shape). Registers
+    each entity's own id and name from `entities.yaml`, then every name/
+    alias from `aliases.yaml` (tolerant of that file being absent — see
+    `bench.truth.load_aliases`)."""
+    index: dict[str, list[str]] = {}
+
+    def _register(key: str, entity_id: str) -> None:
+        ids = index.setdefault(norm_entity(key), [])
+        if entity_id not in ids:
+            ids.append(entity_id)
+
     for entity in truth.entities.values():
-        for key in (entity.id, entity.name):
-            index.setdefault(norm_entity(key), entity.id)
+        _register(entity.id, entity.id)
+        _register(entity.name, entity.id)
     for entry in truth.aliases.values():
         for key in (entry.name, *entry.aliases):
-            index.setdefault(norm_entity(key), entry.id)
+            _register(key, entry.id)
     return index
 
 
-def _fuzzy_resolve(key: str, index: dict[str, str]) -> str | None:
-    """A conservative fallback: only when a name has no exact normalised
-    match, and only when the closest candidate at `_FUZZY_CUTOFF` is
-    unambiguous (no second candidate at the same cutoff naming a *different*
-    entity) — otherwise this returns None rather than guess."""
-    candidates = difflib.get_close_matches(key, index.keys(), n=2, cutoff=_FUZZY_CUTOFF)
+def _fuzzy_resolve(key: str, index: dict[str, list[str]]) -> list[str] | None:
+    """The candidate id list for the closest key(s) within `_FUZZY_CUTOFF`,
+    or None if nothing is close enough. When more than one DIFFERENT
+    normalised key ties for the closest match — e.g. a query "ebike
+    surcharge" (space) is equally one character away from both
+    "ebike_surcharge" (the flag) and "ebike-surcharge" (the rule) —
+    candidates from every tied key are combined, so the caller's
+    category-vs-kind disambiguation (or an unresolved result) applies the
+    same as it would to an exact multi-id hit."""
+    candidates = difflib.get_close_matches(key, index.keys(), n=len(index), cutoff=_FUZZY_CUTOFF)
     if not candidates:
         return None
-    best_id = index[candidates[0]]
-    if len(candidates) > 1 and index[candidates[1]] != best_id:
+    best_ratio = difflib.SequenceMatcher(None, key, candidates[0]).ratio()
+    ids: list[str] = []
+    for candidate_key in candidates:
+        if difflib.SequenceMatcher(None, key, candidate_key).ratio() != best_ratio:
+            break  # get_close_matches returns matches best-first
+        for entity_id in index[candidate_key]:
+            if entity_id not in ids:
+                ids.append(entity_id)
+    return ids
+
+
+def _disambiguate(
+    candidates: list[str] | None,
+    entities: dict[str, Any],
+    category: str | None,
+) -> str | None:
+    """None candidates -> unresolved. One candidate -> it, unconditionally.
+    More than one -> resolved only when `category` maps to a preferred
+    `kind` (see `_CATEGORY_PREFERRED_KIND`) that exactly one candidate has;
+    otherwise unresolved — never a guess among still-tied candidates."""
+    if not candidates:
         return None
-    return best_id
+    if len(candidates) == 1:
+        return candidates[0]
+    preferred_kind = _CATEGORY_PREFERRED_KIND.get(category or "")
+    if preferred_kind is not None:
+        matching = [
+            c for c in candidates if getattr(entities.get(c), "kind", None) == preferred_kind
+        ]
+        if len(matching) == 1:
+            return matching[0]
+    return None
 
 
-def align_entities(names: Iterable[str], index: dict[str, str]) -> tuple[list[str], list[str]]:
-    """Resolves each name (exact normalised match, else the fuzzy fallback)
-    to an entity id. Returns (resolved ids, deduped, in first-seen order;
-    unresolved names, in input order)."""
+def align_entities(
+    names: Iterable[str],
+    index: dict[str, list[str]],
+    entities: dict[str, Any] | None = None,
+    category: str | None = None,
+) -> tuple[list[str], list[str]]:
+    """Resolves each name (exact normalised match, else the fuzzy fallback,
+    then `_disambiguate` when either produced more than one candidate id) to
+    an entity id. `entities` (truth.entities) and `category` (the fact's own
+    claimed category) are only used for that disambiguation; both are
+    optional; omitting them just means an ambiguous name is always
+    unresolved rather than sometimes disambiguated. Returns (resolved ids,
+    deduped, in first-seen order; unresolved names, in input order)."""
+    entities = entities or {}
     resolved: list[str] = []
     unresolved: list[str] = []
     seen: set[str] = set()
     for raw in names:
         key = norm_entity(str(raw))
-        entity_id = index.get(key) or _fuzzy_resolve(key, index)
+        candidates = index.get(key)
+        if candidates is None:
+            candidates = _fuzzy_resolve(key, index)
+        entity_id = _disambiguate(candidates, entities, category)
         if entity_id is None:
             unresolved.append(raw)
         elif entity_id not in seen:
@@ -517,23 +679,29 @@ def align_entities(names: Iterable[str], index: dict[str, str]) -> tuple[list[st
     return resolved, unresolved
 
 
-def resolve_fact_entities(fact: dict[str, Any], index: dict[str, str]) -> dict[str, Any]:
+def resolve_fact_entities(
+    fact: dict[str, Any], index: dict[str, list[str]], entities: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """A shallow copy of `fact` with `entities` (arm-returned names)
     replaced by resolved truth ids; unresolved names are kept under the
-    private `_unresolved_entities` key for the audit trail."""
+    private `_unresolved_entities` key for the audit trail. Disambiguation
+    context is the fact's OWN `category` field — self-contained, no
+    chicken-and-egg dependency on which truth fact it might go on to match."""
     names = fact.get("entities") or []
-    resolved, unresolved = align_entities(names, index)
+    resolved, unresolved = align_entities(names, index, entities, fact.get("category"))
     out = dict(fact)
     out["entities"] = resolved
     out["_unresolved_entities"] = unresolved
     return out
 
 
-def _resolve_contradiction_entities(rc: dict[str, Any], index: dict[str, str]) -> dict[str, Any]:
+def _resolve_contradiction_entities(
+    rc: dict[str, Any], index: dict[str, list[str]], entities: dict[str, Any] | None = None
+) -> dict[str, Any]:
     out = dict(rc)
     for key in ("a", "b", "winner"):
         if rc.get(key) is not None:
-            out[key] = resolve_fact_entities(rc[key], index)
+            out[key] = resolve_fact_entities(rc[key], index, entities)
     return out
 
 
@@ -569,6 +737,7 @@ def match_facts(
     returned_facts: list[dict[str, Any]],
     expected: dict[str, TruthFact],
     commits: dict[str, Any] | None = None,
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
 ) -> tuple[list[tuple[dict[str, Any], str]], int]:
     """One-to-one match; each expected fact matches at most once. When a
     returned fact could match more than one still-unmatched expected fact,
@@ -586,7 +755,9 @@ def match_facts(
             uncited += 1
             continue
         candidates = [
-            fid for fid, tf in expected.items() if fid not in matched_ids and facts_match(rf, tf)
+            fid
+            for fid, tf in expected.items()
+            if fid not in matched_ids and facts_match(rf, tf, mention_index)
         ]
         if not candidates:
             continue
@@ -764,13 +935,15 @@ def score_fact_query(
     returned: list[dict[str, Any]],
     expected: dict[str, TruthFact],
     commits: dict[str, Any] | None = None,
-    alias_index: dict[str, str] | None = None,
+    alias_index: dict[str, list[str]] | None = None,
     all_facts: dict[str, TruthFact] | None = None,
+    entities: dict[str, Any] | None = None,
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
 ) -> dict[str, Any]:
     alias_index = alias_index or {}
     all_facts = all_facts if all_facts is not None else expected
-    resolved = [resolve_fact_entities(rf, alias_index) for rf in returned]
-    matches, uncited = match_facts(resolved, expected, commits)
+    resolved = [resolve_fact_entities(rf, alias_index, entities) for rf in returned]
+    matches, uncited = match_facts(resolved, expected, commits, mention_index)
     matched_ids = {fid for _, fid in matches}
     matched_obj_ids = {id(rf) for rf, _ in matches}
     unmatched = [rf for rf in resolved if id(rf) not in matched_obj_ids]
@@ -793,13 +966,17 @@ def score_fact_query(
 
 
 def score_ask_query(
-    answer: dict[str, Any], expected: dict[str, TruthFact], citation_cap: int = 3
+    answer: dict[str, Any],
+    expected: dict[str, TruthFact],
+    citation_cap: int = 3,
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
 ) -> dict[str, Any]:
     """A sentence is correct only if, among its citations (capped to the
     first `citation_cap`; extras ignored), at least one names a document
     that carries an expected fact whose statement the sentence's own text
-    satisfies (`_statement_matches` — number-aware, negation-guarded), not
-    merely a document that happens to carry *some* expected fact."""
+    satisfies (`_statement_matches` — number-aware, negation- and mention-
+    guarded), not merely a document that happens to carry *some* expected
+    fact."""
     sentences = answer.get("sentences") or []
     doc_to_facts: dict[str, list[tuple[str, TruthFact]]] = {}
     for fid, fact in expected.items():
@@ -816,7 +993,7 @@ def score_ask_query(
         hit_ids: set[str] = set()
         for citation in citations:
             for fid, fact in doc_to_facts.get(citation["document"], []):
-                if _statement_matches(text, fact.statement):
+                if _statement_matches(text, fact.statement, mention_index):
                     hit_ids.add(fid)
         if hit_ids:
             correct_sentences += 1
@@ -835,6 +1012,7 @@ def score_contradictions(
     returned: list[dict[str, Any]],
     expected: dict[str, Any],
     truth_facts: dict[str, TruthFact],
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
 ) -> dict[str, Any]:
     matched_ids: set[str] = set()
     winner_checked = 0
@@ -850,8 +1028,12 @@ def score_contradictions(
             truth_a, truth_b = truth_facts.get(fa_id), truth_facts.get(fb_id)
             if truth_a is None or truth_b is None:
                 continue
-            order1 = facts_match(rc_a, truth_a) and facts_match(rc_b, truth_b)
-            order2 = facts_match(rc_a, truth_b) and facts_match(rc_b, truth_a)
+            order1 = facts_match(rc_a, truth_a, mention_index) and facts_match(
+                rc_b, truth_b, mention_index
+            )
+            order2 = facts_match(rc_a, truth_b, mention_index) and facts_match(
+                rc_b, truth_a, mention_index
+            )
             if not (order1 or order2):
                 continue
             matched_ids.add(xid)
@@ -862,7 +1044,7 @@ def score_contradictions(
                 if (
                     expected_winner is not None
                     and returned_winner is not None
-                    and facts_match(returned_winner, expected_winner)
+                    and facts_match(returned_winner, expected_winner, mention_index)
                 ):
                     winner_correct += 1
             break
@@ -898,6 +1080,7 @@ def score_stale(
     stale_entries: dict[str, StaleEntry],
     step_dates: dict[str, datetime],
     truth_facts: dict[str, TruthFact],
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
 ) -> dict[str, Any]:
     """A returned fact credits EVERY still-unmatched expected entry whose
     document it cites AND whose `states` fact it matches (number-aware
@@ -928,7 +1111,7 @@ def score_stale(
             if entry.document not in cited_docs:
                 continue
             states_fact = truth_facts.get(entry.states)
-            if states_fact is not None and facts_match(rf, states_fact):
+            if states_fact is not None and facts_match(rf, states_fact, mention_index):
                 matched_ids.add(sid)
 
     return {"tp": len(matched_ids), "returned": len(returned), "expected": len(expected)}
@@ -1102,6 +1285,7 @@ def score(
     weights = results.get("weights", {})
     commits = commits or {}
     alias_index = build_alias_index(truth)
+    mention_index = build_mention_index(truth)
 
     per_query: dict[str, list[dict[str, Any]]] = {s: [] for s in SURFACES}
     for q in results["queries"]:
@@ -1109,29 +1293,47 @@ def score(
         params = q.get("params", {})
         if surface == "explain":
             raw_entity = params["entity"]
-            resolved_ids, _ = align_entities([raw_entity], alias_index)
+            resolved_ids, _ = align_entities([raw_entity], alias_index, truth.entities)
             entity_id = resolved_ids[0] if resolved_ids else None
             expected = {
                 fid: f for fid, f in truth.facts.items() if entity_id and entity_id in f.entities
             }
             per_query["explain"].append(
-                score_fact_query(q["result"], expected, commits, alias_index, truth.facts)
+                score_fact_query(
+                    q["result"],
+                    expected,
+                    commits,
+                    alias_index,
+                    truth.facts,
+                    truth.entities,
+                    mention_index,
+                )
             )
         elif surface == "search":
             expects = params.get("expects") or []
             expected = {fid: truth.facts[fid] for fid in expects if fid in truth.facts}
             per_query["search"].append(
-                score_fact_query(q["result"], expected, commits, alias_index, truth.facts)
+                score_fact_query(
+                    q["result"],
+                    expected,
+                    commits,
+                    alias_index,
+                    truth.facts,
+                    truth.entities,
+                    mention_index,
+                )
             )
         elif surface == "ask":
             expects = params.get("expects") or []
             expected = {fid: truth.facts[fid] for fid in expects if fid in truth.facts}
-            per_query["ask"].append(score_ask_query(q["result"], expected, ask_citation_cap))
+            per_query["ask"].append(
+                score_ask_query(q["result"], expected, ask_citation_cap, mention_index)
+            )
         elif surface == "contradictions":
             raw_entity = params.get("entity")
             entity_id = None
             if raw_entity:
-                resolved_ids, _ = align_entities([raw_entity], alias_index)
+                resolved_ids, _ = align_entities([raw_entity], alias_index, truth.entities)
                 entity_id = resolved_ids[0] if resolved_ids else None
             if raw_entity and entity_id:
                 expected_x = {}
@@ -1143,26 +1345,31 @@ def score(
                     # scoring the surfaces that do resolve.
                     fact_a = truth.facts.get(xc.facts[0])
                     fact_b = truth.facts.get(xc.facts[1])
-                    entities = (fact_a.entities if fact_a else ()) + (
+                    fact_entity_ids = (fact_a.entities if fact_a else ()) + (
                         fact_b.entities if fact_b else ()
                     )
-                    if entity_id in entities:
+                    if entity_id in fact_entity_ids:
                         expected_x[xid] = xc
             elif raw_entity and not entity_id:
                 expected_x = {}
             else:
                 expected_x = dict(truth.contradictions)
             resolved_result = [
-                _resolve_contradiction_entities(rc, alias_index) for rc in q["result"]
+                _resolve_contradiction_entities(rc, alias_index, truth.entities)
+                for rc in q["result"]
             ]
             per_query["contradictions"].append(
-                score_contradictions(resolved_result, expected_x, truth.facts)
+                score_contradictions(resolved_result, expected_x, truth.facts, mention_index)
             )
         elif surface == "stale":
             since = datetime.fromisoformat(params["since"])
-            resolved_result = [resolve_fact_entities(rf, alias_index) for rf in q["result"]]
+            resolved_result = [
+                resolve_fact_entities(rf, alias_index, truth.entities) for rf in q["result"]
+            ]
             per_query["stale"].append(
-                score_stale(resolved_result, since, truth.stale, step_dates, truth.facts)
+                score_stale(
+                    resolved_result, since, truth.stale, step_dates, truth.facts, mention_index
+                )
             )
         else:
             raise ValueError(f"unknown surface {surface!r} in results")
@@ -1367,14 +1574,20 @@ def load_calibration(path: Path) -> list[dict[str, Any]]:
     return yaml.safe_load(path.read_text()) or []
 
 
-def calibrate(pairs: list[dict[str, Any]]) -> dict[str, Any]:
+def calibrate(
+    pairs: list[dict[str, Any]],
+    mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+) -> dict[str, Any]:
     """Runs `_statement_matches(candidate, truth)` over a labelled set of
     {truth, candidate, expect} triples and reports the matcher's own
-    precision/recall/f1, plus every misclassified pair for hand review."""
+    precision/recall/f1, plus every misclassified pair for hand review.
+    `mention_index` (see `build_mention_index`) is optional; the CLI builds
+    one from `--truth` so the entity-mention conflict guard is exercised the
+    same way it would be scoring a real prototype."""
     tp = fp = fn = tn = 0
     misclassified: list[dict[str, Any]] = []
     for pair in pairs:
-        predicted = _statement_matches(pair["candidate"], pair["truth"])
+        predicted = _statement_matches(pair["candidate"], pair["truth"], mention_index)
         expected = bool(pair["expect"])
         if predicted and expected:
             tp += 1
@@ -1616,7 +1829,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.calibrate is not None:
         pairs = load_calibration(Path(args.calibrate))
-        print_calibration_report(calibrate(pairs))
+        mention_index = build_mention_index(load_truth(Path(args.truth)))
+        print_calibration_report(calibrate(pairs, mention_index))
         return 0
 
     if not args.results:

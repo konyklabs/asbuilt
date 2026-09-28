@@ -258,6 +258,12 @@
 - truth: "Tollbooth Pay integration is owned by the fares team."
   candidate: "Tollbooth Pay integration is owned by the fleet team."
   expect: false
+- truth: "Farebox writes ride pricing to the invoices table."
+  candidate: "Dockyard writes ride pricing to the invoices table."
+  expect: false
+- truth: "Skyglass is polled every 15 minutes for weather severity."
+  candidate: "Tollbooth Pay is polled every 15 minutes for weather severity."
+  expect: false
 
 # -- hard negatives: different unit (expect: false) -----------------------
 - truth: "The single-ride cap is $30."

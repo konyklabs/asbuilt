@@ -10,3 +10,9 @@
 - id: E-rule-member-free-minutes
   name: member-free-minutes
   aliases: ["member free minutes", "free minutes rule", "free-ride minutes"]
+- id: E-team-fares
+  name: fares
+  aliases: ["fares team", "the fares team"]
+- id: E-team-ops
+  name: ops
+  aliases: ["ops team", "the ops team"]
