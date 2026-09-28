@@ -99,3 +99,8 @@
   kind: doc-vs-code
   winner: F-060
   label: refutes
+- id: X-021
+  facts: [F-011, F-012]
+  kind: run-vs-code
+  winner: F-012
+  label: refutes

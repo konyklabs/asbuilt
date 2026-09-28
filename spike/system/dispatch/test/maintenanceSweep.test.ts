@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { maintenanceSweep } from "../src/jobs/maintenanceSweep.js";
-import { resetMaintenanceTickets, openTicket } from "../src/db/maintenanceTickets.js";
+import { resetMaintenanceTickets, openTicket, listTickets } from "../src/db/maintenanceTickets.js";
 import { DockyardClient } from "../src/clients/dockyard.js";
 import { FareboxClient } from "../src/clients/farebox.js";
 import type { FetchLike, FetchResponse } from "../src/config.js";
@@ -41,5 +41,33 @@ describe("maintenanceSweep", () => {
       "http://farebox.invalid/internal/rides/close-lost",
       expect.objectContaining({ method: "POST" }),
     );
+
+    const openedTickets = listTickets().filter((t) => t.bikeId === "bike-1" && t.kind === "maintenance");
+    expect(openedTickets).toHaveLength(1);
+
+    resetMaintenanceTickets();
+    openTicket("bike-2", "fault_report", new Date("2026-09-05T09:00:00-04:00"));
+    openTicket("bike-2", "fault_report", new Date("2026-09-07T09:00:00-04:00"));
+
+    const notLockedWithTwoReports = await maintenanceSweep({
+      bikeIds: async () => ["bike-2"],
+      dockyard,
+      farebox,
+      now: () => now,
+    });
+    expect(notLockedWithTwoReports).toEqual([]);
+
+    resetMaintenanceTickets();
+    openTicket("bike-3", "fault_report", new Date("2026-09-03T08:59:00-04:00")); // 7 days and 1 minute before `now`
+    openTicket("bike-3", "fault_report", new Date("2026-09-07T09:00:00-04:00"));
+    openTicket("bike-3", "fault_report", new Date("2026-09-09T09:00:00-04:00"));
+
+    const notLockedWithStaleReport = await maintenanceSweep({
+      bikeIds: async () => ["bike-3"],
+      dockyard,
+      farebox,
+      now: () => now,
+    });
+    expect(notLockedWithStaleReport).toEqual([]);
   });
 });

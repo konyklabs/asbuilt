@@ -29,17 +29,22 @@ def _open_ride(started_at: datetime) -> OpenRide:
 
 @pytest.mark.unit
 def test_ride_open_past_24_hours_closed_as_lost():
-    """F-010: a ride whose bike is not docked within 24 hours of check-out
-    is closed as lost."""
+    """One ride, one minute past the staleness cutoff: gets swept up."""
     now = STARTED + timedelta(hours=LOST_BIKE_HOURS, minutes=1)
     session = build_session(Store())
     closed = close_lost_rides(session, EventBus(), now, [_open_ride(STARTED)])
     assert [c["ride_id"] for c in closed] == ["ride-1"]
 
+    just_under = STARTED + timedelta(hours=LOST_BIKE_HOURS) - timedelta(minutes=1)
+    still_open = close_lost_rides(
+        build_session(Store()), EventBus(), just_under, [_open_ride(STARTED)]
+    )
+    assert still_open == []
+
 
 @pytest.mark.unit
 def test_lost_bike_fee_150():
-    """F-012: a ride closed as lost is charged a $150.00 lost-bike fee."""
+    """The stale-ride surcharge, isolated from the underlying ride price."""
     now = STARTED + timedelta(hours=LOST_BIKE_HOURS, minutes=1)
     ride = _open_ride(STARTED)
     store = Store()

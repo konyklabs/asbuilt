@@ -1,0 +1,70 @@
+{
+  "created": 1790612538.109237,
+  "duration": 0.014706850051879883,
+  "exitcode": 1,
+  "root": ".",
+  "environment": {},
+  "summary": {
+    "failed": 1,
+    "total": 1,
+    "collected": 1
+  },
+  "collectors": [
+    {
+      "nodeid": "",
+      "outcome": "passed",
+      "result": [
+        {
+          "nodeid": "tests/unit/test_lost_bikes.py::test_lost_bike_fee_100",
+          "type": "Function",
+          "lineno": 44
+        }
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "nodeid": "tests/unit/test_lost_bikes.py::test_lost_bike_fee_100",
+      "lineno": 44,
+      "outcome": "failed",
+      "keywords": [
+        "test_lost_bike_fee_100",
+        "unit",
+        "pytestmark",
+        "test_lost_bikes.py",
+        "tests",
+        "repo",
+        ""
+      ],
+      "setup": {
+        "duration": 7.916707545518875e-05,
+        "outcome": "passed"
+      },
+      "call": {
+        "duration": 0.00025616632774472237,
+        "outcome": "failed",
+        "crash": {
+          "path": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/tests/unit/test_lost_bikes.py",
+          "lineno": 61,
+          "message": "AssertionError: assert (18000 - 3000) == 10000\n +  where 18000 = InvoiceLine(id='4e885ec0-573b-4317-a9fe-9b2641c6c5c5', ride_id='ride-1', amount_cents=18000, invoice_id=None).amount_cents"
+        },
+        "traceback": [
+          {
+            "path": "tests/unit/test_lost_bikes.py",
+            "lineno": 61,
+            "message": "AssertionError"
+          }
+        ],
+        "longrepr": "@pytest.mark.unit\n    def test_lost_bike_fee_100():\n        \"\"\"The stale-ride surcharge, isolated from the underlying ride price.\"\"\"\n        now = STARTED + timedelta(hours=LOST_BIKE_HOURS, minutes=1)\n        ride = _open_ride(STARTED)\n        store = Store()\n        session = build_session(store)\n    \n        closed = close_lost_rides(session, EventBus(), now, [ride])\n    \n        assert [c[\"ride_id\"] for c in closed] == [\"ride-1\"]\n        [line] = [line for line in store.invoice_lines.values() if line.ride_id == \"ride-1\"]\n        assert line.amount_cents == closed[0][\"amount_cents\"]\n    \n        minutes = Decimal(str((now - STARTED).total_seconds() / 60))\n        ride_charge_cents = price_ride(ride.is_member, minutes, ride.is_ebike, False)\n>       assert line.amount_cents - ride_charge_cents == 10000\nE       AssertionError: assert (18000 - 3000) == 10000\nE        +  where 18000 = InvoiceLine(id='4e885ec0-573b-4317-a9fe-9b2641c6c5c5', ride_id='ride-1', amount_cents=18000, invoice_id=None).amount_cents\n\ntests/unit/test_lost_bikes.py:61: AssertionError"
+      },
+      "teardown": {
+        "duration": 0.00011120876297354698,
+        "outcome": "passed"
+      }
+    }
+  ],
+  "metadata": {
+    "commit": "710c96573b202d8448f73542ab69ff1685fb160f",
+    "step": "c5"
+  }
+}

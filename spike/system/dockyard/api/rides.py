@@ -1,4 +1,4 @@
-"""POST /rides/checkout and POST /rides/{id}/checkin."""
+"""Handlers for the two ride-lifecycle endpoints."""
 
 from __future__ import annotations
 
@@ -19,11 +19,8 @@ from dockyard.services.checkout import (
 def checkout_endpoint(
     session: Session, rider_id: str, bike_id: str, station_id: str, now: datetime
 ) -> tuple[int, dict[str, Any]]:
-    """POST /rides/checkout.
-
-    F-070: returns HTTP 409 with error code checkout_limit_reached when the
-    rider already holds 2 bikes.
-    """
+    """Handler for the check-out endpoint; maps each service exception to
+    its own (status, body) pair rather than letting it propagate."""
     try:
         ride = check_out(session, rider_id, bike_id, station_id, now)
     except CheckoutLimitReachedError:
@@ -41,10 +38,8 @@ def checkin_endpoint(
     now: datetime,
     overflow_parking_enabled: bool,
 ) -> tuple[int, dict[str, Any]]:
-    """POST /rides/{id}/checkin.
-
-    F-051: returns HTTP 409 with error code station_full at a full station.
-    """
+    """Handler wiring HTTP shape onto check_in: a capacity failure becomes
+    an error body instead of propagating as an exception."""
     try:
         closed = check_in(session, farebox, ride_id, station_id, now, overflow_parking_enabled)
     except StationFullError:

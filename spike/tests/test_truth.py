@@ -8,6 +8,7 @@ from bench.truth import (
     _check_run_carrier,
     check_consistency,
     github_slugify,
+    load_aliases,
     load_contradictions,
     load_entities,
     load_facts,
@@ -56,6 +57,23 @@ def test_load_truth_bundles_all_four():
     assert len(truth.facts) == 13
     assert len(truth.contradictions) == 1
     assert len(truth.stale) == 1
+
+
+def test_load_aliases():
+    aliases = load_aliases(MINI_ROOT / "truth" / "aliases.yaml")
+    assert set(aliases) == {"E-farebox", "E-rule-member-free-minutes"}
+    assert aliases["E-farebox"].name == "farebox"
+    assert "fare box" in aliases["E-farebox"].aliases
+
+
+def test_load_aliases_tolerates_missing_file(tmp_path: Path):
+    assert load_aliases(tmp_path / "no-such-aliases.yaml") == {}
+
+
+def test_load_truth_includes_aliases():
+    truth = load_truth(MINI_ROOT / "truth")
+    assert len(truth.aliases) == 2
+    assert truth.aliases["E-rule-member-free-minutes"].name == "member-free-minutes"
 
 
 def test_resolve_step():

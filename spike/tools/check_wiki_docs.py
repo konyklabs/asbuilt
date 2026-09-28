@@ -1,15 +1,20 @@
-"""Verify sources/wiki/*.md and sources/docs/*.md against PLAN.yaml + facts.yaml.
+"""Verify sources/wiki/*.md and sources/docs/*.md against truth/PLAN.yaml + facts.yaml.
 
 For every PLAN wiki/doc entry: the file exists, its front matter matches PLAN,
 every anchor resolves to a `## Heading`, and the body under that heading states
 every number/money value that appears in each of its facts' statements (a
 cheap check that the value was actually written, not that the prose is good).
 
+Also enforces that no anchored section contains a fact's statement verbatim,
+and that no page -- anywhere in its body, not just an anchored section --
+contains the first eight normalised words (lower-case, punctuation stripped,
+whitespace collapsed) of any fact's statement.
+
 Also scans each page for $/%/HH:MM values that belong to OTHER facts the page
 is not supposed to state, and lists any hits for review (informational, not a
 hard failure -- a genuine leak needs a human to confirm it isn't a coincidence).
 
-Run: cd spike && uv run --with pyyaml python sources/check_wiki_docs.py
+Run: cd spike && uv run --with pyyaml python tools/check_wiki_docs.py
 """
 
 import re
@@ -20,7 +25,7 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 SPIKE = HERE.parent
-PLAN = yaml.safe_load((SPIKE / "sources/PLAN.yaml").read_text())
+PLAN = yaml.safe_load((SPIKE / "truth/PLAN.yaml").read_text())
 FACTS = yaml.safe_load((SPIKE / "truth/facts.yaml").read_text())
 FACTS_BY_ID = {f["id"]: f for f in FACTS}
 
@@ -74,6 +79,13 @@ def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
+def normalize_words(s: str) -> list[str]:
+    """Lower-case, punctuation stripped, whitespace collapsed -- word list."""
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    return s.split()
+
+
 def prose_word_count(body: str) -> int:
     """Word count of prose lines only -- skips heading markers and blank lines."""
     n = 0
@@ -85,6 +97,15 @@ def prose_word_count(body: str) -> int:
 
 
 ALL_STATEMENTS_NORM = {fid: normalize(f["statement"]) for fid, f in FACTS_BY_ID.items()}
+
+# First eight normalised words of every fact's statement -- no page, anywhere
+# in its body (not just an anchored section), may contain one of these runs.
+PREFIX8_LEN = 8
+PREFIX8_BY_FACT = {}
+for fid, f in FACTS_BY_ID.items():
+    words = normalize_words(f["statement"])
+    if len(words) >= PREFIX8_LEN:
+        PREFIX8_BY_FACT[fid] = " ".join(words[:PREFIX8_LEN])
 
 WORD_RANGES = {"wiki": (150, 400), "doc": (300, 700)}
 
@@ -137,6 +158,15 @@ def check_page(kind: str, path: Path, entry: dict, expected_fm: dict) -> set[str
         for fid, stmt_norm in ALL_STATEMENTS_NORM.items():
             if stmt_norm and stmt_norm in chunk_norm:
                 errors.append(f"{path.name} #{anchor_slug}: contains {fid} statement verbatim")
+    # No eight-word prefix of any fact's statement may appear anywhere in the
+    # page body -- whole-page scan, not scoped to the anchored sections.
+    body_words_norm = " ".join(normalize_words(body))
+    for fid, prefix in PREFIX8_BY_FACT.items():
+        if prefix in body_words_norm:
+            errors.append(
+                f"{path.name}: contains the first {PREFIX8_LEN} words of {fid}'s "
+                f"statement ({prefix!r}) somewhere in the page"
+            )
     wc = prose_word_count(body)
     lo, hi = WORD_RANGES[kind]
     word_counts.append(f"{path.name}: {wc} words")

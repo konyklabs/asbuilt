@@ -5,8 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-TOLLBOOTH_TIMEOUT_SECONDS = 5
-"""F-060: each Tollbooth Pay call times out after 5 seconds."""
+TOLLBOOTH_TIMEOUT_SECONDS = 5  # seconds
 
 
 @dataclass(frozen=True)

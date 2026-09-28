@@ -4,9 +4,9 @@ Run from anywhere:
 
     uv run --with pyyaml python spike/truth/validate.py
 
-Reads truth/{entities,facts,contradictions,stale}.yaml, system/history/steps.yaml,
-queries/mix.yaml and sources/PLAN.yaml. Prints the counts and every failed
-check, and exits 1 if any check fails.
+Reads truth/{entities,facts,contradictions,stale,aliases,planted-runs,PLAN}.yaml,
+truth/executed-audit.md, system/history/steps.yaml and queries/mix.yaml. Prints
+the counts and every failed check, and exits 1 if any check fails.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ SPIKE = Path(__file__).resolve().parent.parent
 CATEGORIES = ("business-logic", "technical-implementation", "operations", "history")
 TIERS = ("executed", "code", "documented")
 TIER_RANK = {"executed": 3, "code": 2, "documented": 1}
-KINDS = ("wiki-vs-test", "ticket-vs-code", "page-vs-page", "doc-vs-code")
+KINDS = ("wiki-vs-test", "ticket-vs-code", "page-vs-page", "doc-vs-code", "run-vs-code")
 DOC_KINDS = ("wiki", "ticket", "doc", "pull")
 SURFACES = ("explain", "search", "ask", "contradictions", "stale")
 
@@ -36,7 +36,10 @@ EXPECT_CATEGORY = {
     "history": (8, 12),
 }
 EXPECT_TIER = {"executed": (25, 31), "code": (36, 44), "documented": (45, 60)}
-EXACT = {"contradictions": 20, "stale": 10, "pr_only": 5, "wiki": 40, "tickets": 80, "docs": 10}
+EXACT = {"contradictions": 21, "stale": 10, "pr_only": 5, "wiki": 40, "tickets": 80, "docs": 10}
+MIX_COUNTS = {"explain": 25, "search": 17, "ask": 13, "contradictions": 4, "stale": 3}
+EXPLAIN_BY_ALIAS, IMPACT_QUERIES = 5, 5
+AUDITED = 28
 
 errors: list[str] = []
 
@@ -66,7 +69,24 @@ facts_list = load("truth/facts.yaml")
 contradictions = load("truth/contradictions.yaml")
 stale = load("truth/stale.yaml")
 mix = load("queries/mix.yaml")
-plan = load("sources/PLAN.yaml")
+plan = load("truth/PLAN.yaml")
+aliases = load("truth/aliases.yaml")
+planted = load("truth/planted-runs.yaml")
+audit_text = (SPIKE / "truth/executed-audit.md").read_text()
+plan_tests = {t["id"]: t for t in plan.get("tests", [])}
+plan_runs = {r["id"]: r for r in plan.get("runs", [])}
+RUN_ID = re.compile(r"run/(pytest|vitest)-(c\d+)(-rerun)?")
+
+
+def run_step(doc: str) -> str:
+    m = RUN_ID.fullmatch(doc)
+    if not m:
+        raise ValueError(f"not a run document: {doc}")
+    return m.group(2)
+
+
+def outcome_steps(test: dict, field: str) -> list[str]:
+    return list(test.get(field, []))
 
 
 def steps_between(start: str | None, end: str | None) -> list[str]:
@@ -145,22 +165,58 @@ for fid, f in facts.items():
         for r in runs:
             if r["location"] not in test_locs:
                 fail(f"{fid}: run {r['document']} location is not one of the fact's tests")
-            step = r["document"].rsplit("-", 1)[-1]
+            if not RUN_ID.fullmatch(r["document"]):
+                fail(f"{fid}: {r['document']} is not a run document id")
+                continue
+            if r["document"].endswith("-rerun"):
+                fail(f"{fid}: {r['document']} is a rerun; cite attempt 1 of a conclusive step")
+            step = run_step(r["document"])
             if step not in validity:
                 fail(f"{fid}: run {r['document']} is outside the fact's validity {validity}")
-            fw = r["document"].split("/")[1].rsplit("-", 1)[0]
+            fw = r["document"].split("/")[1].split("-", 1)[0]
             test_doc = next(c["document"] for c in code_tests if c["location"] == r["location"])
             if (fw == "vitest") != test_doc.endswith(".ts"):
                 fail(f"{fid}: run framework {fw} does not match test {test_doc}")
-        if runs and {r["document"].rsplit("-", 1)[-1] for r in runs} != set(validity):
-            fail(
-                f"{fid}: runs {[r['document'] for r in runs]} do not cover the validity {validity}"
-            )
+        for loc in test_locs:
+            pt = plan_tests.get(loc)
+            if not pt:
+                continue  # reported with the PLAN resolution below
+            want = set(validity) & set(pt["passes_in"])
+            got = {run_step(r["document"]) for r in runs if r["location"] == loc}
+            if got != want:
+                fail(
+                    f"{fid}: runs of {loc} at {sorted(got)}, "
+                    f"but it passes within the validity at {sorted(want)}"
+                )
+            if not got:
+                fail(f"{fid}: executed, but {loc} never passes within the validity")
     elif tier == "code":
         if not code_src:
             fail(f"{fid}: code tier needs a code/ carrier")
-        if runs:
-            fail(f"{fid}: has a run, so its tier should be executed")
+        demoted = f.get("demoted_by")
+        if runs and not demoted:
+            fail(f"{fid}: has a run and no demoted_by, so its tier should be executed")
+        if demoted:
+            dr = plan_runs.get(demoted.get("document", ""))
+            if not dr:
+                fail(f"{fid}: demoted_by {demoted.get('document')} is not in PLAN runs")
+            elif demoted.get("location") not in dr.get("failed", []):
+                fail(f"{fid}: demoted_by run does not list {demoted.get('location')} as failed")
+            else:
+                later = STEPS.index(dr["step"])
+                if any(STEPS.index(run_step(r["document"])) >= later for r in runs):
+                    fail(f"{fid}: a passing run is cited at or after the demoting run")
+                if demoted.get("location") not in {c["location"] for c in code_tests}:
+                    fail(f"{fid}: demoted_by names a test that is not one of its carriers")
+        elif code_tests:
+            for c in code_tests:
+                pt = plan_tests.get(c["location"])
+                if pt and set(pt["passes_in"]) & set(validity):
+                    fail(
+                        f"{fid}: code tier, but its test {c['location']} passes within the validity"
+                    )
+    elif f.get("demoted_by"):
+        fail(f"{fid}: demoted_by is only valid on a code-tier fact")
     elif tier == "documented":
         bad = [k for k in kinds if k not in DOC_KINDS]
         if bad:
@@ -291,10 +347,14 @@ for fid, f in facts.items():
                 t = tests.get((doc, loc))
                 if not t:
                     fail(f"{fid}: test {loc} in {doc} is not in PLAN tests")
-                elif c.get("version") not in t["passes_in"]:
+                elif c.get("version") not in [
+                    s
+                    for fld in ("passes_in", "fails_in", "skipped_in", "flaky_in")
+                    for s in t.get(fld, [])
+                ]:
                     fail(
                         f"{fid}: test {loc} carrier version {c.get('version')} "
-                        "is not a step it passes in"
+                        "is not a step the test exists at"
                     )
             else:
                 m = code.get(rest)
@@ -394,10 +454,48 @@ for (doc, loc), t in tests.items():
         fail(f"PLAN test {doc} is not under tests/ or dispatch/test/")
     if path.endswith(".py") and not loc.startswith(f"{path}::"):
         fail(f"PLAN test {loc}: node id does not start with its file")
+    fields = ("passes_in", "fails_in", "skipped_in", "flaky_in")
+    seen_steps = [s for fld in fields for s in outcome_steps(t, fld)]
+    for s, n in Counter(seen_steps).items():
+        if n > 1:
+            fail(f"PLAN test {loc}: step {s} has more than one outcome")
+    for s in seen_steps:
+        if s not in STEPS:
+            fail(f"PLAN test {loc}: unknown step {s}")
     for r in runs_plan.values():
-        fw_ok = (r["framework"] == "vitest") == path.endswith(".ts")
-        if fw_ok and (r["step"] in t["passes_in"]) != (loc in r["passes"]):
-            fail(f"PLAN run {r['id']} and test {loc} disagree about passing")
+        if (r["framework"] == "vitest") != path.endswith(".ts"):
+            continue
+        s, attempt = r["step"], r.get("attempt", 1)
+        passes, failed, skipped = (
+            loc in r.get("passes", []),
+            loc in r.get("failed", []),
+            loc in r.get("skipped", []),
+        )
+        if attempt == 1:
+            want = (
+                s in t["passes_in"],
+                s in outcome_steps(t, "fails_in") + outcome_steps(t, "flaky_in"),
+                s in outcome_steps(t, "skipped_in"),
+            )
+        else:
+            want = (s in outcome_steps(t, "flaky_in"), s in outcome_steps(t, "fails_in"), False)
+        if (passes, failed, skipped) != want:
+            fail(
+                f"PLAN run {r['id']} and test {loc} disagree: got pass/fail/skip "
+                f"{(passes, failed, skipped)}, want {want}"
+            )
+for rid, r in runs_plan.items():
+    m = RUN_ID.fullmatch(rid)
+    if not m or m.group(1) != r.get("framework") or m.group(2) != r.get("step"):
+        fail(f"PLAN run {rid}: id disagrees with its framework or step")
+    elif m.group(3):
+        first = runs_plan.get(rid.removesuffix("-rerun"))
+        if r.get("attempt") != 2 or r.get("reruns") != rid.removesuffix("-rerun") or not first:
+            fail(f"PLAN run {rid}: a rerun needs attempt 2 and the attempt-1 run it reruns")
+        elif set(r.get("passes", [])) | set(r.get("failed", [])) != set(first.get("failed", [])):
+            fail(f"PLAN run {rid}: reruns exactly the tests attempt 1 failed")
+    elif r.get("failed") and f"{rid}-rerun" not in runs_plan:
+        fail(f"PLAN run {rid}: has failures but no rerun")
 py_modules = [p for p in code if p.endswith(".py") and p.split("/")[0] in ("dockyard", "farebox")]
 ts_files = [p for p in code if p.endswith(".ts") and p.startswith("dispatch/src/")]
 if not 45 <= len(py_modules) <= 60:
@@ -418,7 +516,7 @@ def carrier_date(fid: str, c: dict) -> datetime:
     if kind == "code":
         return STEP_DATE[c["version"]]
     if kind == "run":
-        return STEP_DATE[doc.rsplit("-", 1)[-1]]
+        return STEP_DATE[run_step(doc)]
     return doc_dates[(doc, c["location"])]
 
 
@@ -507,6 +605,11 @@ for x in contradictions:
         ok = "ticket" in kinds_of[loser] and facts[expected]["tier"] in ("code", "executed")
     elif k == "doc-vs-code":
         ok = "doc" in kinds_of[loser] and facts[expected]["tier"] in ("code", "executed")
+    elif k == "run-vs-code":
+        ok = bool(facts[loser].get("demoted_by")) and facts[expected]["tier"] in (
+            "code",
+            "executed",
+        )
     else:
         ok = all(kinds_of[fid] & set(DOC_KINDS) for fid in (a, b))
     if not ok:
@@ -550,6 +653,49 @@ for k, n in Counter((s["document"], s["states"]) for s in stale).items():
     if n > 1:
         fail(f"stale: {k} listed {n} times")
 
+# ---------------------------------------------------------------- aliases
+alias_owner: dict[str, str] = {}
+alias_ids = [a.get("id") for a in aliases]
+if sorted(alias_ids) != sorted(entities) or len(set(alias_ids)) != len(alias_ids):
+    fail("aliases: must list every entity in entities.yaml exactly once")
+for a in aliases:
+    eid = a.get("id")
+    if eid not in entities:
+        fail(f"aliases: unknown entity {eid}")
+        continue
+    if a.get("name") != entities[eid]["name"]:
+        fail(f"aliases {eid}: name {a.get('name')!r} != entities.yaml {entities[eid]['name']!r}")
+    al = a.get("aliases") or []
+    if not 2 <= len(al) <= 6:
+        fail(f"aliases {eid}: {len(al)} aliases, expected 2 to 6")
+    for s in [a.get("name"), *al]:
+        key = str(s).strip().casefold()
+        if not key:
+            fail(f"aliases {eid}: empty alias")
+        elif key in alias_owner and alias_owner[key] != eid:
+            fail(f"aliases: {s!r} belongs to both {alias_owner[key]} and {eid}")
+        elif key in alias_owner and s != a.get("name"):
+            fail(f"aliases {eid}: {s!r} repeats its own name or another alias")
+        alias_owner[key] = eid
+
+
+def normalised(s: str) -> str:
+    return " ".join(re.sub(r"[-_./{}]+", " ", s.casefold()).split())
+
+
+norm_owner: dict[str, set[str]] = {}
+for key, eid in alias_owner.items():
+    norm_owner.setdefault(normalised(key), set()).add(eid)
+norm_collisions = {k: sorted(v) for k, v in norm_owner.items() if len(v) > 1}
+
+
+def resolve(s) -> str | None:
+    eid = alias_owner.get(str(s).strip().casefold()) if s is not None else None
+    if eid is None:
+        fail(f"mix: {s!r} resolves to no entity through names and aliases")
+    return eid
+
+
 # ---------------------------------------------------------------- mix
 w = mix.get("weights", {})
 if set(w) != set(SURFACES) or sum(w.values()) != 100:
@@ -580,17 +726,43 @@ for q in queries:
         fail(f"mix {q.get('id')}: unknown surface {q.get('surface')!r}")
     else:
         by_surface[q["surface"]].append(q)
-for s, want in (("explain", 20), ("search", 15), ("ask", 10), ("contradictions", 4), ("stale", 3)):
+for s, want in MIX_COUNTS.items():
     if len(by_surface[s]) != want:
         fail(f"mix: {s} needs {want} queries, has {len(by_surface[s])}")
 explain = by_surface["explain"]
-if len({q.get("entity") for q in explain}) != len(explain):
-    fail("mix: explain entities must be distinct")
+if len({str(q.get("entity")).casefold() for q in explain}) != len(explain):
+    fail("mix: explain entity strings must be distinct")
+by_name = [q for q in explain if not q["id"].startswith("q-explain-alias-")]
+by_alias = [q for q in explain if q["id"].startswith("q-explain-alias-")]
+if len(by_alias) != EXPLAIN_BY_ALIAS:
+    fail(f"mix: {len(by_alias)} explain-by-alias queries, expected {EXPLAIN_BY_ALIAS}")
+explained_ids = set()
 for q in explain:
-    if q.get("entity") not in entities:
-        fail(f"mix {q['id']}: unknown entity {q.get('entity')}")
-    elif not any(q["entity"] in f["entities"] for f in facts.values()):
-        fail(f"mix {q['id']}: {q['entity']} has no fact")
+    s = q.get("entity")
+    if isinstance(s, str) and s.startswith("E-"):
+        fail(f"mix {q['id']}: names the entity by id {s}; use its name or an alias")
+    eid = resolve(s)
+    if eid is None:
+        continue
+    if q in by_name and s != entities[eid]["name"]:
+        fail(f"mix {q['id']}: {s!r} is not the canonical name of {eid}")
+    if q in by_alias and s.casefold() == entities[eid]["name"].casefold():
+        fail(f"mix {q['id']}: {s!r} is a canonical name, not an alias")
+    if not any(eid in f["entities"] for f in facts.values()):
+        fail(f"mix {q['id']}: {eid} has no fact")
+    if q in by_name:
+        explained_ids.add(eid)
+for q in by_alias:
+    eid = resolve(q.get("entity"))
+    if eid and eid not in explained_ids:
+        fail(f"mix {q['id']}: alias target {eid} is not also explained by name (no pairing)")
+impact = [q for q in queries if q["id"].startswith("q-impact-")]
+if len(impact) != IMPACT_QUERIES:
+    fail(f"mix: {len(impact)} impact queries, expected {IMPACT_QUERIES}")
+for q in impact:
+    ids = [fid for fid in q.get("expects", []) if fid in facts]
+    if len(ids) < 2 or len({e for fid in ids for e in facts[fid]["entities"]}) < 3:
+        fail(f"mix {q['id']}: an impact query needs 2+ expected facts spanning 3+ entities")
 for q in by_surface["search"]:
     if q.get("category") is not None and q["category"] not in CATEGORIES:
         fail(f"mix {q['id']}: bad category")
@@ -608,9 +780,12 @@ for q in cq:
     e = q.get("entity")
     if e is None:
         continue
-    if e not in entities:
-        fail(f"mix {q['id']}: unknown entity {e}")
-    elif not any(
+    if isinstance(e, str) and e.startswith("E-"):
+        fail(f"mix {q['id']}: names the entity by id {e}; use its name")
+    e = resolve(e)
+    if e is None:
+        continue
+    if not any(
         e in facts[a]["entities"] or e in facts[b]["entities"]
         for a, b in (x["facts"] for x in contradictions)
     ):
@@ -632,6 +807,125 @@ for q in by_surface["stale"]:
     stale_counts[q["since"]] = n
     if n == 0:
         fail(f"mix {q['id']}: expects no stale page")
+
+# ---------------------------------------------------------------- executed audit
+audit_rows = {}
+for line in audit_text.splitlines():
+    if not line.startswith("| F-"):
+        continue
+    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+    if len(cells) != 6:
+        fail(f"audit: row does not have 6 cells: {line[:60]}")
+        continue
+    fid, test_cell, verdict, now_cell, change, _steps = cells
+    if fid in audit_rows:
+        fail(f"audit: {fid} listed twice")
+    audit_rows[fid] = (test_cell.strip("`"), verdict, now_cell, change)
+must_audit = {fid for fid, f in facts.items() if f["tier"] == "executed" or f.get("demoted_by")}
+if set(audit_rows) != must_audit or len(audit_rows) != AUDITED:
+    fail(
+        f"audit: covers {len(audit_rows)} facts; missing {sorted(must_audit - set(audit_rows))}, "
+        f"extra {sorted(set(audit_rows) - must_audit)}; expected {AUDITED}"
+    )
+audit_counts = Counter(v[1] for v in audit_rows.values())
+for fid, (loc, verdict, now_cell, change) in audit_rows.items():
+    if fid not in facts:
+        continue
+    locs = {
+        c["location"]
+        for c in facts[fid]["carriers"]
+        if c["document"].startswith("code/") and is_test(c["document"][5:])
+    }
+    if loc not in locs:
+        fail(f"audit {fid}: test {loc} is not the fact's test carrier")
+    if verdict not in ("a", "b", "c"):
+        fail(f"audit {fid}: verdict {verdict!r} is not a, b or c")
+    if not now_cell:
+        fail(f"audit {fid}: says nothing about what the test asserts now")
+    if verdict == "b" and change != facts[fid]["statement"]:
+        fail(f"audit {fid}: narrowed statement differs from facts.yaml")
+    if verdict == "c" and not change.startswith("add: "):
+        fail(f"audit {fid}: a (c) row must say what to add")
+
+# ---------------------------------------------------------------- planted runs
+kinds_planted = Counter(pl.get("kind") for pl in planted.get("planted", []))
+if kinds_planted != Counter({"failing": 1, "skipped": 1, "flaky": 1}):
+    fail(
+        f"planted: expected one failing, one skipped and one flaky test, got {dict(kinds_planted)}"
+    )
+if not planted.get("rules") or not planted.get("runner", {}).get("env"):
+    fail("planted: rules and runner.env are required")
+x_ids = {x["id"]: x for x in contradictions}
+for pl in planted.get("planted", []):
+    pid, kind, loc = pl.get("id"), pl.get("kind"), pl.get("test")
+    pt = plan_tests.get(loc)
+    if not pt:
+        fail(f"planted {pid}: test {loc} is not in PLAN tests")
+        continue
+    if not loc.startswith(f"{pl.get('file')}::"):
+        fail(f"planted {pid}: test {loc} is not in file {pl.get('file')}")
+    outcomes = pl.get("outcomes", {})
+    if set(outcomes) != set(STEPS):
+        fail(f"planted {pid}: outcomes must name every step")
+    by = {
+        o: sorted((s for s, v in outcomes.items() if v == o), key=STEPS.index)
+        for o in ("passed", "failed", "skipped")
+    }
+    reruns = pl.get("reruns") or {}
+    flaky = sorted((s for s, v in reruns.items() if v == "passed"), key=STEPS.index)
+    fails = sorted((s for s in by["failed"] if s not in flaky), key=STEPS.index)
+    want = {
+        "passes_in": by["passed"],
+        "fails_in": fails,
+        "skipped_in": by["skipped"],
+        "flaky_in": flaky,
+    }
+    for fld, steps in want.items():
+        if outcome_steps(pt, fld) != steps:
+            fail(f"planted {pid}: PLAN {fld} {outcome_steps(pt, fld)} != {steps}")
+    for s in by["failed"]:
+        if s not in reruns:
+            fail(f"planted {pid}: a failure at {s} needs its rerun outcome")
+    affected = pl.get("facts") or {}
+    for fid in affected:
+        if fid not in facts:
+            fail(f"planted {pid}: unknown fact {fid}")
+    if kind == "failing":
+        demoted = [
+            fid
+            for fid in affected
+            if facts.get(fid, {}).get("demoted_by", {}).get("location") == loc
+        ]
+        if len(demoted) != 1:
+            fail(f"planted {pid}: exactly one affected fact must be demoted by {loc}")
+        xid = str(pl.get("contradiction", "")).split(" ", 1)[0]
+        x = x_ids.get(xid)
+        if not x or x.get("kind") != "run-vs-code" or (demoted and demoted[0] not in x["facts"]):
+            fail(
+                f"planted {pid}: needs a run-vs-code contradiction on the demoted fact, got {xid!r}"
+            )
+    elif kind == "skipped":
+        for fid in affected:
+            if facts.get(fid, {}).get("tier") != "code":
+                fail(f"planted {pid}: {fid} must stay at code (skipped tests never lift)")
+            if loc not in {c["location"] for c in facts.get(fid, {}).get("carriers", [])}:
+                fail(f"planted {pid}: the skipped test should be a code carrier of {fid}")
+        if pt["passes_in"] or not pl.get("marker", "").startswith("@pytest.mark.skip"):
+            fail(f"planted {pid}: a skipped test never passes and carries a skip marker")
+    elif kind == "flaky":
+        if not flaky:
+            fail(f"planted {pid}: a flaky test needs a step whose rerun passes")
+        for fid in affected:
+            f = facts.get(fid, {})
+            cited = {
+                run_step(c["document"])
+                for c in f.get("carriers", [])
+                if c["document"].startswith("run/") and c["location"] == loc
+            }
+            if set(flaky) & cited:
+                fail(f"planted {pid}: {fid} cites a run at a flaky step")
+            if f.get("tier") != "executed" or f.get("demoted_by"):
+                fail(f"planted {pid}: {fid} keeps its tier; a flaky step neither lifts nor demotes")
 
 # ---------------------------------------------------------------- counts
 cat = Counter(f["category"] for f in facts.values())
@@ -670,6 +964,23 @@ print(
     + ", ".join(f"{k} {n}" for k, n in Counter(x["kind"] for x in contradictions).items())
 )
 print(f"stale {len(stale)}; mix stale expectations {stale_counts}")
+print(
+    f"mix: {len(queries)} queries ({', '.join(f'{s} {len(by_surface[s])}' for s in SURFACES)}); "
+    f"explain by alias {len(by_alias)}, impact {len(impact)}"
+)
+print(f"aliases: {len(aliases)} entities, {len(alias_owner)} names and aliases, all unambiguous")
+for k, v in sorted(norm_collisions.items()):
+    print(f"  note: {k!r} is ambiguous once - _ . / are normalised: {', '.join(v)}")
+print(
+    f"executed audit: {len(audit_rows)} facts, "
+    + ", ".join(f"{v} {audit_counts[v]}" for v in "abc")
+)
+print(
+    "planted runs: "
+    + ", ".join(
+        f"{pl['id']} {pl['kind']} {pl['test'].split('::')[-1]}" for pl in planted["planted"]
+    )
+)
 print(
     f"PLAN: wiki {len(wiki)}, docs {len(docs)}, tickets {len(tickets)} "
     f"({sum(1 for t in tickets.values() if t.get('noise'))} noise), "

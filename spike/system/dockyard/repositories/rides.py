@@ -25,6 +25,5 @@ class RideRepository:
 
 
 def open_rides_for_rider(rides: RideRepository, rider_id: str) -> list[Ride]:
-    """F-019: the rides a rider currently has open (checked out, not yet
-    returned), used to enforce the check-out limit."""
+    """Filter a rider's rides down to the ones with no checkin recorded yet."""
     return [r for r in rides.for_rider(rider_id) if r.status == "open"]

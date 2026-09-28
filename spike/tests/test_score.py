@@ -4,8 +4,30 @@ import difflib
 from datetime import datetime
 
 from bench.run import run
-from bench.score import facts_match, match_facts, norm, score, score_contradictions, score_stale
-from bench.truth import Carrier, StaleEntry, TruthContradiction, TruthFact, load_facts
+from bench.score import (
+    DEFAULT_CALIBRATION,
+    SPIKE_ROOT,
+    aggregate_reports,
+    align_entities,
+    bootstrap_compare,
+    build_alias_index,
+    calibrate,
+    classify_unmatched,
+    facts_match,
+    load_calibration,
+    match_facts,
+    norm,
+    norm_entity,
+    print_comparison,
+    print_multi_report,
+    resolve_fact_entities,
+    score,
+    score_ask_query,
+    score_contradictions,
+    score_fact_query,
+    score_stale,
+)
+from bench.truth import Carrier, StaleEntry, TruthContradiction, TruthFact, load_facts, load_truth
 from tests._support import MINI_ROOT
 
 STATEMENT = "A member's free minutes are 20."
@@ -351,11 +373,15 @@ def test_match_facts_disambiguates_by_sha_via_commits():
 
 def _hand_built_results() -> dict:
     """One explain/search hit whose version disambiguates to F-003 (not
-    F-001, which shares its statement and code document), one search miss."""
+    F-001, which shares its statement and code document), one search miss.
+    Entities are given as NAMES (bench/protocol.py: arms never return ids),
+    deliberately using two different aliases from tests/fixtures/mini/truth/
+    aliases.yaml ("Farebox" and "member free minutes") to exercise the
+    scorer's own alignment through `score()`, not just the loader."""
     correct = {
         "statement": "A member's free minutes are 15.",
         "category": "business-logic",
-        "entities": ["E-farebox", "E-rule-member-free-minutes"],
+        "entities": ["Farebox", "member free minutes"],
         "tier": "executed",
         "citations": [{"document": "code/farebox/pricing.py", "version": "c4"}],
         "valid_from": None,
@@ -365,7 +391,7 @@ def _hand_built_results() -> dict:
     wrong = {
         "statement": "Totally unrelated statement about something else.",
         "category": "operations",
-        "entities": ["E-farebox"],
+        "entities": ["farebox"],
         "tier": "documented",
         "citations": [{"document": "wiki/pricing-rules"}],
         "valid_from": None,
@@ -389,7 +415,7 @@ def _hand_built_results() -> dict:
                 "id": "q-explain-1",
                 "surface": "explain",
                 "latency_ms": 1.0,
-                "params": {"entity": "E-rule-member-free-minutes"},
+                "params": {"entity": "member-free-minutes"},
                 "result": [correct],
             },
             {
@@ -410,7 +436,7 @@ def _hand_built_results() -> dict:
                 "id": "q-contradictions-1",
                 "surface": "contradictions",
                 "latency_ms": 1.0,
-                "params": {"entity": "E-rule-member-free-minutes"},
+                "params": {"entity": "member-free-minutes"},
                 "result": [],
             },
             {
@@ -455,6 +481,16 @@ def test_score_hand_built_results_known_precision_recall():
     assert report["surfaces"]["contradictions"]["precision"] is None
     assert report["surfaces"]["stale"]["recall"] == 0.0
 
+    # entity resolution: the matched explain fact's two aliased names both
+    # resolved and both agree with F-003's own entities.
+    er = explain["entity_resolution"]
+    assert er["tp"] == 2
+    assert er["returned"] == 2
+    assert er["expected"] == 2
+    assert er["precision"] == 1.0
+    assert er["recall"] == 1.0
+    assert er["unresolved"] == []
+
 
 def test_null_prototype_zero_scores_with_correct_denominators():
     results = run(MINI_ROOT, "null")
@@ -480,3 +516,701 @@ def test_null_prototype_zero_scores_with_correct_denominators():
     assert contradictions["recall"] == 0.0
 
     assert report["headline"] == 0.0
+
+
+# --------------------------------------------------------------------------
+# Entity alignment (konyklabs/asbuilt#7): arms return names, the scorer
+# aligns them to truth ids through the alias index.
+# --------------------------------------------------------------------------
+
+
+def test_align_entities_resolves_name_and_alias_case_insensitively():
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    resolved, unresolved = align_entities(["Farebox", "FARE BOX", "member free minutes"], index)
+    assert resolved == ["E-farebox", "E-rule-member-free-minutes"]
+    assert unresolved == []
+
+
+def test_align_entities_still_resolves_a_bare_id_for_back_compat():
+    """queries/mix.yaml and older fixtures may still carry an E- id; the
+    index registers ids too (see build_alias_index's docstring) so this
+    doesn't hard-fail while the harness's own fixtures transition."""
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    resolved, unresolved = align_entities(["E-farebox"], index)
+    assert resolved == ["E-farebox"]
+    assert unresolved == []
+
+
+def test_align_entities_fuzzy_fallback_on_a_typo():
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    resolved, unresolved = align_entities(["farebx"], index)  # missing an 'o'
+    assert resolved == ["E-farebox"]
+    assert unresolved == []
+
+
+def test_align_entities_unresolved_name_is_reported_not_dropped():
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    resolved, unresolved = align_entities(["a completely unrelated name"], index)
+    assert resolved == []
+    assert unresolved == ["a completely unrelated name"]
+
+
+def test_align_entities_ambiguous_fuzzy_match_is_not_guessed():
+    """Two entities equidistant (by SequenceMatcher ratio) from a typo at
+    the fuzzy cutoff must not be resolved to either — verified directly:
+    both "station alpha" and "station alphb" score 0.923 against "station
+    alphx", the same fuzzy match `_fuzzy_resolve` would otherwise pick."""
+    index = {"station alpha": "E-a", "station alphb": "E-b"}
+    resolved, unresolved = align_entities(["station-alphx"], index)
+    assert resolved == []
+    assert unresolved == ["station-alphx"]
+
+
+def test_resolve_fact_entities_keeps_unresolved_names_for_audit():
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    fact = {"entities": ["Farebox", "nonsense-entity"], "statement": "x", "citations": []}
+    resolved = resolve_fact_entities(fact, index)
+    assert resolved["entities"] == ["E-farebox"]
+    assert resolved["_unresolved_entities"] == ["nonsense-entity"]
+
+
+# --------------------------------------------------------------------------
+# Tier confusion, executed-tier hard errors, category & validity accuracy
+#
+# These tests exercise score_fact_query's own bookkeeping, not entity
+# alignment (which has its own tests above) — `_identity_index` is a
+# minimal alias index mapping each ad-hoc id's normalised form to itself, so
+# a returned fact naming the SAME id string as the truth fact resolves
+# like-for-like without a real Truth/aliases fixture behind it.
+# --------------------------------------------------------------------------
+
+
+def _identity_index(*entity_ids: str) -> dict[str, str]:
+    return {norm_entity(eid): eid for eid in entity_ids}
+
+
+def test_score_fact_query_tier_confusion_and_executed_precision_recall():
+    truth_executed = TruthFact(
+        id="F-e",
+        statement="A ride costs $30.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="executed",
+        carriers=(Carrier(document="run/pytest-c1", location="t"),),
+    )
+    truth_code = TruthFact(
+        id="F-c",
+        statement="A refund window is 14 days.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="code",
+        carriers=(Carrier(document="code/x.py"),),
+    )
+    expected = {"F-e": truth_executed, "F-c": truth_code}
+
+    returned_correct_executed = {
+        "statement": "A ride costs $30.",
+        "entities": ["E-x"],
+        "tier": "executed",
+        "category": "business-logic",
+        "citations": [{"document": "run/pytest-c1"}],
+    }
+    # Matches the CODE-tier truth fact but wrongly claims "executed" — lands
+    # off the confusion matrix's diagonal, and (no run/ citation) is also a
+    # hard error.
+    returned_wrong_tier = {
+        "statement": "A refund window is 14 days.",
+        "entities": ["E-x"],
+        "tier": "executed",
+        "category": "business-logic",
+        "citations": [{"document": "code/x.py"}],
+    }
+    # Claims "executed" but matches nothing at all — still counts toward
+    # returned_executed (a wrong claim, whether or not it happens to match
+    # something) and is a hard error (no run/ citation).
+    returned_unmatched_executed = {
+        "statement": "Something else entirely, with a $5 number.",
+        "entities": ["E-x"],
+        "tier": "executed",
+        "category": "business-logic",
+        "citations": [{"document": "wiki/somewhere"}],
+    }
+
+    result = score_fact_query(
+        [returned_correct_executed, returned_wrong_tier, returned_unmatched_executed],
+        expected,
+        alias_index=_identity_index("E-x"),
+    )
+    tier = result["tier"]
+    assert tier["confusion"] == {"executed": {"executed": 1}, "code": {"executed": 1}}
+    assert tier["returned_executed"] == 3
+    assert tier["tp_executed"] == 1
+    assert tier["expected_executed"] == 1
+    assert tier["hard_errors"] == 2
+
+
+def test_score_fact_query_category_and_validity_accuracy():
+    truth = TruthFact(
+        id="F-v",
+        statement="Grace was 3 days before c3.",
+        category="history",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+        valid_to="c3",
+    )
+    expected = {"F-v": truth}
+    returned_right = {
+        "statement": "Grace was 3 days before c3.",
+        "entities": ["E-x"],
+        "category": "history",
+        "citations": [{"document": "wiki/x"}],
+        "valid_from": None,
+        "valid_to": "c3",
+    }
+    result = score_fact_query([returned_right], expected, alias_index=_identity_index("E-x"))
+    assert result["category_accuracy"] == {"correct": 1, "total": 1}
+    assert result["validity"] == {"correct": 1, "total": 1}
+
+
+def test_score_fact_query_wrong_category_and_validity_are_not_credited():
+    truth = TruthFact(
+        id="F-v",
+        statement="Grace was 3 days before c3.",
+        category="history",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+        valid_to="c3",
+    )
+    expected = {"F-v": truth}
+    returned_wrong = {
+        "statement": "Grace was 3 days before c3.",
+        "entities": ["E-x"],
+        "category": "operations",
+        "citations": [{"document": "wiki/x"}],
+        "valid_from": None,
+        "valid_to": "c5",
+    }
+    result = score_fact_query([returned_wrong], expected, alias_index=_identity_index("E-x"))
+    assert result["category_accuracy"] == {"correct": 0, "total": 1}
+    assert result["validity"] == {"correct": 0, "total": 1}
+
+
+def test_score_fact_query_validity_resolves_sha_via_commits():
+    truth = TruthFact(
+        id="F-v",
+        statement="X",
+        category="history",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+        valid_to="c3",
+    )
+    expected = {"F-v": truth}
+    returned = {
+        "statement": "X",
+        "entities": ["E-x"],
+        "category": "history",
+        "citations": [{"document": "wiki/x"}],
+        "valid_from": None,
+        "valid_to": "deadbeef",
+    }
+    commits = {"c3": {"sha": "deadbeef"}}
+    result = score_fact_query([returned], expected, commits, alias_index=_identity_index("E-x"))
+    assert result["validity"] == {"correct": 1, "total": 1}
+
+
+def test_score_fact_query_validity_excludes_facts_with_no_valid_from_or_to():
+    truth = TruthFact(
+        id="F-open",
+        statement="X",
+        category="history",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    expected = {"F-open": truth}
+    returned = {
+        "statement": "X",
+        "entities": ["E-x"],
+        "category": "history",
+        "citations": [{"document": "wiki/x"}],
+    }
+    result = score_fact_query([returned], expected, alias_index=_identity_index("E-x"))
+    assert result["validity"] == {"correct": 0, "total": 0}
+
+
+# --------------------------------------------------------------------------
+# Unmatched returned facts: hard false positives vs. unplanted; precision@5
+# and recall@10 (search)
+# --------------------------------------------------------------------------
+
+
+def test_classify_unmatched_hard_false_positive_vs_unplanted():
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A ride costs $30.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    all_facts = {"F-1": truth_fact}
+    hard_fp_candidate = {  # same entity+document as F-1, wrong number
+        "statement": "A ride costs $99.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    unplanted_candidate = {  # no entity/document overlap with anything
+        "statement": "Something never planted.",
+        "entities": ["E-nowhere"],
+        "citations": [{"document": "wiki/nowhere"}],
+    }
+    hard_fp, unplanted = classify_unmatched([hard_fp_candidate, unplanted_candidate], all_facts)
+    assert hard_fp == [hard_fp_candidate]
+    assert unplanted == [unplanted_candidate]
+
+
+def test_score_fact_query_reports_hard_false_positives_and_unplanted():
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A ride costs $30.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    expected = {"F-1": truth_fact}
+    hard_fp_candidate = {
+        "statement": "A ride costs $99.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    unplanted_candidate = {
+        "statement": "Something never planted.",
+        "entities": ["E-nowhere"],
+        "citations": [{"document": "wiki/nowhere"}],
+    }
+    result = score_fact_query(
+        [hard_fp_candidate, unplanted_candidate],
+        expected,
+        alias_index=_identity_index("E-x", "E-nowhere"),
+    )
+    assert result["hard_false_positives"] == 1
+    # unplanted_facts carries the resolved copy (entities as ids, plus the
+    # private _unresolved_entities audit key), not the original dict as-is.
+    assert len(result["unplanted_facts"]) == 1
+    assert result["unplanted_facts"][0]["statement"] == unplanted_candidate["statement"]
+
+
+def test_score_fact_query_hard_false_positive_uses_full_truth_set():
+    """A returned fact about an entity/document pair that isn't in this
+    query's own `expected` but IS elsewhere in the ground truth is still a
+    hard false positive, not unplanted noise (module docstring)."""
+    truth_fact = TruthFact(
+        id="F-elsewhere",
+        statement="A different rule.",
+        category="business-logic",
+        entities=("E-y",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/y"),),
+    )
+    all_facts = {"F-elsewhere": truth_fact}
+    candidate = {
+        "statement": "A different rule entirely, with a $1 twist.",
+        "entities": ["E-y"],
+        "citations": [{"document": "wiki/y"}],
+    }
+    result = score_fact_query(
+        [candidate], expected={}, alias_index=_identity_index("E-y"), all_facts=all_facts
+    )
+    assert result["hard_false_positives"] == 1
+    assert result["unplanted_facts"] == []
+
+
+def test_score_fact_query_precision_at_5_and_recall_at_10():
+    facts = {
+        f"F-{i}": TruthFact(
+            id=f"F-{i}",
+            statement=f"Fact number {i}.",
+            category="business-logic",
+            entities=("E-x",),
+            tier="documented",
+            carriers=(Carrier(document=f"wiki/{i}"),),
+        )
+        for i in range(1, 4)
+    }
+    returned = [
+        {
+            "statement": "Unrelated filler.",
+            "entities": ["E-x"],
+            "citations": [{"document": "wiki/nowhere"}],
+        }
+        for _ in range(5)
+    ]
+    returned.append(
+        {
+            "statement": "Fact number 1.",
+            "entities": ["E-x"],
+            "citations": [{"document": "wiki/1"}],
+        }
+    )
+    result = score_fact_query(returned, facts, alias_index=_identity_index("E-x"))
+    assert result["rank"] == {"p5_hits": 0, "p5_n": 5, "r10_hits": 1}
+
+
+# --------------------------------------------------------------------------
+# ask: text-match (not citation-only), and the per-sentence citation cap
+# --------------------------------------------------------------------------
+
+
+def _free_minutes_fact() -> TruthFact:
+    return TruthFact(
+        id="F-1",
+        statement="A member's first 30 minutes are free.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/pricing"),),
+    )
+
+
+def test_score_ask_query_requires_text_match_not_just_citation():
+    expected = {"F-1": _free_minutes_fact()}
+    # Cites the right document but states something unrelated: must not count.
+    answer = {
+        "sentences": [
+            {"text": "The weather was nice that day.", "citations": [{"document": "wiki/pricing"}]}
+        ]
+    }
+    result = score_ask_query(answer, expected)
+    assert result["correct_sentences"] == 0
+    assert result["covered_facts"] == 0
+
+
+def test_score_ask_query_credits_a_text_and_citation_match():
+    expected = {"F-1": _free_minutes_fact()}
+    answer = {
+        "sentences": [
+            {
+                "text": "Members get their first 30 minutes free.",
+                "citations": [{"document": "wiki/pricing"}],
+            }
+        ]
+    }
+    result = score_ask_query(answer, expected)
+    assert result["correct_sentences"] == 1
+    assert result["covered_facts"] == 1
+
+
+def test_score_ask_query_citation_cap_ignores_extra_citations():
+    expected = {"F-1": _free_minutes_fact()}
+    # The correct citation is 4th; with a cap of 3 it's never considered.
+    answer = {
+        "sentences": [
+            {
+                "text": "Members get their first 30 minutes free.",
+                "citations": [
+                    {"document": "wiki/a"},
+                    {"document": "wiki/b"},
+                    {"document": "wiki/c"},
+                    {"document": "wiki/pricing"},
+                ],
+            }
+        ]
+    }
+    capped = score_ask_query(answer, expected, citation_cap=3)
+    assert capped["correct_sentences"] == 0
+    uncapped = score_ask_query(answer, expected, citation_cap=4)
+    assert uncapped["correct_sentences"] == 1
+
+
+# --------------------------------------------------------------------------
+# contradictions: precision (returned/matched), in addition to recall
+# --------------------------------------------------------------------------
+
+
+def test_score_contradictions_reports_precision():
+    fact_a = TruthFact(
+        id="F-a",
+        statement="A.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/a"),),
+    )
+    fact_b = TruthFact(
+        id="F-b",
+        statement="B.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="executed",
+        carriers=(Carrier(document="run/r1"),),
+    )
+    contradiction = TruthContradiction(id="X-1", facts=("F-a", "F-b"), kind="wiki-vs-test")
+    expected = {"X-1": contradiction}
+    truth_facts = {"F-a": fact_a, "F-b": fact_b}
+
+    returned_a = {"statement": "A.", "entities": ["E-x"], "citations": [{"document": "wiki/a"}]}
+    returned_b = {"statement": "B.", "entities": ["E-x"], "citations": [{"document": "run/r1"}]}
+    returned_bogus_a = {
+        "statement": "Nothing like A.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/nowhere"}],
+    }
+    returned_bogus_b = {
+        "statement": "Nothing like B.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/nowhere"}],
+    }
+
+    result = score_contradictions(
+        [{"a": returned_a, "b": returned_b}, {"a": returned_bogus_a, "b": returned_bogus_b}],
+        expected,
+        truth_facts,
+    )
+    assert result["matched"] == 1
+    assert result["returned"] == 2
+
+
+def test_score_contradictions_precision_via_score():
+    facts = load_facts(MINI_ROOT / "truth" / "facts.yaml")
+    f3, f5 = facts["F-003"], facts["F-005"]
+
+    def _fact(fact):
+        return {
+            "statement": fact.statement,
+            "entities": ["farebox", "member-free-minutes"],
+            "citations": [{"document": c.document} for c in fact.carriers],
+        }
+
+    returned_correct = {"a": _fact(f5), "b": _fact(f3), "winner": _fact(f3)}
+    returned_bogus = {
+        "a": {
+            "statement": "Nothing.",
+            "entities": ["farebox"],
+            "citations": [{"document": "wiki/nowhere"}],
+        },
+        "b": {
+            "statement": "Nothing else.",
+            "entities": ["farebox"],
+            "citations": [{"document": "wiki/nowhere"}],
+        },
+    }
+    results = {
+        "prototype": "test",
+        "fixture": str(MINI_ROOT),
+        "weights": {},
+        "ingest": {},
+        "queries": [
+            {
+                "id": "q1",
+                "surface": "contradictions",
+                "latency_ms": 1.0,
+                "params": {"entity": None},
+                "result": [returned_correct, returned_bogus],
+            }
+        ],
+    }
+    report = score(results, MINI_ROOT / "truth")
+    c = report["surfaces"]["contradictions"]
+    assert c["matched"] == 1
+    assert c["returned"] == 2
+    assert c["expected"] == 1
+    assert c["precision"] == 0.5
+    assert c["recall"] == 1.0
+
+
+# --------------------------------------------------------------------------
+# Multiple runs (median/min/max) and the paired bootstrap comparison
+# --------------------------------------------------------------------------
+
+
+def test_aggregate_reports_median_min_max():
+    good = score(_hand_built_results(), MINI_ROOT / "truth")
+    worse_results = _hand_built_results()
+    worse_results["queries"][0]["result"] = []  # explain returns nothing this run
+    worse = score(worse_results, MINI_ROOT / "truth")
+
+    agg = aggregate_reports([good, worse])
+    recall_stats = agg["surfaces"]["explain"]["recall"]
+    assert recall_stats["max"] == good["surfaces"]["explain"]["recall"]
+    assert recall_stats["min"] == worse["surfaces"]["explain"]["recall"]
+    assert recall_stats["min"] <= recall_stats["median"] <= recall_stats["max"]
+
+
+def test_bootstrap_compare_identical_arms_diff_is_zero():
+    report = score(_hand_built_results(), MINI_ROOT / "truth")
+    comparison = bootstrap_compare(report["by_query"], report["by_query"], iterations=200, seed=0)
+    for name in ("explain", "search", "ask", "contradictions", "stale"):
+        c = comparison["surfaces"][name]
+        assert c["point_diff"] == 0.0
+        assert not c["excludes_zero"]
+
+
+def test_bootstrap_compare_is_deterministic_with_a_fixed_seed():
+    report_a = score(_hand_built_results(), MINI_ROOT / "truth")
+    worse_results = _hand_built_results()
+    worse_results["queries"][1]["result"] = []  # search returns nothing
+    report_b = score(worse_results, MINI_ROOT / "truth")
+
+    c1 = bootstrap_compare(report_a["by_query"], report_b["by_query"], iterations=200, seed=42)
+    c2 = bootstrap_compare(report_a["by_query"], report_b["by_query"], iterations=200, seed=42)
+    assert c1 == c2
+
+
+def test_bootstrap_compare_detects_a_real_difference():
+    report_a = score(_hand_built_results(), MINI_ROOT / "truth")
+    worse_results = _hand_built_results()
+    worse_results["queries"][1]["result"] = []  # search returns nothing
+    report_b = score(worse_results, MINI_ROOT / "truth")
+
+    comparison = bootstrap_compare(
+        report_a["by_query"], report_b["by_query"], iterations=200, seed=1
+    )
+    search = comparison["surfaces"]["search"]
+    assert search["point_diff"] > 0
+    assert search["excludes_zero"]
+
+
+def test_print_multi_report_smoke(capsys):
+    report = score(_hand_built_results(), MINI_ROOT / "truth")
+    print_multi_report([report, report])
+    out = capsys.readouterr().out
+    assert "across 2 runs" in out
+
+
+def test_print_comparison_smoke(capsys):
+    report = score(_hand_built_results(), MINI_ROOT / "truth")
+    comparison = bootstrap_compare(report["by_query"], report["by_query"], iterations=50, seed=0)
+    print_comparison(comparison)
+    out = capsys.readouterr().out
+    assert "executed_precision" in out
+
+
+# --------------------------------------------------------------------------
+# Matcher hardening: number words, prose dates, clock times, negation
+# --------------------------------------------------------------------------
+
+
+def test_statement_matches_number_words():
+    truth = TruthFact(
+        id="F-1",
+        statement="3 fault reports lock the bike.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "Three fault reports lock the bike.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert facts_match(returned, truth)
+
+
+def test_statement_matches_prose_date():
+    truth = TruthFact(
+        id="F-1",
+        statement="The promotion ended on 2026-04-01.",
+        category="history",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "The promotion ended on April 1, 2026.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert facts_match(returned, truth)
+
+
+def test_statement_matches_clock_time():
+    truth = TruthFact(
+        id="F-1",
+        statement="The job runs at 03:00.",
+        category="operations",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "The job runs at 3am.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert facts_match(returned, truth)
+
+
+def test_statement_matches_negation_guard_blocks_a_polarity_flip():
+    truth = TruthFact(
+        id="F-1",
+        statement="Dynamic pricing is on in production.",
+        category="operations",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "Dynamic pricing is off in production.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert not facts_match(returned, truth)
+
+
+def test_statement_matches_negation_guard_catches_a_contraction():
+    truth = TruthFact(
+        id="F-1",
+        statement="Casual riders can unlock a bike without a membership.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "Casual riders cannot unlock a bike without a membership.",
+        "entities": ["E-x"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert not facts_match(returned, truth)
+
+
+# --------------------------------------------------------------------------
+# Calibration
+# --------------------------------------------------------------------------
+
+
+def test_calibrate_basic_precision_recall():
+    pairs = [
+        {"truth": "A costs $5.", "candidate": "A costs $5.", "expect": True},
+        {"truth": "A costs $5.", "candidate": "A costs $9.", "expect": False},
+        {"truth": "A costs $5.", "candidate": "Totally unrelated text.", "expect": True},
+    ]
+    report = calibrate(pairs)
+    assert report["tp"] == 1
+    assert report["tn"] == 1
+    assert report["fn"] == 1
+    assert report["fp"] == 0
+    assert report["precision"] == 1.0
+    assert report["recall"] == 0.5
+    assert len(report["misclassified"]) == 1
+
+
+def test_calibration_set_meets_precision_and_recall_bar():
+    """konyklabs/asbuilt#7 deliverable 5: the matcher's own calibration set,
+    measured via `calibrate()`, must clear precision >= 0.9 and
+    recall >= 0.85 (tune the rules, not the set, until it holds)."""
+    pairs = load_calibration(SPIKE_ROOT / DEFAULT_CALIBRATION)
+    assert len(pairs) >= 90  # "about 100" per the task
+    report = calibrate(pairs)
+    assert report["precision"] >= 0.9, report["misclassified"]
+    assert report["recall"] >= 0.85, report["misclassified"]

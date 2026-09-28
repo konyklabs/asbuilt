@@ -17,8 +17,9 @@ authoring_rules:
   may state a documented-tier fact.
 - Wiki anchors are the heading slugs of the page (`## Free minutes` gives `#free-minutes`). Docs use the same convention.
 - Times are America/New_York with their UTC offset; money is USD with two decimals in prose.
-- A test exists in the repository exactly at the steps in its passes_in, and passes there; a symbol with per-step
-  values takes each value from that step until the next listed one.
+- A test exists in the repository exactly at the steps in its passes_in, fails_in, skipped_in and flaky_in together,
+  with that outcome there (truth/planted-runs.yaml specifies the three planted ones); a symbol with per-step values
+  takes each value from that step until the next listed one.
 - 'Noise tickets and noise PRs (noise: true) are written like the others, about their summary only.'
 wiki:
 - slug: gearwell-overview
@@ -116,7 +117,7 @@ wiki:
   - anchor: '#grace'
     facts:
     - id: F-016
-      states: A membership lapses 7 days after a failed renewal.
+      states: A failed renewal gives a membership a grace period that ends 7 days after the failure.
   - anchor: '#pricing'
     facts:
     - id: F-029
@@ -443,7 +444,7 @@ wiki:
   - anchor: '#retries'
     facts:
     - id: F-023
-      states: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+      states: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture fails.
   - anchor: '#idempotency'
     facts:
     - id: F-059
@@ -648,7 +649,7 @@ wiki:
   - anchor: '#grace-period'
     facts:
     - id: F-016
-      states: A membership lapses 7 days after a failed renewal.
+      states: A failed renewal gives a membership a grace period that ends 7 days after the failure.
   - anchor: '#rebalance-order'
     facts:
     - id: F-032
@@ -874,7 +875,7 @@ docs:
   - anchor: '#retries'
     facts:
     - id: F-023
-      states: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+      states: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture fails.
     - id: F-061
       states: The Tollbooth Pay client waits 0.5, 1 and 2 seconds before its three retries.
   - anchor: '#idempotency'
@@ -1425,7 +1426,7 @@ tickets:
     created: '2026-03-27T10:05:00-04:00'
     facts:
     - id: F-016
-      states: A membership lapses 7 days after a failed renewal.
+      states: A failed renewal gives a membership a grace period that ends 7 days after the failure.
     note: 'Decision: grace goes to 7 days.'
 - key: GW-137
   summary: Weekly report of bikes out of service
@@ -1849,7 +1850,7 @@ tickets:
   description:
     facts:
     - id: F-023
-      states: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+      states: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture fails.
     note: Describes current retry behaviour; must NOT say why 3 (PR 16 only).
   comments: []
 - key: GW-168
@@ -2057,7 +2058,7 @@ pulls:
   body:
     facts:
     - id: F-016
-      states: A membership lapses 7 days after a failed renewal.
+      states: A failed renewal gives a membership a grace period that ends 7 days after the failure.
     note: What the change does; links GW-136.
   comments:
   - id: comment-1
@@ -2963,6 +2964,8 @@ code:
     facts:
     - fact: F-073
       steps: [c1, c2, c3, c4, c5, c6]
+  - name: listTickets
+    note: returns every row; added in wave 2 for the F-020 boundary assertion (truth/executed-audit.md)
 - path: dispatch/src/db/weatherReadings.ts
   language: typescript
   added_in: c1
@@ -3058,8 +3061,10 @@ tests:
   framework: pytest
   asserts:
   - fact: F-050
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5]
+  passes_in: [c1, c2, c3, c4, c5]
+  flaky_in: [c6]
+  planted: see truth/planted-runs.yaml
 - document: code/tests/e2e/test_pricing.py
   id: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
   framework: pytest
@@ -3118,13 +3123,15 @@ tests:
   - fact: F-011
     steps: [c1, c2, c3, c4]
   passes_in: [c1, c2, c3, c4]
+  fails_in: [c5]
+  planted: see truth/planted-runs.yaml
 - document: code/tests/unit/test_lost_bikes.py
   id: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
   framework: pytest
   asserts:
   - fact: F-012
-    steps: [c5, c6]
-  passes_in: [c5, c6]
+    steps: [c6]
+  passes_in: [c6]
 - document: code/tests/unit/test_lost_bikes.py
   id: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
   framework: pytest
@@ -3182,6 +3189,15 @@ tests:
     steps: [c5, c6]
   passes_in: [c5, c6]
 - document: code/tests/unit/test_tollbooth_client.py
+  id: tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx
+  framework: pytest
+  asserts:
+  - fact: F-062
+    steps: []
+  passes_in: []
+  skipped_in: [c1, c2, c3, c4, c5, c6]
+  planted: see truth/planted-runs.yaml
+- document: code/tests/unit/test_tollbooth_client.py
   id: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
   framework: pytest
   asserts:
@@ -3192,7 +3208,10 @@ runs:
 - id: run/pytest-c1
   framework: pytest
   step: c1
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 18 passed, 1 skipped
   passes:
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
@@ -3212,10 +3231,14 @@ runs:
   - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - tests/unit/test_pricing.py::test_single_ride_cap_25
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
 - id: run/pytest-c2
   framework: pytest
   step: c2
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 18 passed, 1 skipped
   passes:
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
@@ -3235,10 +3258,14 @@ runs:
   - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - tests/unit/test_pricing.py::test_single_ride_cap_25
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
 - id: run/pytest-c3
   framework: pytest
   step: c3
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 18 passed, 1 skipped
   passes:
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
@@ -3258,10 +3285,14 @@ runs:
   - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - tests/unit/test_pricing.py::test_single_ride_cap_25
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
 - id: run/pytest-c4
   framework: pytest
   step: c4
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 18 passed, 1 skipped
   passes:
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
@@ -3281,10 +3312,14 @@ runs:
   - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - tests/unit/test_pricing.py::test_single_ride_cap_25
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
 - id: run/pytest-c5
   framework: pytest
   step: c5
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 17 passed, 1 failed, 1 skipped
   passes:
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
@@ -3296,7 +3331,6 @@ runs:
   - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
   - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
   - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
-  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
   - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
   - tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
   - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
@@ -3304,16 +3338,31 @@ runs:
   - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - tests/unit/test_pricing.py::test_single_ride_cap_30
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  failed: ['tests/unit/test_lost_bikes.py::test_lost_bike_fee_100']
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
+- id: run/pytest-c5-rerun
+  framework: pytest
+  step: c5
+  attempt: 2
+  env:
+    GEARWELL_ATTEMPT: '2'
+  reruns: run/pytest-c5
+  scope: only the tests that failed in attempt 1
+  result: 0 passed, 1 failed
+  passes: []
+  failed: ['tests/unit/test_lost_bikes.py::test_lost_bike_fee_100']
 - id: run/pytest-c6
   framework: pytest
   step: c6
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 18 passed, 1 failed, 1 skipped
   passes:
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
   - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
   - tests/e2e/test_checkout.py::test_third_checkout_refused
-  - tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
   - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
   - tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
   - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
@@ -3328,10 +3377,25 @@ runs:
   - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - tests/unit/test_pricing.py::test_single_ride_cap_30
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  failed: ['tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed']
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
+- id: run/pytest-c6-rerun
+  framework: pytest
+  step: c6
+  attempt: 2
+  env:
+    GEARWELL_ATTEMPT: '2'
+  reruns: run/pytest-c6
+  scope: only the tests that failed in attempt 1
+  result: 1 passed
+  passes: ['tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed']
 - id: run/vitest-c1
   framework: vitest
   step: c1
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 3 passed
   passes:
   - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
@@ -3339,7 +3403,10 @@ runs:
 - id: run/vitest-c2
   framework: vitest
   step: c2
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 3 passed
   passes:
   - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
@@ -3347,7 +3414,10 @@ runs:
 - id: run/vitest-c3
   framework: vitest
   step: c3
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 3 passed
   passes:
   - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
@@ -3355,7 +3425,10 @@ runs:
 - id: run/vitest-c4
   framework: vitest
   step: c4
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 3 passed
   passes:
   - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
@@ -3363,7 +3436,10 @@ runs:
 - id: run/vitest-c5
   framework: vitest
   step: c5
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 3 passed
   passes:
   - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
@@ -3371,7 +3447,10 @@ runs:
 - id: run/vitest-c6
   framework: vitest
   step: c6
-  result: all passed
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 4 passed
   passes:
   - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full

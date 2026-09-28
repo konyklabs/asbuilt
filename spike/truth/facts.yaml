@@ -1,8 +1,9 @@
 # Ground-truth facts about Gearwell. Format: SCHEMA.md. Every carrier resolves
-# to a document in sources/PLAN.yaml, the built repository (code/), or a test
+# to a document in truth/PLAN.yaml, the built repository (code/), or a test
 # run (run/). valid_from / valid_to are history step ids (system/history/steps.yaml).
 # Documented facts without valid_from/valid_to that lose a contradiction never
-# held; they exist because a source states them.
+# held; they exist because a source states them. demoted_by names the failing
+# run that demoted a once-executed statement (D-013; truth/planted-runs.yaml).
 - id: F-001
   statement: A member's first 30 minutes of every ride are free.
   category: business-logic
@@ -264,8 +265,11 @@
   statement: A ride closed as lost is charged a $100.00 lost-bike fee.
   category: business-logic
   entities: [E-farebox, E-rule-lost-bike-fee, E-table-invoice-lines]
-  tier: executed
+  tier: code
   valid_to: c5
+  demoted_by:
+    document: run/pytest-c5
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
   carriers:
   - document: code/farebox/pricing.py
     location: LOST_BIKE_FEE
@@ -293,9 +297,7 @@
     version: c5
   - document: code/tests/unit/test_lost_bikes.py
     location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
-    version: c5
-  - document: run/pytest-c5
-    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+    version: c6
   - document: run/pytest-c6
     location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
   - document: pull/14
@@ -358,7 +360,7 @@
   - document: ticket/GW-171
     location: description
 - id: F-015
-  statement: A membership lapses 3 days after a failed renewal.
+  statement: A failed renewal gives a membership a grace period that ends 3 days after the failure.
   category: business-logic
   entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
   tier: executed
@@ -375,7 +377,7 @@
   - document: run/pytest-c2
     location: tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
 - id: F-016
-  statement: A membership lapses 7 days after a failed renewal.
+  statement: A failed renewal gives a membership a grace period that ends 7 days after the failure.
   category: business-logic
   entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
   tier: executed
@@ -586,7 +588,7 @@
   - document: ticket/GW-170
     location: description
 - id: F-023
-  statement: A failed Tollbooth Pay call is retried 3 times with backoff before the payment is marked failed.
+  statement: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture fails.
   category: business-logic
   entities: [E-farebox, E-rule-payment-retry, E-int-tollbooth-pay, E-table-payments]
   tier: executed
@@ -959,8 +961,6 @@
     location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
   - document: run/pytest-c5
     location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
-  - document: run/pytest-c6
-    location: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
   - document: wiki/ride-events
     location: '#producers'
     version: 3
@@ -1161,6 +1161,9 @@
   carriers:
   - document: code/farebox/clients/tollbooth.py
     location: should_retry
+    version: c1
+  - document: code/tests/unit/test_tollbooth_client.py
+    location: tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx
     version: c1
 - id: F-063
   statement: farebox and dockyard cache feature_flags rows for 60 seconds.

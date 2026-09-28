@@ -8,7 +8,7 @@ export function setFlag(name: string, enabled: boolean): void {
   flags.set(name, enabled);
 }
 
-/** Reads feature_flags on every job run. */
+/** Plain Map lookup; a missing key falls through to false via the nullish-coalescing default. */
 export function isEnabled(name: string): boolean {
   return flags.get(name) ?? false;
 }

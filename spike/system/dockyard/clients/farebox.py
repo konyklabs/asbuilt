@@ -22,7 +22,8 @@ class FareboxCallError(Exception):
 
 
 class FareboxClient:
-    """Calls farebox's internal ride endpoints."""
+    """Thin wrapper over the injected transport, one method per endpoint
+    dockyard calls on farebox."""
 
     def __init__(self, transport: Transport) -> None:
         self._transport = transport
@@ -37,8 +38,8 @@ class FareboxClient:
         started_at: datetime,
         ended_at: datetime,
     ) -> dict[str, Any]:
-        """F-055: calls farebox's POST /internal/rides/{id}/close to price
-        and close the ride."""
+        """Ask farebox to price and close a ride; raises FareboxCallError
+        unless the response status is 200."""
         status, body = self._transport(
             "POST",
             f"/internal/rides/{ride_id}/close",

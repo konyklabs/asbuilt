@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
-from bench.run import main
+from bench.run import assemble_ingest_root, main
 from tests._support import MINI_ROOT
 
 
@@ -27,3 +28,130 @@ def test_run_null_on_mini_writes_results_file(tmp_path: Path, monkeypatch):
     }
     assert data["ingest"]["documents"] > 0
     assert all(q["result"] in ([], {"sentences": []}) for q in data["queries"])
+
+
+def test_assemble_ingest_root_excludes_truth_and_queries(tmp_path: Path):
+    ingest_root = tmp_path / "ingest"
+    result = assemble_ingest_root(MINI_ROOT, "c2", ingest_root)
+    assert result == ingest_root
+
+    all_paths = {
+        p.relative_to(ingest_root).as_posix() for p in ingest_root.rglob("*") if p.is_file()
+    }
+    assert not any("truth" in p for p in all_paths)
+    assert not any(p.startswith("queries/") for p in all_paths)
+    assert (ingest_root / "repo" / "farebox" / "pricing.py").is_file()
+    assert (ingest_root / "sources" / "wiki" / "pricing-rules.md").is_file()
+
+
+def test_assemble_ingest_root_content_matches_step_and_absent_files(tmp_path: Path):
+    ingest_root = tmp_path / "ingest"
+    assemble_ingest_root(MINI_ROOT, "c2", ingest_root)
+    assert "FREE_MINUTES = 25" in (ingest_root / "repo" / "farebox" / "pricing.py").read_text()
+    assert not (ingest_root / "repo" / "farebox" / "refunds.py").exists()  # .absent through c2
+
+
+def test_assemble_ingest_root_only_includes_runs_through_step(tmp_path: Path):
+    ingest_root = tmp_path / "ingest"
+    assemble_ingest_root(MINI_ROOT, "c2", ingest_root)
+    steps_present = {
+        json.loads(p.read_text())["metadata"]["step"]
+        for p in (ingest_root / "runs").glob("pytest-*.json")
+    }
+    assert steps_present == {"c1", "c2"}
+
+
+def test_run_through_step_is_recorded_and_limits_ingest(tmp_path: Path, monkeypatch):
+    out_path = tmp_path / "results.json"
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--through-step",
+            "c1",
+        ]
+    )
+    assert exit_code == 0
+    data = json.loads(out_path.read_text())
+    assert data["through_step"] == "c1"
+    # c1 only: fewer runs/ + no refunds.py -> fewer documents than the default (through c4).
+    exit_code_full = main(
+        ["--prototype", "null", "--fixture", str(MINI_ROOT), "--out", str(tmp_path / "full.json")]
+    )
+    assert exit_code_full == 0
+    full = json.loads((tmp_path / "full.json").read_text())
+    assert data["ingest"]["documents"] < full["ingest"]["documents"]
+
+
+def test_run_query_latency_fields_use_repeats(tmp_path: Path, monkeypatch):
+    out_path = tmp_path / "results.json"
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--repeats",
+            "3",
+        ]
+    )
+    assert exit_code == 0
+    data = json.loads(out_path.read_text())
+    for q in data["queries"]:
+        assert q["warm_repeats"] == 3
+        assert q["cold_ms"] >= 0
+        assert q["latency_ms"] == q["cold_ms"]
+        assert q["p50_ms"] is not None
+        assert q["p95_ms"] is not None
+
+
+def test_run_budget_tokens_sets_env(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ASBUILT_BUDGET_TOKENS", raising=False)
+    out_path = tmp_path / "results.json"
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--budget-tokens",
+            "1000",
+        ]
+    )
+    assert exit_code == 0
+    assert os.environ["ASBUILT_BUDGET_TOKENS"] == "1000"
+
+
+def test_run_reset_flag_only_touches_the_given_fixture_root(tmp_path: Path, monkeypatch, capsys):
+    """--reset must reset scoped to --fixture, never the real spike/ tree —
+    see run.py's comment on the reset_arm(spike_root=fixture_root) call."""
+    import shutil
+
+    fixture = tmp_path / "fixture"
+    shutil.copytree(MINI_ROOT, fixture)
+    (fixture / "build" / "ingest").mkdir(parents=True)
+    (fixture / "build" / "ingest" / "leftover.txt").write_text("stale\n")
+
+    monkeypatch.chdir(tmp_path)
+    out_path = tmp_path / "results.json"
+    exit_code = main(
+        ["--prototype", "null", "--fixture", str(fixture), "--out", str(out_path), "--reset"]
+    )
+    assert exit_code == 0
+    assert not (fixture / "build" / "ingest" / "leftover.txt").exists()
+    captured = capsys.readouterr()
+    assert "cleared build/ingest" in captured.out

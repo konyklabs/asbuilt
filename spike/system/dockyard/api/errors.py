@@ -6,5 +6,4 @@ ERROR_CODES = {
     "station_full": 409,
     "checkout_limit_reached": 409,
 }
-"""F-051: station_full returns 409. F-070: checkout_limit_reached returns
-409."""
+# HTTP status code an endpoint returns for each error code above.

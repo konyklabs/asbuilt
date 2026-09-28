@@ -15,14 +15,19 @@ export function resetMaintenanceTickets(): void {
   nextId = 1;
 }
 
-/** Opens a maintenance_tickets row of the given kind. */
+/** Appends to an in-memory array; ids are a plain incrementing counter, reset by the helper above. */
 export function openTicket(bikeId: string, kind: MaintenanceTicketKind, createdAt: Date): MaintenanceTicketRow {
   const row: MaintenanceTicketRow = { id: `mt-${nextId++}`, bikeId, kind, createdAt };
   rows.push(row);
   return row;
 }
 
-/** A rider's fault report is stored as a maintenance_tickets row of kind fault_report. */
+/** Linear scan over every row filtered by bike, kind and a cutoff date; would want an index past a handful of bikes. */
 export function countFaultReports(bikeId: string, since: Date): number {
   return rows.filter((r) => r.bikeId === bikeId && r.kind === "fault_report" && r.createdAt >= since).length;
+}
+
+/** Returns a shallow copy of every row currently in the store, in insertion order. */
+export function listTickets(): MaintenanceTicketRow[] {
+  return [...rows];
 }

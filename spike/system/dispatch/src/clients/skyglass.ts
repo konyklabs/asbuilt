@@ -19,7 +19,7 @@ export class SkyglassClient {
     private readonly apiKey = "",
   ) {}
 
-  /** GET /v2/severity with the station's latitude and longitude; times out after 3 seconds. */
+  /** Aborts via AbortController once the timer fires; the timer is always cleared in the finally block. */
   async fetchSeverity(lat: number, lon: number): Promise<SeverityReading> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SKYGLASS_TIMEOUT_MS);

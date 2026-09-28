@@ -55,14 +55,29 @@ produced it; at tier `code`, a `code/` document; at `documented`, only
 `wiki/`, `ticket/`, `doc/` or `pull/` documents. A fact present only in a PR
 thread carries exactly one `pull/` document. Statements are one sentence, in
 the present tense, and say exactly what the strongest carrier asserts, no
-more (a passing test proves what it asserted).
+more (a passing test proves what it asserted; `executed-audit.md` records how
+each executed statement was checked against its assertion).
+
+Run outcomes (D-013; the planted cases are in `planted-runs.yaml`):
+
+- An `executed` fact cites the attempt-1 run of every step, within its
+  validity, at which its test passes. Reruns (`run/<framework>-<step>-rerun`)
+  are never cited.
+- A later failure demotes: the fact drops to `code`, keeps its earlier passing
+  runs as carriers, names the failing run in `demoted_by` (`document`,
+  `location`), and a `run-vs-code` contradiction opens against what the code
+  now says.
+- A skipped (or expected-failure) test never lifts: it may be a `code/`
+  carrier of a `code` fact, never a `run/` one.
+- A step whose attempts disagree (flaky) is inconclusive: it neither lifts nor
+  demotes, and neither of its runs is cited.
 
 ## contradictions.yaml
 
 ```yaml
 - id: X-001
   facts: [F-017, F-001]              # the two statements that cannot both hold
-  kind: wiki-vs-test                 # wiki-vs-test | ticket-vs-code | page-vs-page | doc-vs-code
+  kind: wiki-vs-test                 # wiki-vs-test | ticket-vs-code | page-vs-page | doc-vs-code | run-vs-code
   winner: F-001                      # by tier (executed > code > documented), then by recency
   label: refutes
 ```
@@ -77,6 +92,26 @@ more (a passing test proves what it asserted).
   superseded_by: F-001
 ```
 
-Counts (estimate from the tiering comment, until Oleg's local note reweights
-them): about 120 facts across the four categories, 20 contradictions, 10
-stale pages, 5 PR-only facts.
+## aliases.yaml
+
+```yaml
+- id: E-int-tollbooth-pay
+  name: Tollbooth Pay                # the entity's name in entities.yaml
+  aliases: [tollbooth, the payment provider, TollboothClient]   # 2 to 6
+```
+
+For the scorer only: it resolves the names in `queries/mix.yaml` and the
+entity names an arm returns to ids. Arms never read it. Matching is
+case-insensitive and no alias belongs to two entities.
+
+## Other files here
+
+- `PLAN.yaml`: the authoring plan for every source document, the system's
+  code and tests, and the runs; derived from `facts.yaml`.
+- `executed-audit.md`: one row per executed (or demoted) fact, verdict a
+  (proven as written), b (narrowed) or c (boundary assertion to add).
+- `planted-runs.yaml`: the failing, skipped and flaky tests and their effect.
+- `validate.py`: checks all of the above against each other and the mix.
+
+Counts: 120 facts across the four categories, 21 contradictions (20 between
+sources, one opened by a planted failing run), 10 stale pages, 5 PR-only facts.

@@ -10,7 +10,7 @@ from typing import Any
 from farebox.models.refund import Refund
 
 RIDE_EVENTS_TOPIC = "ride.events"
-"""The queue farebox publishes ride.completed and ride.refunded to."""
+# Message bus topic this module writes both event kinds below onto.
 
 
 @dataclass
@@ -38,8 +38,7 @@ def publish_ride_completed(
     ended_at: datetime,
     amount_cents: int,
 ) -> None:
-    """F-057: a ride.completed event carries ride_id, rider_id, bike_id,
-    return_station_id, ended_at and amount_cents."""
+    """Build and publish the payload a closed ride reports downstream."""
     bus.publish(
         RIDE_EVENTS_TOPIC,
         {
@@ -55,8 +54,7 @@ def publish_ride_completed(
 
 
 def publish_ride_refunded(bus: EventBus, refund: Refund) -> None:
-    """farebox publishes a ride.refunded event to the ride.events queue
-    when a refund is paid."""
+    """Build and publish the payload a paid refund reports downstream."""
     bus.publish(
         RIDE_EVENTS_TOPIC,
         {

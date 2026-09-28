@@ -22,11 +22,8 @@ def create_refund_endpoint(
     now: datetime,
     auto_approve_enabled: bool = False,
 ) -> tuple[int, dict[str, Any]]:
-    """POST /refunds.
-
-    F-071: returns HTTP 422 with error code refund_window_expired when the
-    ride ended more than 14 days ago.
-    """
+    """Handler for the refund-creation endpoint; maps request_refund's
+    exceptions onto 422 responses with distinct error codes."""
     try:
         refund = request_refund(
             session,

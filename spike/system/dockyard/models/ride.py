@@ -1,8 +1,4 @@
-"""Ride model on the rides table.
-
-F-054: the rides table stores the check-in station in the column
-return_station_id.
-"""
+"""Ride model on the rides table."""
 
 from __future__ import annotations
 
@@ -12,8 +8,8 @@ from datetime import datetime
 
 @dataclass
 class Ride:
-    """A ride: rider_id, bike_id, start_station_id, return_station_id,
-    started_at, ended_at, status."""
+    """One checkout-to-checkin span; `return_station_id` and `ended_at`
+    stay unset while the ride is still open."""
 
     id: str
     rider_id: str

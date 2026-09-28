@@ -13,8 +13,9 @@ export interface MaintenanceSweepDeps {
 }
 
 /**
- * A bike with 3 fault reports within 7 days is locked and gets a
- * maintenance ticket. Asks farebox to close lost rides on every run.
+ * Iterates the given bike ids in order, checking each against the
+ * in-memory ticket store before calling out to dockyard and farebox; a
+ * slow HTTP call for one bike blocks the rest of the loop.
  */
 export async function maintenanceSweep(deps: MaintenanceSweepDeps): Promise<string[]> {
   const now = deps.now();

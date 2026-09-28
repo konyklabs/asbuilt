@@ -7,7 +7,7 @@ from enum import StrEnum
 
 
 class RefundStatus(StrEnum):
-    """A refund's status: requested, approved, rejected or paid."""
+    """Where a refund sits in its review-and-payout lifecycle."""
 
     REQUESTED = "requested"
     APPROVED = "approved"
@@ -17,7 +17,7 @@ class RefundStatus(StrEnum):
 
 @dataclass
 class Refund:
-    """A refund: amount_cents."""
+    """One rider's request to give back part or all of a ride's charge."""
 
     id: str
     ride_id: str

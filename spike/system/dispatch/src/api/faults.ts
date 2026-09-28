@@ -5,7 +5,7 @@ export interface FaultReportRequest {
   reportedAt: Date;
 }
 
-/** POST /bikes/:id/faults: records a rider's fault report for a bike. */
+/** Thin handler: no field validation beyond the TypeScript types, and the write is synchronous. */
 export async function postFaultReport(req: FaultReportRequest): Promise<void> {
   openTicket(req.bikeId, "fault_report", req.reportedAt);
 }

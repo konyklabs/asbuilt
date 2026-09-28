@@ -42,7 +42,7 @@ pages, and 5 facts whose only carrier is a pull-request comment. Carriers:
 54 Python modules and 16 TypeScript files; 23 distinct pytest tests across
 the history (19 at the final commit, end-to-end and unit) and 4 Vitest tests, with 12 run reports (one per suite per commit); 40
 wiki pages, 10 documents, 80 tickets (57 of them noise), 8 pull-request
-threads. `sources/PLAN.yaml` is the authoring plan every document was written
+threads. `truth/PLAN.yaml` is the authoring plan every document was written
 from; the prose paraphrases each fact (never its statement verbatim) so that
 extraction is measured, not string matching.
 
@@ -58,8 +58,8 @@ it.
 
 ```
 uv run --with pyyaml python truth/validate.py          # truth <-> PLAN: ids, counts, carriers, dates
-uv run --with pyyaml python sources/check_wiki_docs.py # every page: metadata, anchors, values, no verbatim statements
-uv run --with pyyaml python sources/check_tickets_pulls.py
+uv run --with pyyaml python tools/check_wiki_docs.py   # every page: metadata, anchors, values, no verbatim statements
+uv run --with pyyaml python tools/check_tickets_pulls.py
 uv run pytest tests/test_fixture.py                    # carriers resolve on disk; runs carry commits; SHAs reproduce
 ```
 
@@ -109,19 +109,64 @@ uv sync
    Python suite with `pytest --json-report` into `runs/pytest-<step>.json`
    (skipped, with a message, if there's no `tests/` yet), and if
    `dispatch/package.json` exists, `npm ci` once and `npx vitest run` into
-   `runs/vitest-<step>.json`. Exits non-zero if any run failed.
+   `runs/vitest-<step>.json`.
+
+   Planted-outcome tolerance and reruns (D-013; the contract is
+   `truth/planted-runs.yaml`'s own `runner` section): a failing test (P-1), a
+   skipped one (P-2) and a flaky one (P-3) are planted in the fixture's
+   history. Every step's pytest suite runs once with `GEARWELL_ATTEMPT=1`;
+   if that attempt has any failed/errored test, exactly those node ids
+   re-run with `GEARWELL_ATTEMPT=2`, into `pytest-<step>-rerun.json`
+   (document `run/pytest-<step>-rerun`) — this trigger is data-driven (any
+   attempt-1 failure reruns, planted or not; P-1's genuinely-still-broken
+   test reruns exactly like P-3's flaky one) and only vitest has no
+   per-test re-invocation, so it reruns the whole suite on any failure
+   (untested against a real case — the current planted set is pytest-only).
+   Whether an outcome counts as *unexpected* (and makes the run exit
+   non-zero) is checked against `planted-runs.yaml`'s per-test `outcomes`
+   (attempt 1) and `reruns` (attempt 2) tables if the file exists; without
+   it, any failure is unexpected (reruns still happen). See
+   `bench/runs.py`'s module docstring for the exact matching rule and the
+   stale-bytecode and report-path guards it also carries.
 
 3. **Run a prototype against the fixed query mix.**
 
    ```
-   uv run python bench/run.py --prototype null [--fixture .] [--out build/results-null.json]
+   uv run python bench/run.py --prototype null [--fixture .]
+     [--out build/results-null.json] [--through-step c6] [--repeats 20]
+     [--budget-tokens N] [--reset]
    ```
 
-   Loads the named prototype, calls `ingest(fixture_root)`, then runs
-   every query in `queries/mix.yaml`, recording per-query wall-clock
-   latency and the raw (JSON-serialised) result. `--prototype null` uses
-   the always-empty baseline (`bench/null.py`); see "Prototype contract"
-   below for adding a real one.
+   Assembles `build/ingest/` — the ingest-root integrity rule (D-013): never
+   the raw fixture, only the built repository's content *through*
+   `--through-step` (default: the fixture's last step, via `Timeline`, never
+   a git checkout of `system/`), `sources/{wiki,docs,tickets,pulls}` whole,
+   and the `runs/*.json` reports at or before that step (by each report's own
+   `metadata.step`). `truth/`, `truth/PLAN.yaml`, `queries/` and `tools/` are
+   never in it — `tests/test_leaks.py` fails if any assembled file still
+   carries a fact id or a near-verbatim statement. Calls
+   `ingest(ingest_root, ENTITY_KINDS, incremental)` (the fixed entity-kind
+   vocabulary, the same for every arm), then runs every query in
+   `queries/mix.yaml`: each query's first (cold) call is timed and kept as
+   the result; `--repeats` (default 20) further warm calls follow, discarded
+   except for `p50_ms`/`p95_ms`. `--budget-tokens N` sets
+   `ASBUILT_BUDGET_TOKENS` for a prototype's own `bench.llm.CountingClient`
+   to read; `bench.llm.BudgetExceeded` from `ingest` prints the stop message
+   and exits non-zero rather than writing a partial results file.
+   `--reset` calls `bench/reset.py`'s `reset_arm` first. `--prototype null`
+   uses the always-empty baseline (`bench/null.py`); see "Prototype
+   contract" below for adding a real one.
+
+   **Operations** (D-013): `bench/llm.py`'s `CountingClient` wraps any
+   `messages.create`-shaped client (no vendor SDK imported here), counting
+   calls and tokens and enforcing a budget — at 80% of it, the next call is
+   refused, `build/stop-<arm>.json` is written with the counts, and
+   `BudgetExceeded` is raised; `Embedder` is the same shape for embedding
+   calls. `bench/reset.py --arm <name>` runs `prototypes/<name>/reset.sh` if
+   present, else `docker compose down -v` in that directory if it has a
+   `docker-compose.yml`, then clears `build/ingest/` (`null` just clears
+   `build/ingest/`, having no store). Convention, not enforced in code: only
+   one arm's compose stack runs at a time.
 
 4. **Score the results against ground truth.**
 
@@ -169,13 +214,15 @@ There is no schema doc for this file (only `truth/SCHEMA.md` covers
 entities/facts/contradictions/stale); `bench/run.py`'s module docstring is
 the source of truth for its shape. In short: a top-level `weights` map (one
 entry per surface) and a `queries` list, each with an `id`, a `surface`, and
-surface-specific fields. `explain` and `contradictions` need no `expects` —
-the scorer derives expected results from `truth/` itself (facts naming the
-given entity; planted contradictions naming it, or every one if omitted).
-`search`, `ask` need an explicit `expects` (a list of truth fact ids); `stale`
-needs `since`, either a date-only string or a full ISO datetime — the scorer
-compares it against history-step dates by dropping the UTC offset from both
-sides whenever one is naive.
+surface-specific fields. `explain`/`contradictions` take an entity NAME
+(`truth/entities.yaml`'s `name` field, e.g. `farebox`), never an `E-` id —
+arms return names too (D-013; see "Prototype contract" below) — and need no
+`expects`: the scorer derives expected results from `truth/` itself (facts
+naming the given entity; planted contradictions naming it, or every one if
+omitted). `search`, `ask` need an explicit `expects` (a list of truth fact
+ids); `stale` needs `since`, either a date-only string or a full ISO datetime
+— the scorer compares it against history-step dates by dropping the UTC
+offset from both sides whenever one is naive.
 
 ## Prototype contract
 
@@ -185,12 +232,24 @@ must use (`wiki/<slug>`, `ticket/<KEY>`, `doc/<id>`, `pull/<number>`,
 `code/<path>`, `run/<run-id>`). `bench/truth.py`'s module docstring fixes the
 mapping from those ids to files on disk (`sources/wiki/<slug>.md`,
 `system/<path>`, `runs/<run-id>.json`, ...) — the same mapping the scorer
-uses to check that a carrier document actually exists. `Fact.entities` are
-the ids in `truth/entities.yaml` (`E-...`): the scorer credits a returned fact
-only when it shares an entity id with the truth fact, cites one of its
-carrier documents, and states the same numbers, so a prototype must resolve
-entities to those ids (they are what `explain` and `contradictions` queries
-pass in) rather than return prose names.
+uses to check that a carrier document actually exists.
+
+`Fact.entities` are entity NAMES (D-013), never the `E-` id: a prototype
+resolves its own entities and returns them by name (`explain`/`contradictions`
+queries pass a name in too, never an id); the scorer aligns a returned name
+to a truth id through `truth/aliases.yaml`, which prototypes never see, so
+entity resolution is itself measured. A returned fact still credits only
+when it shares a resolved entity with the truth fact, cites one of its
+carrier documents, and states the same numbers. `Fact` also carries an
+optional `id` (the prototype's own stable id) and an optional `claim`
+(`Claim(entity, attribute, value, unit)` — a numeric fact's identity across
+re-ingest, D-013). `ingest(fixture_root, entity_kinds, incremental=False)`
+takes the fixed entity-kind vocabulary (`bench/run.py`'s `ENTITY_KINDS`, the
+same set and order for every arm) and, when `incremental` is True, is being
+handed a *later* ingest root to advance an already-ingested store rather
+than start over (the incremental phase: through c5, then through c6).
+`IngestReport` also carries `model`, `embedder`, `calls`, `embedding_tokens`
+and `cache_tokens` — see `bench/llm.py`.
 
 A prototype named `X` (anything but `null`) must be importable as
 `prototypes.X:Prototype` from `spike/prototypes/X/__init__.py`, exposing a
@@ -214,6 +273,13 @@ and `bench/runs.py` against it; `runs/vitest-c1.json` is a hand-authored stub
 in vitest's JSON shape (the mini fixture has no `dispatch/package.json`, so
 `bench/runs.py` never actually invokes vitest for it) used only to exercise
 `check_consistency`'s vitest-format handling.
+
+`tests/test_leaks.py` exercises the ingest-root leak scanner (`find_leaks`)
+against synthetic content directly, and, marked `fixture` like
+`tests/test_fixture.py` (skips if `truth/facts.yaml` is absent), against the
+real fixture's own assembled ingest root — expected red until the fixture
+authors finish scrubbing docstrings; the leak count is always printed and
+in the assertion message, not just a bare pass/fail.
 
 ```
 uv run pytest

@@ -9,18 +9,15 @@ from farebox.db import Session
 from farebox.events import EventBus, publish_ride_refunded
 from farebox.models.refund import Refund, RefundStatus
 
-REFUND_WINDOW_DAYS = 14
-"""F-013: a refund requested more than 14 days after the ride ended is
-rejected."""
+REFUND_WINDOW_DAYS = 14  # days, request cutoff
 
 
 class RefundWindowExpiredError(Exception):
-    """Raised when a refund is requested more than REFUND_WINDOW_DAYS after
-    the ride ended."""
+    """Raised when a request arrives after REFUND_WINDOW_DAYS has passed."""
 
 
 class RefundExceedsChargeError(Exception):
-    """Raised when a refund would exceed the ride's charge."""
+    """Guards against a refund larger than what the rider actually paid."""
 
 
 def request_refund(
@@ -32,13 +29,12 @@ def request_refund(
     now: datetime,
     **_ignored: object,
 ) -> Refund:
-    """Create a refund request.
+    """Validate and record a refund request, always pending manual
+    review; the auto-approval path does not exist yet at this point in
+    the service's history.
 
-    F-013: rejects a request made more than REFUND_WINDOW_DAYS after the
-    ride ended.
-    F-028: rejects a request for more than was charged for the ride.
-    F-027: every refund request is created in status requested and waits
-    for a fares agent to review it.
+    Raises if the window has passed or the amount exceeds what was
+    charged.
     """
     if now - ride_ended_at > timedelta(days=REFUND_WINDOW_DAYS):
         raise RefundWindowExpiredError(ride_id)
@@ -56,8 +52,7 @@ def request_refund(
 
 
 def pay_refund(session: Session, bus: EventBus, refund: Refund) -> Refund:
-    """F-056: farebox publishes a ride.refunded event to the ride.events
-    queue when a refund is paid."""
+    """Flip a refund to paid and emit the corresponding event."""
     refund.status = RefundStatus.PAID
     publish_ride_refunded(bus, refund)
     return refund

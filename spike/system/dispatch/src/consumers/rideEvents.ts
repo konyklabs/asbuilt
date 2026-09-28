@@ -19,7 +19,7 @@ export function demandForStation(stationId: string): number {
   return demandByStation.get(stationId) ?? 0;
 }
 
-/** Counts each ride.completed event toward the demand of the ride's return station. */
+/** In-memory counter only; a redelivered message currently double-counts since there is no dedupe key. */
 export function onRideEvent(event: RideCompletedEvent): void {
   const current = demandByStation.get(event.returnStationId) ?? 0;
   demandByStation.set(event.returnStationId, current + 1);

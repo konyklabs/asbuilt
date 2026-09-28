@@ -10,8 +10,7 @@ from dockyard.models.bike import BikeStatus
 from dockyard.models.ride import Ride
 from dockyard.repositories.rides import open_rides_for_rider
 
-CHECKOUT_LIMIT = 2
-"""F-019: the most bikes a rider may hold open at once."""
+CHECKOUT_LIMIT = 2  # open rides per rider
 
 
 class UnknownBikeError(Exception):
@@ -29,10 +28,11 @@ class CheckoutLimitReachedError(Exception):
 def check_out(
     session: Session, rider_id: str, bike_id: str, station_id: str, now: datetime
 ) -> Ride:
-    """Check a bike out to a rider, opening a ride.
+    """Open a new ride for `bike_id`.
 
-    F-031: a bike with status locked cannot be checked out.
-    F-019: a rider already holding CHECKOUT_LIMIT bikes is refused a third.
+    Raises BikeLockedError if the bike's status is locked, or
+    CheckoutLimitReachedError once the rider already has CHECKOUT_LIMIT
+    rides open.
     """
     bike = session.bikes.get(bike_id)
     if bike is None:

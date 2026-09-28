@@ -9,9 +9,9 @@ export interface Schedules {
 }
 
 /**
- * The dispatch job schedules, evaluated in America/New_York: nightly-rebalance
- * runs every day at 03:00; maintenance-sweep runs every hour on the hour;
- * weather-poll runs every 15 minutes.
+ * Cron expressions and a shared timezone read together at process start;
+ * nothing in this module parses or schedules them, that's left to the
+ * caller.
  */
 export const SCHEDULES: Schedules = {
   timezone: "America/New_York",
@@ -45,9 +45,9 @@ export class InMemoryJobLock implements JobLock {
 }
 
 /**
- * Runs `fn` while holding a database lock named after `jobName`, so only
- * one instance of that job runs at a time; a second caller finding the
- * lock held does nothing.
+ * A no-op when the lock is already held, rather than queuing or throwing;
+ * a caller that needs to know whether `fn` actually ran should check
+ * separately.
  */
 export async function withJobLock(lock: JobLock, jobName: string, fn: () => Promise<void>): Promise<void> {
   if (!lock.tryAcquire(jobName)) {

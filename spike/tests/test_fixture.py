@@ -40,7 +40,7 @@ def test_truth_counts():
     _skip_if_no_real_fixture()
     truth = load_truth(SPIKE_ROOT / "truth")
     assert len(truth.facts) == 120
-    assert len(truth.contradictions) == 20
+    assert len(truth.contradictions) == 21
     assert len(truth.stale) == 10
 
     pull_only = [
@@ -49,6 +49,11 @@ def test_truth_counts():
         if len(f.carriers) == 1 and f.carriers[0].document.startswith("pull/")
     ]
     assert len(pull_only) == 5
+
+    tier_counts: dict[str, int] = {}
+    for fact in truth.facts.values():
+        tier_counts[fact.tier] = tier_counts.get(fact.tier, 0) + 1
+    assert tier_counts == {"executed": 27, "code": 41, "documented": 52}
 
 
 def test_every_run_has_commit_and_step_metadata():

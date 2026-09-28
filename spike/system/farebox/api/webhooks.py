@@ -1,4 +1,4 @@
-"""Tollbooth Pay webhook receiver."""
+"""Inbound callback endpoint for the payment provider."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from farebox.services.memberships import handle_failed_renewal
 def tollbooth_webhook(
     session: Session, membership_id: str, failed_at: datetime
 ) -> tuple[int, dict[str, Any]]:
-    """F-075: a failed renewal reported by the Tollbooth Pay webhook moves
-    the membership to status grace and sets grace_ends_at."""
+    """Handler for the payment provider's renewal-failure callback; looks
+    the membership up by id and forwards it to handle_failed_renewal."""
     membership = session.memberships.get(membership_id)
     if membership is None:
         return 404, {"error": "membership_not_found"}

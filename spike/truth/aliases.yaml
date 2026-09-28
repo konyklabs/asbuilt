@@ -1,0 +1,167 @@
+# Names and aliases per entity, for the scorer only: it aligns the entity names an
+# arm returns (and the names in queries/mix.yaml) to truth ids. Arms never read this
+# file. Matching is case-insensitive; no alias belongs to two entities.
+- id: E-team-fleet
+  name: fleet
+  aliases: [fleet team, the fleet team, team fleet]
+- id: E-team-fares
+  name: fares
+  aliases: [fares team, the fares team, fares engineers]
+- id: E-team-ops
+  name: ops
+  aliases: [ops team, the ops team, operations team]
+- id: E-dockyard
+  name: dockyard
+  aliases: [dockyard service, the dockyard service, the stations and docks service, dockyard/]
+- id: E-farebox
+  name: farebox
+  aliases: [farebox service, the farebox service, the billing service, farebox/]
+- id: E-dispatch
+  name: dispatch
+  aliases: [dispatch service, the dispatch service, the jobs service, dispatch/]
+- id: E-table-stations
+  name: stations
+  aliases: [stations table, the stations table, Station model]
+- id: E-table-docks
+  name: docks
+  aliases: [docks table, the docks table, Dock model]
+- id: E-table-bikes
+  name: bikes
+  aliases: [bikes table, the bikes table, Bike model]
+- id: E-table-rides
+  name: rides
+  aliases: [rides table, the rides table, Ride model]
+- id: E-table-riders
+  name: riders
+  aliases: [riders table, the riders table, Rider model]
+- id: E-table-plans
+  name: plans
+  aliases: [plans table, the plans table, Plan model, membership plans]
+- id: E-table-memberships
+  name: memberships
+  aliases: [memberships table, the memberships table, Membership model]
+- id: E-table-invoices
+  name: invoices
+  aliases: [invoices table, the invoices table, Invoice model]
+- id: E-table-invoice-lines
+  name: invoice_lines
+  aliases: [invoice lines, invoice_lines table, the invoice lines table, InvoiceLine model]
+- id: E-table-payments
+  name: payments
+  aliases: [payments table, the payments table, Payment model]
+- id: E-table-refunds
+  name: refunds
+  aliases: [refunds table, the refunds table, Refund model]
+- id: E-table-maintenance-tickets
+  name: maintenance_tickets
+  aliases:
+  - maintenance tickets
+  - maintenance_tickets table
+  - the maintenance tickets table
+  - MaintenanceTicketRow
+- id: E-table-rebalance-orders
+  name: rebalance_orders
+  aliases: [rebalance orders, rebalance_orders table, the rebalance orders table]
+- id: E-table-weather-readings
+  name: weather_readings
+  aliases: [weather readings, weather_readings table, the weather readings table, WeatherReading]
+- id: E-table-feature-flags
+  name: feature_flags
+  aliases: [feature flags, feature_flags table, the flags table, the feature flags table]
+- id: E-queue-ride-events
+  name: ride.events
+  aliases: [ride events, the ride events queue, ride.events queue, the ride.events topic, RIDE_EVENTS_TOPIC]
+- id: E-int-tollbooth-pay
+  name: Tollbooth Pay
+  aliases: [tollbooth, the payment provider, payment provider, TollboothClient, Tollbooth Pay integration]
+- id: E-int-skyglass
+  name: Skyglass
+  aliases: [the weather service, weather provider, SkyglassClient, Skyglass integration, Skyglass weather]
+- id: E-job-nightly-rebalance
+  name: nightly-rebalance
+  aliases:
+  - nightly rebalance
+  - the nightly rebalance
+  - nightly rebalance job
+  - nightlyRebalance
+  - the rebalancing job
+- id: E-job-maintenance-sweep
+  name: maintenance-sweep
+  aliases: [maintenance sweep, the maintenance sweep, maintenance sweep job, maintenanceSweep]
+- id: E-job-weather-poll
+  name: weather-poll
+  aliases: [weather poll, the weather poll, weather poll job, weatherPoll]
+- id: E-flag-dynamic-pricing
+  name: dynamic_pricing
+  aliases: [dynamic pricing, dynamic pricing flag, the dynamic_pricing flag, surge pricing]
+- id: E-flag-ebike-surcharge
+  name: ebike_surcharge
+  aliases: [ebike_surcharge flag, e-bike surcharge flag, the e-bike surcharge flag]
+- id: E-flag-overflow-parking
+  name: overflow_parking
+  aliases: [overflow parking, overflow_parking flag, overflow parking flag, the overflow parking flag]
+- id: E-flag-refund-auto-approve
+  name: refund_auto_approve
+  aliases: [refund_auto_approve flag, refund auto-approve flag, the refund auto-approve flag]
+- id: E-rule-member-free-minutes
+  name: member-free-minutes
+  aliases: [member free minutes, free minutes, MEMBER_FREE_MINUTES, free window, free-minute allowance]
+- id: E-rule-casual-unlock-fee
+  name: casual-unlock-fee
+  aliases: [casual unlock fee, unlock fee, the unlock fee, CASUAL_UNLOCK_FEE]
+- id: E-rule-per-minute-rate
+  name: per-minute-rate
+  aliases: [per-minute rate, per minute rate, MEMBER_RATE, CASUAL_RATE, minute rates]
+- id: E-rule-ebike-surcharge
+  name: ebike-surcharge
+  aliases: [e-bike surcharge, the e-bike surcharge, e-bike surcharge rule, e-bike per-minute surcharge]
+- id: E-rule-single-ride-cap
+  name: single-ride-cap
+  aliases: [single-ride cap, ride cap, the ride cap, SINGLE_RIDE_CAP, fare cap]
+- id: E-rule-lost-bike-fee
+  name: lost-bike-fee
+  aliases: [lost-bike fee, lost bike fee, the lost-bike fee, LOST_BIKE_FEE]
+- id: E-rule-refund-window
+  name: refund-window
+  aliases: [refund window, the refund window, REFUND_WINDOW_DAYS]
+- id: E-rule-refund-auto-approve
+  name: refund-auto-approve
+  aliases: [refund auto-approval, auto-approval of refunds, small-refund auto-approval, AUTO_APPROVE_LIMIT]
+- id: E-rule-membership-grace
+  name: membership-grace
+  aliases: [membership grace, grace period, the grace period, membership grace period, GRACE_DAYS]
+- id: E-rule-station-capacity
+  name: station-capacity
+  aliases: [station capacity, station capacity rule, full-station rule, can_accept_bike]
+- id: E-rule-checkout-limit
+  name: checkout-limit
+  aliases: [check-out limit, checkout limit, bikes per rider limit, CHECKOUT_LIMIT]
+- id: E-rule-fault-threshold
+  name: fault-threshold
+  aliases: [fault threshold, the fault threshold, fault-report threshold, FAULT_THRESHOLD]
+- id: E-rule-rebalance-trigger
+  name: rebalance-trigger
+  aliases: [rebalance trigger, rebalancing trigger, fill thresholds, needsRebalance]
+- id: E-rule-storm-pause
+  name: storm-pause
+  aliases: [storm pause, the storm pause, weather pause, isStormPaused, STORM_SEVERITY]
+- id: E-rule-payment-retry
+  name: payment-retry
+  aliases: [payment retry, payment retries, capture retries, Tollbooth Pay retries, MAX_RETRIES]
+- id: E-endpoint-checkout
+  name: POST /rides/checkout
+  aliases: [checkout endpoint, check-out endpoint, /rides/checkout, checkout_endpoint]
+- id: E-endpoint-checkin
+  name: POST /rides/{id}/checkin
+  aliases: [checkin endpoint, check-in endpoint, '/rides/{id}/checkin', checkin_endpoint]
+- id: E-endpoint-refund
+  name: POST /refunds
+  aliases:
+  - refund endpoint
+  - the refund endpoint
+  - refunds endpoint
+  - refund request endpoint
+  - create_refund_endpoint
+- id: E-endpoint-station-status
+  name: GET /stations/{id}/status
+  aliases: [station status endpoint, station status API, '/stations/{id}/status', station_status_endpoint]

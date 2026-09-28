@@ -11,7 +11,7 @@ export class DockyardClient {
     private readonly fetchImpl: FetchLike,
   ) {}
 
-  /** dispatch locks a bike by calling dockyard's POST /bikes/{id}/lock. */
+  /** Fire-and-forget: the response body is discarded and a non-2xx status is not currently retried. */
   async lockBike(bikeId: string): Promise<void> {
     await this.fetchImpl(`${this.baseUrl}/bikes/${bikeId}/lock`, { method: "POST" });
   }

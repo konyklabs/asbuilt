@@ -1,4 +1,4 @@
-"""Verify sources/tickets/*.json and sources/pulls/*.json against PLAN.yaml
+"""Verify sources/tickets/*.json and sources/pulls/*.json against truth/PLAN.yaml
 and truth/facts.yaml.
 
 For every PLAN ticket and pull:
@@ -22,7 +22,7 @@ Finally confirms each PR-only fact's distinctive rationale phrase (hand-picked
 per fact, since the statement itself is never quoted verbatim) appears in
 exactly one location across the whole tickets/ + pulls/ corpus.
 
-Run: cd spike && uv run --with pyyaml python sources/check_tickets_pulls.py
+Run: cd spike && uv run --with pyyaml python tools/check_tickets_pulls.py
 """
 
 import json
@@ -32,12 +32,12 @@ from pathlib import Path
 
 import yaml
 
-SOURCES = Path(__file__).resolve().parent
-SPIKE = SOURCES.parent
+SPIKE = Path(__file__).resolve().parent.parent
+SOURCES = SPIKE / "sources"
 TICKETS_DIR = SOURCES / "tickets"
 PULLS_DIR = SOURCES / "pulls"
 
-PLAN = yaml.safe_load((SOURCES / "PLAN.yaml").read_text())
+PLAN = yaml.safe_load((SPIKE / "truth" / "PLAN.yaml").read_text())
 FACTS = yaml.safe_load((SPIKE / "truth" / "facts.yaml").read_text())
 FACTS_BY_ID = {f["id"]: f for f in FACTS}
 

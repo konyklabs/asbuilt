@@ -5,13 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-MAX_RETRIES = 3
-"""F-023: a failed Tollbooth Pay call is retried 3 times with backoff
-before the payment is marked failed."""
+MAX_RETRIES = 3  # additional attempts after the first failure
 
-BACKOFF_SECONDS = (0.5, 1, 2)
-"""F-061: the Tollbooth Pay client waits 0.5, 1 and 2 seconds before its
-three retries."""
+BACKOFF_SECONDS = (0.5, 1, 2)  # seconds, one entry per retry attempt
 
 Transport = Callable[[str, int], tuple[int | None, bool]]
 
@@ -21,8 +17,8 @@ class TollboothPaymentFailed(Exception):
 
 
 def should_retry(status: int | None, timed_out: bool) -> bool:
-    """F-062: the client retries only after a timeout or a 5xx response,
-    never after a 4xx response."""
+    """True for a timeout or a 5xx status; a 4xx or a healthy 2xx status
+    is treated as final and never retried."""
     if timed_out:
         return True
     if status is None:
@@ -31,7 +27,8 @@ def should_retry(status: int | None, timed_out: bool) -> bool:
 
 
 class TollboothClient:
-    """Calls Tollbooth Pay's capture endpoint, retrying on failure.
+    """Thin wrapper around the payment provider's capture call with retry
+    logic layered on top.
 
     `transport` stands in for the wire call: a function from
     (idempotency_key, amount_cents) to a (status, timed_out) pair, so
@@ -47,8 +44,9 @@ class TollboothClient:
         self._sleep = sleep
 
     def capture(self, ride_id: str, amount_cents: int) -> dict[str, Any]:
-        """F-059: every Tollbooth Pay capture sends the ride id as its
-        idempotency key."""
+        """Attempt a capture, retrying transient failures up to
+        MAX_RETRIES times; `ride_id` doubles as the idempotency key so a
+        retried attempt can't double-charge."""
         attempt = 0
         while True:
             status, timed_out = self._transport(ride_id, amount_cents)
