@@ -24,7 +24,7 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1790603019429,
+  "startTime": 1790604879351,
   "success": true,
   "testResults": [
     {
@@ -36,15 +36,15 @@
           "fullName": "maintenanceSweep locks a bike with 3 fault reports in 7 days and opens a ticket",
           "status": "passed",
           "title": "locks a bike with 3 fault reports in 7 days and opens a ticket",
-          "duration": 2.543582999999998,
+          "duration": 2.2369999999999948,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603019541,
-      "endTime": 1790603019543.5437,
+      "startTime": 1790604879458,
+      "endTime": 1790604879460.237,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/maintenanceSweep.test.ts"
@@ -58,15 +58,15 @@
           "fullName": "nightlyRebalance orders a rebalance for a station under 20% or over 90% full",
           "status": "passed",
           "title": "orders a rebalance for a station under 20% or over 90% full",
-          "duration": 2.2849590000000006,
+          "duration": 2.3894580000000047,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603019535,
-      "endTime": 1790603019537.285,
+      "startTime": 1790604879456,
+      "endTime": 1790604879458.3894,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/nightlyRebalance.test.ts"
@@ -80,15 +80,15 @@
           "fullName": "rideEvents counts ride.completed toward the return station's demand",
           "status": "passed",
           "title": "counts ride.completed toward the return station's demand",
-          "duration": 1.8322080000000085,
+          "duration": 1.6047910000000059,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603019530,
-      "endTime": 1790603019531.8323,
+      "startTime": 1790604879450,
+      "endTime": 1790604879451.6047,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/rideEvents.test.ts"
@@ -102,22 +102,22 @@
           "fullName": "stormPause pauses rebalancing while the latest Skyglass severity is 3 or more",
           "status": "passed",
           "title": "pauses rebalancing while the latest Skyglass severity is 3 or more",
-          "duration": 1.924082999999996,
+          "duration": 2.4430830000000014,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603019533,
-      "endTime": 1790603019534.924,
+      "startTime": 1790604879456,
+      "endTime": 1790604879458.443,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/stormPause.test.ts"
     }
   ],
   "metadata": {
-    "commit": "2cb7ba0df8b825fc642f3eab40d084d19ccdc6c9",
+    "commit": "7f5b2117d5fac43cb5ccd1c57bc9c49782a42b49",
     "step": "c6"
   }
 }

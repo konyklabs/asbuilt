@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import difflib
+from datetime import datetime
+
 from bench.run import run
-from bench.score import facts_match, match_facts, score
-from bench.truth import Carrier, TruthFact, load_facts
+from bench.score import facts_match, match_facts, norm, score, score_contradictions, score_stale
+from bench.truth import Carrier, StaleEntry, TruthContradiction, TruthFact, load_facts
 from tests._support import MINI_ROOT
 
 STATEMENT = "A member's free minutes are 20."
@@ -60,6 +63,256 @@ def test_facts_match_false_without_citations_is_dropped():
         "citations": [],
     }
     assert not facts_match(returned, TRUTH)
+
+
+def test_facts_match_false_when_integers_differ():
+    """Review finding: "45 minutes" vs F-003's "30 minutes" scores 0.959 on
+    text similarity alone (verified below) but must not match once the
+    statements' numbers are required to agree."""
+    truth = TruthFact(
+        id="F-x",
+        statement="A member's first 30 minutes of every ride are free.",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "A member's first 45 minutes of every ride are free.",
+        "entities": ["E-farebox"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    ratio = difflib.SequenceMatcher(
+        None, norm(returned["statement"]), norm(truth.statement)
+    ).ratio()
+    assert ratio >= 0.6  # sanity: text similarity alone would have matched
+    assert not facts_match(returned, truth)
+
+
+def test_facts_match_false_when_money_differs():
+    """Review finding: "$25.00" vs "$30.00" scores 0.648 on text similarity
+    alone but must not match."""
+    truth = TruthFact(
+        id="F-y",
+        statement="The most a single ride can cost is $25.00.",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "A single ride costs at most $30.00.",
+        "entities": ["E-farebox"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    ratio = difflib.SequenceMatcher(
+        None, norm(returned["statement"]), norm(truth.statement)
+    ).ratio()
+    assert ratio >= 0.6
+    assert not facts_match(returned, truth)
+
+
+def test_facts_match_true_when_numbers_match_despite_different_wording():
+    truth = TruthFact(
+        id="F-z",
+        statement="A member's first 30 minutes of every ride are free.",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    returned = {
+        "statement": "Members get the first 30 minutes free on every ride.",
+        "entities": ["E-farebox"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    assert facts_match(returned, truth)
+
+
+def test_score_contradictions_winner_rejects_planted_loser():
+    """A returned winner whose statement carries the LOSING fact's number
+    must not be credited as agreeing with the (different-valued) expected
+    winner — this is the same facts_match the number fix applies to."""
+    winner_fact = TruthFact(
+        id="F-w",
+        statement="A single ride costs at most $30.00.",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="executed",
+        carriers=(Carrier(document="code/pricing.py"),),
+    )
+    loser_fact = TruthFact(
+        id="F-l",
+        statement="The most a single ride can cost is $25.00.",
+        category="business-logic",
+        entities=("E-farebox",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+    )
+    contradiction = TruthContradiction(
+        id="X-1", facts=("F-l", "F-w"), kind="wiki-vs-code", winner="F-w"
+    )
+    truth_facts = {"F-w": winner_fact, "F-l": loser_fact}
+
+    returned_a = {
+        "statement": loser_fact.statement,
+        "entities": ["E-farebox"],
+        "citations": [{"document": "wiki/x"}],
+    }
+    returned_b = {
+        "statement": winner_fact.statement,
+        "entities": ["E-farebox"],
+        "citations": [{"document": "code/pricing.py"}],
+    }
+    # The prototype wrongly declares the LOSER's statement as the winner.
+    returned_winner_wrong = {
+        "statement": loser_fact.statement,
+        "entities": ["E-farebox"],
+        "citations": [{"document": "wiki/x"}],
+    }
+
+    result = score_contradictions(
+        [{"a": returned_a, "b": returned_b, "winner": returned_winner_wrong}],
+        {"X-1": contradiction},
+        truth_facts,
+    )
+    assert result["matched"] == 1
+    assert result["winner_checked"] == 1
+    assert result["winner_correct"] == 0
+
+
+def test_score_contradictions_tolerates_unknown_fact_id(tmp_path):
+    """The entity-filtered contradictions branch in score() must not raise
+    KeyError when a contradiction names a fact id that doesn't resolve — a
+    broken truth reference contributes no entities from that side, rather
+    than crashing scoring for every other surface too."""
+    truth_dir = tmp_path / "truth"
+    truth_dir.mkdir()
+    (truth_dir / "entities.yaml").write_text("- id: E-x\n  kind: service\n  name: x\n")
+    (truth_dir / "facts.yaml").write_text(
+        "- id: F-known\n"
+        "  statement: Known fact.\n"
+        "  category: business-logic\n"
+        "  entities: [E-x]\n"
+        "  tier: documented\n"
+        "  carriers:\n"
+        "    - document: wiki/x\n"
+    )
+    (truth_dir / "contradictions.yaml").write_text(
+        "- id: X-broken\n  facts: [F-known, F-does-not-exist]\n  kind: wiki-vs-test\n"
+    )
+    (truth_dir / "stale.yaml").write_text("[]\n")
+
+    results = {
+        "prototype": "test",
+        "fixture": str(tmp_path),
+        "weights": {},
+        "ingest": {},
+        "queries": [
+            {
+                "id": "q1",
+                "surface": "contradictions",
+                "latency_ms": 1.0,
+                "params": {"entity": "E-x"},
+                "result": [],
+            }
+        ],
+    }
+    report = score(results, truth_dir)  # must not raise
+    # F-known carries E-x, so X-broken still resolves via that side.
+    assert report["surfaces"]["contradictions"]["expected"] == 1
+
+
+def test_score_stale_credits_multiple_entries_from_one_returned_fact():
+    """Review finding: a flawless answer returning one fact that cites two
+    stale pages must credit both planted entries, not stop at the first."""
+    shared_fact = TruthFact(
+        id="F-shared",
+        statement="Members ride free for the first 45 minutes.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(
+            Carrier(document="wiki/member-pricing"),
+            Carrier(document="wiki/support-playbook"),
+        ),
+    )
+    truth_facts = {"F-shared": shared_fact}
+    stale_entries = {
+        "S-1": StaleEntry(
+            id="S-1", document="wiki/member-pricing", states="F-shared", changed_by="c2"
+        ),
+        "S-2": StaleEntry(
+            id="S-2", document="wiki/support-playbook", states="F-shared", changed_by="c2"
+        ),
+    }
+    step_dates = {"c2": datetime.fromisoformat("2026-02-01T00:00:00-05:00")}
+    since = datetime.fromisoformat("2026-01-01T00:00:00-05:00")
+
+    returned_fact = {
+        "statement": shared_fact.statement,
+        "entities": ["E-x"],
+        "citations": [
+            {"document": "wiki/member-pricing"},
+            {"document": "wiki/support-playbook"},
+        ],
+    }
+    result = score_stale([returned_fact], since, stale_entries, step_dates, truth_facts)
+    assert result["tp"] == 2
+    assert result["expected"] == 2
+
+
+def test_score_stale_shared_document_disambiguates_by_statement():
+    """Review finding: S-005 and S-007 share a document (doc/fares-price-sheet)
+    but state different facts; a returned fact citing that document must only
+    be credited toward the entry whose statement it actually matches."""
+    fact_cap = TruthFact(
+        id="F-cap",
+        statement="The most a single ride can cost is $25.00.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="doc/shared"),),
+    )
+    fact_fee = TruthFact(
+        id="F-fee",
+        statement="The lost-bike fee is $100.00.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="doc/shared"),),
+    )
+    truth_facts = {"F-cap": fact_cap, "F-fee": fact_fee}
+    # F-fee's entry listed first: the old document-only check would grab it
+    # regardless of the returned statement, since dict order is insertion order.
+    stale_entries = {
+        "S-fee": StaleEntry(id="S-fee", document="doc/shared", states="F-fee", changed_by="c2"),
+        "S-cap": StaleEntry(id="S-cap", document="doc/shared", states="F-cap", changed_by="c2"),
+    }
+    step_dates = {"c2": datetime.fromisoformat("2026-02-01T00:00:00-05:00")}
+    since = datetime.fromisoformat("2026-01-01T00:00:00-05:00")
+
+    # Cites the shared document but its statement matches neither entry: the
+    # old document-only check would still have credited one; must credit none.
+    returned_unrelated = {
+        "statement": "Something else entirely, sharing no numbers with either.",
+        "entities": ["E-x"],
+        "citations": [{"document": "doc/shared"}],
+    }
+    result_unrelated = score_stale(
+        [returned_unrelated], since, stale_entries, step_dates, truth_facts
+    )
+    assert result_unrelated["tp"] == 0
+    assert result_unrelated["expected"] == 2
+
+    # Its statement genuinely matches F-cap: only S-cap should be credited.
+    returned_cap = {
+        "statement": fact_cap.statement,
+        "entities": ["E-x"],
+        "citations": [{"document": "doc/shared"}],
+    }
+    result_cap = score_stale([returned_cap], since, stale_entries, step_dates, truth_facts)
+    assert result_cap["tp"] == 1
 
 
 def test_match_facts_disambiguates_by_version():

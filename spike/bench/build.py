@@ -22,9 +22,7 @@ resolves to that marker via the same "smallest j >= k" rule, and c6 itself,
 having no entry at or after it, falls through to final content).
 
 Both kinds of entry are discovered by scanning ``history/<step>/**`` (every
-file under each step directory, skipping ``steps.yaml`` itself); the
-``files:`` key some steps carry in ``steps.yaml`` is informational only and
-does not drive this — it is never read here.
+file under each step directory, skipping ``steps.yaml`` itself).
 
 Any path with a component in ``EXCLUDED_DIRNAMES`` (``node_modules``,
 ``.ruff_cache``, ``__pycache__``, ``.git``, ``.venv``, and similar) is never
@@ -36,7 +34,12 @@ meant to enter the built repository's own history.
 Reproducibility: GIT_AUTHOR_NAME/EMAIL and GIT_COMMITTER_NAME/EMAIL are fixed
 ("Gearwell Fixture" / "fixture@gearwell.invalid"), both dates are the step's
 date, and every git invocation passes ``-c commit.gpgsign=false``. No
-third-party git library is used, only subprocess.
+third-party git library is used, only subprocess. Every inherited ``GIT_*``
+environment variable is dropped (only the ``GIT_AUTHOR_*``/``GIT_COMMITTER_*``
+ones this module sets survive), and ``GIT_CONFIG_GLOBAL=/dev/null`` plus
+``GIT_CONFIG_NOSYSTEM=1`` keep the machine's own git config (core.autocrlf,
+excludesFile, and anything else in ``~/.gitconfig``/``/etc/gitconfig``) from
+being able to affect a SHA.
 
 CLI: ``uv run python bench/build.py [--fixture .] [--out build]``. The
 ``--fixture`` flag is not in the original spec text (which shows only
@@ -205,6 +208,18 @@ class Timeline:
         return {p for p in self.all_paths if self.content_at(p, step_id) is not None}
 
 
+def _isolated_git_env() -> dict[str, str]:
+    """The machine's own environment (PATH etc., needed to find git at all),
+    minus every inherited GIT_* variable — build() sets only the
+    GIT_AUTHOR_*/GIT_COMMITTER_* ones it needs, deliberately, after this —
+    plus GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM so the machine's own git
+    config can never affect a SHA (see the module docstring)."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["GIT_CONFIG_GLOBAL"] = "/dev/null"
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
 def _run_git(repo: Path, args: list[str], env: dict[str, str]) -> str:
     result = subprocess.run(
         ["git", "-c", "commit.gpgsign=false", *args],
@@ -243,7 +258,7 @@ def build(fixture_root: Path, out_root: Path) -> dict[str, dict[str, str]]:
         shutil.rmtree(repo)
     repo.mkdir(parents=True)
 
-    base_env = dict(os.environ)
+    base_env = _isolated_git_env()
     base_env["GIT_AUTHOR_NAME"] = AUTHOR_NAME
     base_env["GIT_AUTHOR_EMAIL"] = AUTHOR_EMAIL
     base_env["GIT_COMMITTER_NAME"] = AUTHOR_NAME

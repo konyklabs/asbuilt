@@ -9,7 +9,7 @@ import pytest
 
 from farebox.db import Store, build_session
 from farebox.events import EventBus
-from farebox.pricing import LOST_BIKE_FEE
+from farebox.pricing import price_ride
 from farebox.services.lost_bikes import LOST_BIKE_HOURS, OpenRide, close_lost_rides
 
 STARTED = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
@@ -40,4 +40,17 @@ def test_ride_open_past_24_hours_closed_as_lost():
 @pytest.mark.unit
 def test_lost_bike_fee_100():
     """F-011: a ride closed as lost is charged a $100.00 lost-bike fee."""
-    assert LOST_BIKE_FEE == Decimal("100.00")
+    now = STARTED + timedelta(hours=LOST_BIKE_HOURS, minutes=1)
+    ride = _open_ride(STARTED)
+    store = Store()
+    session = build_session(store)
+
+    closed = close_lost_rides(session, EventBus(), now, [ride])
+
+    assert [c["ride_id"] for c in closed] == ["ride-1"]
+    [line] = [line for line in store.invoice_lines.values() if line.ride_id == "ride-1"]
+    assert line.amount_cents == closed[0]["amount_cents"]
+
+    minutes = Decimal(str((now - STARTED).total_seconds() / 60))
+    ride_charge_cents = price_ride(ride.is_member, minutes, ride.is_ebike, False)
+    assert line.amount_cents - ride_charge_cents == 10000

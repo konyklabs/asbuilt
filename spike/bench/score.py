@@ -38,6 +38,21 @@ assumed, per the task's ambiguity rule):
   search. It is not applied inside ``score_contradictions`` (a different,
   pairwise matching loop) or ``score_ask_query`` (which matches by cited
   document, not by ``facts_match``, so the ambiguity doesn't arise there).
+* ``facts_match`` requires the two statements' numbers (money, percentages,
+  times, decimals, integers — see ``_number_tokens``) to be equal, as sets,
+  whenever either statement names one; text similarity alone is not enough.
+  Without this, a superseded value ("45 minutes") matches its replacement
+  ("30 minutes") on wording despite naming a different fact (measured: 0.959
+  similarity for that pair, 0.648 for "$25.00" vs "$30.00" — both above the
+  0.6 threshold). This also governs the winner check inside
+  ``score_contradictions``, which reuses ``facts_match``.
+* ``score_stale`` credits every still-unmatched expected entry a returned
+  fact's citations *and* statement (via ``facts_match``) both support, not
+  just the first one its documents happen to touch — a single returned fact
+  citing two stale pages should credit both, and two stale entries sharing
+  one document (different pages can restate the same superseded claim, or
+  restate different claims on the same page) are told apart by which one the
+  statement actually agrees with, not by the shared document alone.
 """
 
 from __future__ import annotations
@@ -62,6 +77,16 @@ from bench.truth import StaleEntry, TruthFact, load_truth  # noqa: E402
 _PUNCTUATION = re.compile(r"[^\w\s]")
 _WHITESPACE = re.compile(r"\s+")
 
+# Order matters: Python's re alternation takes the first branch that matches
+# at a position, not the longest, so money/percent/time must be tried before
+# the bare decimal/integer branches would otherwise split them apart.
+_MONEY_RE = r"\$\d+(?:\.\d+)?"
+_PERCENT_RE = r"\d+(?:\.\d+)?%"
+_TIME_RE = r"\d{1,2}:\d{2}"
+_DECIMAL_RE = r"\d+\.\d+"
+_INTEGER_RE = r"\d+"
+_NUMBER_RE = re.compile(f"{_MONEY_RE}|{_PERCENT_RE}|{_TIME_RE}|{_DECIMAL_RE}|{_INTEGER_RE}")
+
 SURFACES = ("explain", "search", "ask", "contradictions", "stale")
 
 
@@ -72,8 +97,43 @@ def norm(text: str) -> str:
     return text
 
 
+def _normalize_number(token: str) -> str:
+    """Strip $/% decoration and trailing zeros, so "$25.00" == "$25" and
+    "20.0%" == "20%"; a bare integer/decimal or a time (kept as-is, trailing
+    zeros in HH:MM aren't decoration) is returned unchanged apart from that."""
+    if token.startswith("$"):
+        value = token[1:]
+        if "." in value:
+            value = value.rstrip("0").rstrip(".")
+        return f"${value or '0'}"
+    if token.endswith("%"):
+        value = token[:-1]
+        if "." in value:
+            value = value.rstrip("0").rstrip(".")
+        return f"{value or '0'}%"
+    if ":" in token:
+        return token
+    if "." in token:
+        value = token.rstrip("0").rstrip(".")
+        return value or "0"
+    return token
+
+
+def _number_tokens(text: str) -> set[str]:
+    """Every money/percentage/time/decimal/integer token in `text` (the raw,
+    un-normed statement — norm() strips the $/%/:/. that distinguish them),
+    normalised so equivalent forms compare equal."""
+    return {_normalize_number(m.group(0)) for m in _NUMBER_RE.finditer(text)}
+
+
 def facts_match(returned: dict[str, Any], truth_fact: TruthFact) -> bool:
-    """(a) shared entity, (b) shared cited document, (c) statement similarity >= 0.6."""
+    """(a) shared entity, (b) shared cited document, (c) if either statement
+    names a number, the two statements' number sets must be equal — a
+    superseded value ("45 minutes") must not match its replacement ("30
+    minutes") merely by being worded similarly (measured: 0.959 similarity
+    for that exact pair) — then (d) statement similarity >= 0.6. Numbers with
+    no counterpart at all in the other statement don't block a match; the
+    two sets simply differ, which already fails the equality check."""
     citations = returned.get("citations") or []
     if not citations:
         return False
@@ -84,8 +144,15 @@ def facts_match(returned: dict[str, Any], truth_fact: TruthFact) -> bool:
     truth_docs = {c.document for c in truth_fact.carriers}
     if not returned_docs & truth_docs:
         return False
+
+    returned_statement = returned.get("statement", "")
+    returned_numbers = _number_tokens(returned_statement)
+    truth_numbers = _number_tokens(truth_fact.statement)
+    if (returned_numbers or truth_numbers) and returned_numbers != truth_numbers:
+        return False
+
     ratio = difflib.SequenceMatcher(
-        None, norm(returned.get("statement", "")), norm(truth_fact.statement)
+        None, norm(returned_statement), norm(truth_fact.statement)
     ).ratio()
     return ratio >= 0.6
 
@@ -266,7 +333,16 @@ def score_stale(
     since: datetime,
     stale_entries: dict[str, StaleEntry],
     step_dates: dict[str, datetime],
+    truth_facts: dict[str, TruthFact],
 ) -> dict[str, Any]:
+    """A returned fact credits EVERY still-unmatched expected entry whose
+    document it cites AND whose `states` fact it matches (number-aware
+    facts_match, not just a shared document — two entries can share a
+    document, e.g. two stale claims on the same page, and only the one the
+    returned fact's statement actually agrees with should be credited). One
+    returned fact citing several such documents credits all of them, not
+    just the first (a `break` here previously under-counted a flawless
+    multi-citation answer)."""
     expected: dict[str, StaleEntry] = {}
     for sid, entry in stale_entries.items():
         step_date = step_dates.get(entry.changed_by)
@@ -275,8 +351,8 @@ def score_stale(
         step_date_cmp, since_cmp = _comparable(step_date, since)
         if step_date_cmp > since_cmp:
             expected[sid] = entry
+
     matched_ids: set[str] = set()
-    tp = 0
     for rf in returned:
         citations = rf.get("citations") or []
         if not citations:
@@ -285,11 +361,13 @@ def score_stale(
         for sid, entry in expected.items():
             if sid in matched_ids:
                 continue
-            if entry.document in cited_docs:
+            if entry.document not in cited_docs:
+                continue
+            states_fact = truth_facts.get(entry.states)
+            if states_fact is not None and facts_match(rf, states_fact):
                 matched_ids.add(sid)
-                tp += 1
-                break
-    return {"tp": tp, "returned": len(returned), "expected": len(expected)}
+
+    return {"tp": len(matched_ids), "returned": len(returned), "expected": len(expected)}
 
 
 def _merge(outcomes: list[dict[str, Any]], numeric_keys: tuple[str, ...]) -> dict[str, Any]:
@@ -386,12 +464,20 @@ def score(
         elif surface == "contradictions":
             entity = params.get("entity")
             if entity:
-                expected_x = {
-                    xid: xc
-                    for xid, xc in truth.contradictions.items()
-                    if entity
-                    in (truth.facts[xc.facts[0]].entities + truth.facts[xc.facts[1]].entities)
-                }
+                expected_x = {}
+                for xid, xc in truth.contradictions.items():
+                    # Tolerate a contradiction naming a fact id that doesn't
+                    # resolve, like the unfiltered branch below does (a
+                    # missing fact just contributes no entities, rather than
+                    # raising) — a broken truth reference shouldn't crash
+                    # scoring the surfaces that do resolve.
+                    fact_a = truth.facts.get(xc.facts[0])
+                    fact_b = truth.facts.get(xc.facts[1])
+                    entities = (fact_a.entities if fact_a else ()) + (
+                        fact_b.entities if fact_b else ()
+                    )
+                    if entity in entities:
+                        expected_x[xid] = xc
             else:
                 expected_x = dict(truth.contradictions)
             per_query["contradictions"].append(
@@ -399,7 +485,9 @@ def score(
             )
         elif surface == "stale":
             since = datetime.fromisoformat(params["since"])
-            per_query["stale"].append(score_stale(q["result"], since, truth.stale, step_dates))
+            per_query["stale"].append(
+                score_stale(q["result"], since, truth.stale, step_dates, truth.facts)
+            )
         else:
             raise ValueError(f"unknown surface {surface!r} in results")
 

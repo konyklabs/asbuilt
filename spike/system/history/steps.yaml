@@ -1,8 +1,11 @@
 # The built repository's history, oldest first. build.py commits these in
 # order with fixed author, committer and dates, so the SHAs are reproducible.
-# A file listed under `files` has its content at that step in
-# history/<step>/<path>; a file not listed keeps its previous content; the
-# final content of every file is system/<path>.
+# Content rule (bench/build.py): system/<path> is a file's FINAL content;
+# history/<step>/<path> is its content THROUGH that step, i.e. up to and
+# including it. At step k a file has the overlay at the smallest step j >= k
+# that has one, else the final content; an empty history/<step>/<path>.absent
+# marker means the file does not exist through that step. Overlays are found
+# by scanning history/; `changes`, `pull` and `note` below are informational.
 - id: c1
   date: "2026-01-12T10:00:00-05:00"
   message: "Import dockyard, farebox and dispatch"

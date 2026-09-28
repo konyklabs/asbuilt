@@ -26,8 +26,7 @@ realistic, stop and invent one instead.
 
 ## Conventions
 
-- Python by default (`uv`, `src/` layout, pytest, ruff); the engine ADR may
-  override the language.
+- Python, per D-013 (`uv`, `src/` layout, pytest, ruff).
 - Every fact the tool stores carries provenance. A change that lets a fact in
   without a citation is a bug, not a shortcut.
 - The engine sits behind one interface in `store/`. Connector and query code

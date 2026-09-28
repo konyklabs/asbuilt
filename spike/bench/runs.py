@@ -13,11 +13,13 @@ step), and, if ``dispatch/package.json`` exists at that step, ``npm ci
 Both subprocesses run with ``GEARWELL_STEP=<step id>`` set, so the fixture's
 own conftest can record it (and the commit) itself via pytest's
 ``pytest_json_modifyreport`` hook. After each pytest run, if the JSON's
-``metadata`` is still missing a ``commit`` key, this script fills
+``metadata.commit`` is still absent, null or empty, this script fills
 ``metadata: {commit: <sha>, step: <id>}`` itself — a no-op when the fixture's
-conftest already did it. Vitest has no equivalent hook, so its JSON gets
-``metadata: {commit: <sha>, step: <id>}`` added at the top level
-unconditionally (i.e. whenever missing) by this script.
+conftest already populated it. Vitest has no equivalent hook, so its JSON
+gets the same treatment unconditionally. Either report's top-level ``root``
+(pytest-json-report writes an absolute path under the authoring machine's
+home; vitest reports have no such key) is rewritten to ``"."``, so the
+evidence file carries no local path.
 
 Stale-bytecode guard: the same ``repo`` checkout is reused across all six
 ``git checkout`` calls, and git does not remove untracked files on checkout,
@@ -87,10 +89,25 @@ def _inject_metadata(report_path: Path, sha: str, step_id: str) -> None:
     if not report_path.is_file():
         return
     data = json.loads(report_path.read_text())
+    changed = False
+
+    # Fill commit/step when absent OR present but null/empty (a fixture's
+    # own conftest may have added the metadata key without populating it).
     metadata = data.setdefault("metadata", {})
-    if "commit" not in metadata:
+    if not metadata.get("commit"):
         metadata["commit"] = sha
         metadata["step"] = step_id
+        changed = True
+
+    # pytest-json-report's top-level `root` is an absolute path under the
+    # authoring machine's home directory; rewrite it so the evidence file
+    # carries no local path. Vitest reports have no `root` key, so this is
+    # effectively pytest-only.
+    if "root" in data and data["root"] != ".":
+        data["root"] = "."
+        changed = True
+
+    if changed:
         report_path.write_text(json.dumps(data, indent=2) + "\n")
 
 

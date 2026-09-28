@@ -10,7 +10,7 @@ first), `system/` (the invented system's code, tests and history),
 `sources/` (its wiki, documents, tickets and pull-request threads), `runs/`
 (test-run evidence at every commit) and `queries/mix.yaml`. The **harness**:
 `bench/` (build, run, score, the prototype protocol) and `tests/` (the
-harness's own tests, on a throwaway mini fixture, plus one test on the real
+harness's own tests, on a throwaway mini fixture, plus four tests on the real
 fixture). `truth/SCHEMA.md` defines the ground-truth yaml shapes. Build issue:
 konyklabs/asbuilt#2; decision: D-013 in `konyklabs/roadmap`.
 
@@ -39,8 +39,8 @@ Planted, listed in `truth/` before any artefact was written: 120 facts
 28 at the `executed` tier, 40 `code`, 52 `documented`), 20 contradictions
 (6 wiki-vs-test, 4 ticket-vs-code, 4 page-vs-page, 6 doc-vs-code), 10 stale
 pages, and 5 facts whose only carrier is a pull-request comment. Carriers:
-54 Python modules and 16 TypeScript files; 23 pytest tests (end-to-end and
-unit) and 4 Vitest tests, with 12 run reports (one per suite per commit); 40
+54 Python modules and 16 TypeScript files; 23 distinct pytest tests across
+the history (19 at the final commit, end-to-end and unit) and 4 Vitest tests, with 12 run reports (one per suite per commit); 40
 wiki pages, 10 documents, 80 tickets (57 of them noise), 8 pull-request
 threads. `sources/PLAN.yaml` is the authoring plan every document was written
 from; the prose paraphrases each fact (never its statement verbatim) so that
@@ -185,7 +185,12 @@ must use (`wiki/<slug>`, `ticket/<KEY>`, `doc/<id>`, `pull/<number>`,
 `code/<path>`, `run/<run-id>`). `bench/truth.py`'s module docstring fixes the
 mapping from those ids to files on disk (`sources/wiki/<slug>.md`,
 `system/<path>`, `runs/<run-id>.json`, ...) — the same mapping the scorer
-uses to check that a carrier document actually exists.
+uses to check that a carrier document actually exists. `Fact.entities` are
+the ids in `truth/entities.yaml` (`E-...`): the scorer credits a returned fact
+only when it shares an entity id with the truth fact, cites one of its
+carrier documents, and states the same numbers, so a prototype must resolve
+entities to those ids (they are what `explain` and `contradictions` queries
+pass in) rather than return prose names.
 
 A prototype named `X` (anything but `null`) must be importable as
 `prototypes.X:Prototype` from `spike/prototypes/X/__init__.py`, exposing a
@@ -200,7 +205,7 @@ to test `bench/` — it is not the real spike fixture. Four history steps;
 `farebox/pricing.py` has two overlays (c1, c3) plus a final content, to
 exercise the "smallest step >= k" rule; `farebox/refunds.py` is added via a
 `.absent` marker; a wiki page, a doc, a ticket and a pull request cover every
-carrier-location kind `check_consistency` checks; eleven facts include a
+carrier-location kind `check_consistency` checks; thirteen facts include a
 version-disambiguation case (F-001/F-003 share a statement and a code
 document at different versions) and a wiki-vs-code contradiction/staleness
 pair. `runs/pytest-c1.json` .. `pytest-c4.json` are genuine

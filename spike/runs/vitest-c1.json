@@ -24,7 +24,7 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1790603015110,
+  "startTime": 1790604874974,
   "success": true,
   "testResults": [
     {
@@ -36,15 +36,15 @@
           "fullName": "maintenanceSweep locks a bike with 3 fault reports in 7 days and opens a ticket",
           "status": "passed",
           "title": "locks a bike with 3 fault reports in 7 days and opens a ticket",
-          "duration": 2.649917000000002,
+          "duration": 2.4194169999999957,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603015224,
-      "endTime": 1790603015226.65,
+      "startTime": 1790604875082,
+      "endTime": 1790604875084.4194,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/maintenanceSweep.test.ts"
@@ -58,15 +58,15 @@
           "fullName": "nightlyRebalance orders a rebalance for a station under 20% or over 90% full",
           "status": "passed",
           "title": "orders a rebalance for a station under 20% or over 90% full",
-          "duration": 2.2689590000000095,
+          "duration": 2.416958000000008,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603015221,
-      "endTime": 1790603015223.269,
+      "startTime": 1790604875080,
+      "endTime": 1790604875082.417,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/nightlyRebalance.test.ts"
@@ -80,22 +80,22 @@
           "fullName": "rideEvents counts ride.completed toward the return station's demand",
           "status": "passed",
           "title": "counts ride.completed toward the return station's demand",
-          "duration": 1.7737079999999992,
+          "duration": 1.6311659999999932,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1790603015216,
-      "endTime": 1790603015217.7737,
+      "startTime": 1790604875074,
+      "endTime": 1790604875075.631,
       "status": "passed",
       "message": "",
       "name": "/Users/oleg/dev/konyklabs/asbuilt/spike/build/repo/dispatch/test/rideEvents.test.ts"
     }
   ],
   "metadata": {
-    "commit": "e76c9b7e105b746aa2a0dc69644de085622fe96f",
+    "commit": "0ede18b59deb8491040b508ff387ca3ee9417c0d",
     "step": "c1"
   }
 }

@@ -2,8 +2,13 @@
 
 A prototype ingests the fixture once, then answers the five surfaces the
 README promises agents: search, explain, contradictions, stale, ask. Every
-fact it returns carries at least one citation; the scorer drops a fact
-without one, by design (README, "Three properties that are not negotiable").
+fact it returns carries at least one citation; the scorer counts a fact
+without one as a false positive, by design (README, "Three properties that
+are not negotiable"). ``Fact.entities`` are entity ids from
+``truth/entities.yaml`` (``E-farebox``, ``E-rule-single-ride-cap``, ...), not
+prose names: the scorer credits a returned fact only when it shares at least
+one entity id with the truth fact, cites one of its carrier documents, and
+states the same numbers.
 
 Document ids are ``<kind>/<id>`` and are shared by ``truth/``, ``sources/``
 and every prototype:
@@ -12,8 +17,11 @@ and every prototype:
     ticket/<KEY>           a ticket; location is a comment id or ``description``
     doc/<id>               a document; version is its head revision id
     pull/<number>          a pull-request thread; location is a comment id
-    code/<path>            a file in the built repository; version is a commit SHA
-    run/<run-id>           a test run; location is the test node id
+    code/<path>            a file in the built repository; version is a commit SHA;
+                           location is a symbol (``MEMBER_FREE_MINUTES``,
+                           ``FareboxClient.close_ride``), a pytest node id or a
+                           Vitest ``describe > it`` title
+    run/<run-id>           a test run; location is the test node id or title
 
 ``valid_from`` and ``valid_to`` are the world-time interval in which the
 statement held (Graphiti's bi-temporal shape, D-013); ``None`` means open.

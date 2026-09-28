@@ -29,7 +29,7 @@ resolves a step to its SHA (`spike/build/commits.json`) deterministically.
   valid_from: c4                     # the step that introduced it; omit when true from c1
   carriers:                          # every place the fixture states it; the first is primary
     - document: code/farebox/pricing.py
-      location: "L41-L58"
+      location: MEMBER_FREE_MINUTES     # a symbol the file defines at that version
       version: c4
     - document: code/tests/e2e/test_pricing.py
       location: "tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free"
@@ -40,6 +40,15 @@ resolves a step to its SHA (`spike/build/commits.json`) deterministically.
       location: "#member-pricing"
       version: 5
 ```
+
+Locations by document kind: `wiki/` and `doc/` use a heading anchor
+(`#free-minutes`); `ticket/` uses `description` or `comment-<k>`; `pull/`
+uses `body` or `comment-<k>`; `code/` uses a symbol the file defines
+(`MEMBER_FREE_MINUTES`, `price_ride`, `FareboxClient.close_ride`), a pytest
+node id (`tests/unit/test_pricing.py::test_single_ride_cap_30`) or a Vitest
+title (`stormPause > pauses rebalancing while ...`); `run/` uses the node id
+or title of the test in that run. Line ranges are not a location: they move.
+Entities are ids from `entities.yaml` (`E-...`), never prose names.
 
 Rules: a fact at tier `executed` carries a `run/` document and the test that
 produced it; at tier `code`, a `code/` document; at `documented`, only

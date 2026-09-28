@@ -3,8 +3,22 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from bench.build import Timeline, build
+from bench.build import Timeline, _isolated_git_env, build
 from tests._support import MINI_ROOT, git_show
+
+
+def test_isolated_git_env_drops_git_vars_and_isolates_config(monkeypatch):
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Should Be Dropped")
+    monkeypatch.setenv("GIT_SOME_OTHER_VAR", "also dropped")
+    monkeypatch.setenv("PATH", "/usr/bin")  # a non-GIT var must survive
+
+    env = _isolated_git_env()
+
+    assert "GIT_AUTHOR_NAME" not in env
+    assert "GIT_SOME_OTHER_VAR" not in env
+    assert env["PATH"] == "/usr/bin"
+    assert env["GIT_CONFIG_GLOBAL"] == "/dev/null"
+    assert env["GIT_CONFIG_NOSYSTEM"] == "1"
 
 
 def test_build_is_reproducible(tmp_path: Path):
