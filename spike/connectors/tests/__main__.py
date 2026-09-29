@@ -123,8 +123,12 @@ def _rule_from_model_result(result: dict[str, Any]) -> Rule:
         entities=tuple(result.get("entities") or ()),
         claim=claim,
         claims=(claim,) if claim else (),
-        detail="",
+        detail=str(result.get("detail") or ""),
     )
+
+
+def _is_skipped(skeleton: Skeleton) -> bool:
+    return any(m == "skip" or m.startswith("skip:") for m in skeleton.markers)
 
 
 def build_step_output(
@@ -167,7 +171,12 @@ def build_step_output(
         # itself — is the capped list passed to the model; a skeleton the
         # model never saw keeps its rules-extractor guess, already in
         # `rules_by_id` from `extract_all` above.
-        model_skeletons = skeletons[:limit] if limit is not None else skeletons
+        # asbuilt#18: a skipped test proves nothing, so it gets no call; its
+        # rules guess stays (the rules path records it under `skipped` and
+        # the tier rule already keeps it off the executed tier). The first
+        # real run spent a call to be told "this test is skipped".
+        unskipped = [s for s in skeletons if not _is_skipped(s)]
+        model_skeletons = unskipped[:limit] if limit is not None else unskipped
         stopped: str | None = None
         failed: str | None = None
         try:
@@ -204,7 +213,7 @@ def build_step_output(
         lifted = lift(skeleton, outcomes_by_step, step_order, step, repo, commits)
         if lifted.flaky:
             flaky.append(skeleton.node_id)
-        if any(m == "skip" or m.startswith("skip:") for m in skeleton.markers):
+        if _is_skipped(skeleton):
             skipped.append(skeleton.node_id)
         if lifted.contradiction_candidate:
             payload = build_contradiction_payload(
