@@ -309,7 +309,7 @@ def extract_with_model(
                 prompt,
                 SCHEMA,
                 model=model,
-                max_tokens=300,
+                max_tokens=1024,  # asbuilt#18: `detail` is asked for now; 300 could truncate it
                 tool_name="record_fact",
             )
         except BudgetExceeded as exc:

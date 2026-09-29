@@ -28,6 +28,7 @@ from connectors.tests.extract_model import (
     DEFAULT_MODEL,
     DEFAULT_OUTPUT_TOKENS_PER_CALL,
     PRICE_TABLE,
+    PROMPT_ENTITY_KINDS,
     SCHEMA,
     ClaudeCodeClient,
     _claude_code_oauth_token,
@@ -723,6 +724,37 @@ def test_build_prompt_asks_for_the_rule_not_the_scenario():
     assert "assert fee == 15000" in prompt
     assert "Rules-extractor guess: 'Lost bike fee $150.00.'" in prompt
     assert SCHEMA["properties"]["detail"] == {"type": "string"}
+
+
+def test_prompt_entity_kinds_are_the_harness_vocabulary():
+    """`PROMPT_ENTITY_KINDS` is a copy of bench/run.py's `ENTITY_KINDS` (not
+    imported, bench.run pulls in the whole harness); this pins the two."""
+    from bench.run import ENTITY_KINDS
+
+    assert PROMPT_ENTITY_KINDS == ENTITY_KINDS
+
+
+@pytest.mark.fixture
+def test_dry_run_prices_the_unskipped_prompts_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """The dry run is D-013's go/no-go input: it prices the prompts a real
+    run would send, so the one skipped test at c6 is not among its 23."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        ["--fixture", str(fixture_root), "--step", "c6", "--model-dry-run", "--out", str(out_dir)]
+    )
+
+    assert exit_code == 0
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    assert output["counts"]["statements"] == 24 and output["counts"]["skipped"] == 1
+    assert output["model_dry_run"]["prompts"] == 23
+    assert "prompts=23" in capsys.readouterr().out
 
 
 def test_model_result_detail_reaches_the_fact():

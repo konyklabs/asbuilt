@@ -322,7 +322,7 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   instead. `--model-dry-run` builds every prompt and prices it from a
   stated, labelled rate table and makes no call at all, under either
   provider, whether or not `--extractor model` is also given — `--extractor
-  model` without `--model-dry-run` is what makes a real call, one per test
+  model` without `--model-dry-run` is what makes a real call, one per unskipped test
   (or per `--limit N` tests, for the smoke test); none are ever made
   anywhere in this repo's own tests — a fake `claude` executable on `PATH`
   proves the `claude-code` subprocess wiring instead
