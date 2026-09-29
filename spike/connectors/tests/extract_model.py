@@ -52,6 +52,7 @@ from bench.claude_code import (
     structured_call,
 )
 from bench.claude_code import DEFAULT_SYSTEM_PROMPT as _CLAUDE_CODE_SYSTEM_PROMPT
+from bench.llm import BudgetExceeded
 from connectors.tests.collect import Skeleton
 from connectors.tests.extract_rules import Rule
 
@@ -61,7 +62,21 @@ PRICE_TABLE: dict[str, dict[str, float]] = {
     "claude-sonnet-5": {"input": 3.0, "output": 15.0, "cache_creation": 3.75, "cache_read": 0.30},
 }
 DEFAULT_MODEL = "claude-sonnet-5"
-DEFAULT_OUTPUT_TOKENS_PER_CALL = 200  # a structured-output Fact is short
+# Measured on the first real full run, 2026-09-29 (asbuilt#15, 17 calls at c6
+# before the budget stop): 9,549 output tokens, so about 560 per call — a
+# structured Fact plus the model's own short text; and 139,208 cache-creation
+# tokens against 34 input tokens, so every headless `claude -p` call writes
+# its whole prompt PLUS the CLI's own system prompt (~8,000 tokens) to the
+# cache anew — sessions are not persisted, nothing is read back — and that
+# overhead, not the prompt, dominates a connector call. The dry run therefore
+# adds it per call and prices everything at the cache-creation rate; the
+# first estimate (prompt text alone at the input rate) was 25x under.
+# 139,208 / 17 = 8,189 cache-creation tokens per call INCLUDING the prompt
+# (about 140 tokens each), so the overhead alone is about 8,050. Only the
+# claude-code provider carries it; the `anthropic` SDK path (opt-in, ruled
+# out for routine use) sends the prompt alone at the input rate.
+DEFAULT_OUTPUT_TOKENS_PER_CALL = 560
+CLAUDE_CODE_CALL_OVERHEAD_TOKENS = 8_050
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -114,11 +129,13 @@ def _estimate_tokens(text: str) -> int:
 @dataclass(frozen=True)
 class DryRunResult:
     prompts: int
-    estimated_input_tokens: int
+    estimated_input_tokens: int  # prompt text plus the per-call overhead
     estimated_output_tokens: int
     model: str
     price_per_million: dict[str, float]
     estimated_dollars: float
+    estimated_overhead_tokens: int = 0  # the per-call part of estimated_input_tokens
+    priced_input_as: str = "cache_creation"  # see CLAUDE_CODE_CALL_OVERHEAD_TOKENS
 
 
 def dry_run(
@@ -126,15 +143,29 @@ def dry_run(
     rules: dict[str, Rule],
     *,
     model: str = DEFAULT_MODEL,
+    provider: str = "claude-code",
     output_tokens_per_call: int = DEFAULT_OUTPUT_TOKENS_PER_CALL,
+    overhead_tokens_per_call: int | None = None,
 ) -> DryRunResult:
+    """The estimate a run prints before any call. For the `claude-code`
+    provider, input = the prompts' own text plus `overhead_tokens_per_call`
+    (default `CLAUDE_CODE_CALL_OVERHEAD_TOKENS`) per prompt, priced at the
+    cache-creation rate, since a headless call writes all of it to the cache
+    (measured, see the constant). For `anthropic`, the prompt text alone at
+    the input rate — that SDK path carries no CLI system prompt."""
     if model not in PRICE_TABLE:
         raise ValueError(f"no price table entry for {model!r}; add one to PRICE_TABLE")
     prices = PRICE_TABLE[model]
+    headless = provider == "claude-code"
+    if overhead_tokens_per_call is None:
+        overhead_tokens_per_call = CLAUDE_CODE_CALL_OVERHEAD_TOKENS if headless else 0
+    priced_input_as = "cache_creation" if headless else "input"
 
-    total_input = sum(_estimate_tokens(build_prompt(s, rules.get(s.node_id))) for s in skeletons)
+    prompt_tokens = sum(_estimate_tokens(build_prompt(s, rules.get(s.node_id))) for s in skeletons)
+    overhead = len(skeletons) * overhead_tokens_per_call
+    total_input = prompt_tokens + overhead
     total_output = len(skeletons) * output_tokens_per_call
-    dollars = (total_input * prices["input"] + total_output * prices["output"]) / 1_000_000
+    dollars = (total_input * prices[priced_input_as] + total_output * prices["output"]) / 1_000_000
 
     return DryRunResult(
         prompts=len(skeletons),
@@ -143,7 +174,37 @@ def dry_run(
         model=model,
         price_per_million=prices,
         estimated_dollars=dollars,
+        estimated_overhead_tokens=overhead,
+        priced_input_as=priced_input_as,
     )
+
+
+class ModelRunStopped(BudgetExceeded):
+    """`BudgetExceeded` raised out of `extract_with_model` WITH the results
+    the run had already paid for (asbuilt#15: the first full run lost 16
+    extracted facts when the stop propagated bare and the CLI wrote
+    nothing). `results` are the payloads completed before the refused call;
+    `client` is the `CountingClient` with the counters as they stood."""
+
+    def __init__(self, cause: BudgetExceeded, results: list[dict[str, Any]], client: Any):
+        super().__init__(cause.arm, cause.reason)
+        self.results = results
+        self.client = client
+
+
+class ModelRunFailed(RuntimeError):
+    """A provider error mid-run (a non-zero `claude -p` exit, a timeout,
+    unparsable output — every `RuntimeError` the claude-code provider raises
+    — and any exception the opt-in `anthropic` SDK raises, whose errors do
+    not derive from `RuntimeError`), re-raised WITH the results already paid
+    for and the counting client, for the same reason as `ModelRunStopped`
+    (a local review note on asbuilt#15: a transient failure on call 20 of 24
+    must not lose the first 19). The cause stays chained for the traceback."""
+
+    def __init__(self, cause: Exception, results: list[dict[str, Any]], client: Any):
+        super().__init__(str(cause) or cause.__class__.__name__)
+        self.results = results
+        self.client = client
 
 
 class ClientFactory(Protocol):
@@ -200,18 +261,25 @@ def extract_with_model(
         **kwargs,
     )
 
-    results = []
+    results: list[dict[str, Any]] = []
     for skeleton in skeletons:
         prompt = build_prompt(skeleton, rules.get(skeleton.node_id))
-        payload = structured_call(
-            wrapped,
-            _CLAUDE_CODE_SYSTEM_PROMPT,
-            prompt,
-            SCHEMA,
-            model=model,
-            max_tokens=300,
-            tool_name="record_fact",
-        )
+        try:
+            payload = structured_call(
+                wrapped,
+                _CLAUDE_CODE_SYSTEM_PROMPT,
+                prompt,
+                SCHEMA,
+                model=model,
+                max_tokens=300,
+                tool_name="record_fact",
+            )
+        except BudgetExceeded as exc:
+            # The stop file is already written by the client; hand back what
+            # was extracted so far rather than losing it (asbuilt#15).
+            raise ModelRunStopped(exc, results, wrapped) from exc
+        except Exception as exc:  # noqa: BLE001 - re-raised with the paid-for results attached
+            raise ModelRunFailed(exc, results, wrapped) from exc
         if payload is not None:
             results.append({"node_id": skeleton.node_id, **payload})
     return results, wrapped

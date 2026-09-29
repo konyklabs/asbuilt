@@ -6,10 +6,18 @@
 JSON shape (statement, category, entities as names, tier, citations —
 ``code/tests/...::node`` at the step's SHA always, plus ``run/<id>`` when
 executed — ``valid_from`` the step, claim), plus ``contradiction_candidates``,
-``flaky``, ``skipped`` node ids, and ``counts``. ``--all-steps`` does every
-history step (c1..c6). Builds the fixture first (``bench.build.build``, the
-same idempotent, fast — under a second — step every other CLI in this
-harness already does) so ``git diff`` has a real repository to compare
+``flaky``, ``skipped`` node ids, and ``counts``; after a real model run
+also ``model_usage`` (provider, model, skeletons requested, results, calls,
+token kinds, seconds, dollars at the assumed price table, ``usage_missing``,
+and ``stopped``/``failed`` when the run did not complete — every fact
+extracted before the refused call is kept (the call that crosses the
+threshold is counted but its response discarded, so ``results`` is one
+below ``calls`` on a stop), the run halts there even under ``--all-steps``, the file
+is ``tests-<step>-stopped.json``/``-failed.json`` unless ``--out`` was
+given; exit 3 on a budget stop, 2 on a provider failure).
+``--all-steps`` does every history step (c1..c6). Builds the fixture first
+(``bench.build.build``, the same idempotent, fast — under a second — step
+every other CLI in this harness already does) so ``git diff`` has a real repository to compare
 against for the tier rule (``lift.py``).
 
 ``--model-dry-run`` additionally runs ``extract_model.dry_run`` over each
@@ -49,6 +57,8 @@ from connectors.tests.evidence import Outcome, read_runs_directory  # noqa: E402
 from connectors.tests.extract_model import (  # noqa: E402
     DEFAULT_PROVIDER,
     PROVIDERS,
+    ModelRunFailed,
+    ModelRunStopped,
     extract_with_model,
 )
 from connectors.tests.extract_model import dry_run as model_dry_run  # noqa: E402
@@ -141,6 +151,7 @@ def build_step_output(
     rules = extract_all(skeletons, _source_lookup(timeline, step))
     rules_by_id = {r.node_id: r for r in rules}
 
+    model_usage: dict[str, Any] | None = None
     if extractor == "model" and not model_dry_run_enabled:
         # Review fix, asbuilt#8 (hazard): `--model-dry-run` promises no call
         # under any extractor — `not model_dry_run_enabled` is what makes
@@ -157,13 +168,29 @@ def build_step_output(
         # model never saw keeps its rules-extractor guess, already in
         # `rules_by_id` from `extract_all` above.
         model_skeletons = skeletons[:limit] if limit is not None else skeletons
-        model_results, _wrapped = extract_with_model(
-            model_skeletons, rules_by_id, client_factory=PROVIDERS[provider]
-        )
+        stopped: str | None = None
+        failed: str | None = None
+        try:
+            model_results, counting = extract_with_model(
+                model_skeletons, rules_by_id, client_factory=PROVIDERS[provider]
+            )
+        except ModelRunStopped as exc:
+            # The budget stop (D-013) refused a call: keep every fact already
+            # paid for, let the rest fall back to the rules guess, record the
+            # stop in the output, and let `main` exit non-zero (asbuilt#15).
+            model_results, counting, stopped = exc.results, exc.client, exc.reason
+        except ModelRunFailed as exc:
+            # A provider error mid-run: same treatment, recorded as `failed`
+            # (the error's own first line, never a credential), exit 2.
+            model_results, counting = exc.results, exc.client
+            failed = next((ln for ln in str(exc).splitlines() if ln.strip()), "provider error")
         rules_by_id = {
             **rules_by_id,
             **{r["node_id"]: _rule_from_model_result(r) for r in model_results},
         }
+        model_usage = _model_usage(counting, provider, len(model_skeletons), len(model_results))
+        model_usage["stopped"] = stopped
+        model_usage["failed"] = failed
 
     facts: list[dict[str, Any]] = []
     contradiction_candidates: list[dict[str, Any]] = []
@@ -213,10 +240,48 @@ def build_step_output(
     }
 
     if model_dry_run_enabled:
-        result = model_dry_run(skeletons, rules_by_id)
+        result = model_dry_run(skeletons, rules_by_id, provider=provider)
         output["model_dry_run"] = dataclasses.asdict(result)
+    if model_usage is not None:
+        output["model_usage"] = model_usage
 
     return output
+
+
+def _dollars_or_none(counting: Any) -> float | None:
+    """Never let pricing lose a paid-for output: no price table, or a table
+    missing a token kind (`CountingClient.dollars` raises rather than price
+    it at $0), means `dollars` is None here and the tokens still land."""
+    try:
+        return round(counting.dollars(), 6)
+    except (ValueError, KeyError):
+        return None
+
+
+def _model_usage(
+    counting: Any, provider: str, skeletons_requested: int, results: int
+) -> dict[str, Any]:
+    """What a real model run cost, read off the `CountingClient` that
+    `extract_with_model` returns (asbuilt#15: the first real run recorded
+    nothing — the client was discarded and only the counts line printed).
+    `dollars` is at the assumed price table (`PRICE_TABLE`), a token-priced
+    estimate: the claude-code provider bills the subscription. `usage_missing`
+    is true when any call came back without usage and the client's own
+    estimate stood in for it."""
+    return {
+        "provider": provider,
+        "model": counting.model,
+        "skeletons_requested": skeletons_requested,
+        "results": results,
+        "calls": counting.calls,
+        "input_tokens": counting.input_tokens,
+        "output_tokens": counting.output_tokens,
+        "cache_creation_tokens": counting.cache_creation_tokens,
+        "cache_read_tokens": counting.cache_read_tokens,
+        "elapsed_seconds": round(counting.elapsed_seconds, 3),
+        "dollars": _dollars_or_none(counting),
+        "usage_missing": counting.usage_missing,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -269,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     outcomes_by_step = _load_outcomes_by_step(fixture_root)
     steps = step_order if args.all_steps else [args.step or step_order[-1]]
 
+    stopped_runs = failed_runs = 0
     for step in steps:
         if step not in commits:
             raise SystemExit(f"unknown step {step!r}; known steps are {step_order}")
@@ -288,8 +354,14 @@ def main(argv: list[str] | None = None) -> int:
         # silently overwrite the real `tests-<step>.json` a full run
         # produced — but if the caller gave an explicit `--out`, that
         # choice is respected as-is (they know what they asked for).
-        if args.limit is not None and args.out is None:
+        usage = output.get("model_usage") or {}
+        partial = "stopped" if usage.get("stopped") else "failed" if usage.get("failed") else None
+        if args.out is None and args.limit is not None:
             out_path = out_dir / f"tests-{step}-limit{args.limit}.json"
+        elif args.out is None and partial:
+            # Same rule as --limit (asbuilt#8): a run that did not complete
+            # never overwrites a full run's own file unless --out says so.
+            out_path = out_dir / f"tests-{step}-{partial}.json"
         else:
             out_path = out_dir / f"tests-{step}.json"
         out_path.write_text(json.dumps(output, indent=2) + "\n")
@@ -300,17 +372,58 @@ def main(argv: list[str] | None = None) -> int:
             f"candidates={c['candidates']} flaky={c['flaky']} skipped={c['skipped']}"
         )
         print(line)
+        if "model_usage" in output:
+            u = output["model_usage"]
+            dollars = "n/a" if u["dollars"] is None else f"${u['dollars']:.4f}"
+            print(
+                f"  model: provider={u['provider']} model={u['model']} "
+                f"skeletons={u['skeletons_requested']} results={u['results']} calls={u['calls']} "
+                f"input_tokens={u['input_tokens']} output_tokens={u['output_tokens']} "
+                f"cache_tokens={u['cache_creation_tokens'] + u['cache_read_tokens']} "
+                f"seconds={u['elapsed_seconds']} dollars~{dollars}"
+                f"{' usage_missing' if u['usage_missing'] else ''} "
+                "(token-priced estimate; claude-code billing is subscription, not per-call)"
+            )
+            if u["stopped"]:
+                print(
+                    f"  STOPPED at the budget threshold ({u['stopped']}): {u['results']} facts "
+                    f"extracted before the refused call are kept (the crossing call's response "
+                    "is discarded), the rest keep their rules guess; see build/stop-*.json "
+                    "and comment on the driving issue before continuing"
+                )
+                stopped_runs += 1
+            elif u["failed"]:
+                print(
+                    f"  FAILED mid-run ({u['failed']}): the {u['results']} facts extracted "
+                    "before it are kept, the rest keep their rules guess"
+                )
+                failed_runs += 1
+            if u["stopped"] or u["failed"]:
+                # The stop condition halts the RUN (D-013), not one step: the
+                # next step would build a fresh CountingClient with zeroed
+                # counters and spend the same budget again (a blocking
+                # finding of the second local lens round on asbuilt#15).
+                remaining = steps[steps.index(step) + 1 :]
+                if remaining:
+                    print(f"  halted before {', '.join(remaining)}")
+                break
         if args.model_dry_run:
             d = output["model_dry_run"]
             print(
                 f"  model-dry-run: provider={args.provider} prompts={d['prompts']} "
                 f"input_tokens~{d['estimated_input_tokens']} "
+                f"(of which per-call overhead~{d['estimated_overhead_tokens']}) "
                 f"output_tokens~{d['estimated_output_tokens']} "
                 f"model={d['model']} dollars~${d['estimated_dollars']:.4f} "
-                "(token-based estimate; claude-code billing is subscription, not per-call)"
+                f"(token-based estimate at the {d['priced_input_as']} rate; "
+                + (
+                    "claude-code billing is subscription, not per-call)"
+                    if args.provider == "claude-code"
+                    else "the anthropic provider bills the API key per call)"
+                )
             )
 
-    return 0
+    return 3 if stopped_runs else 2 if failed_runs else 0
 
 
 if __name__ == "__main__":

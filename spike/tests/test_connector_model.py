@@ -12,6 +12,7 @@ anywhere in this file."""
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 from pathlib import Path
@@ -23,8 +24,13 @@ import connectors.tests.__main__ as main_module
 from bench.llm import Budget, BudgetExceeded
 from connectors.tests.collect import Skeleton
 from connectors.tests.extract_model import (
+    CLAUDE_CODE_CALL_OVERHEAD_TOKENS,
+    DEFAULT_MODEL,
+    DEFAULT_OUTPUT_TOKENS_PER_CALL,
+    PRICE_TABLE,
     ClaudeCodeClient,
     _claude_code_oauth_token,
+    dry_run,
     extract_with_model,
 )
 from tests._support import SPIKE_ROOT
@@ -391,6 +397,7 @@ def test_claude_code_client_missing_usage_triggers_countingclients_estimate(
     assert wrapped.input_tokens > 0  # CountingClient's own len(text)//4 estimate, not zero
 
 
+@pytest.mark.fixture
 def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -415,6 +422,264 @@ def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
 
     assert exit_code == 0
     assert not marker_path.exists()  # the fake claude was never actually run
+
+
+@pytest.mark.fixture
+def test_extractor_model_records_usage_in_output_and_prints_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """asbuilt#15: the first real model run made its calls but recorded
+    nothing about them — `build_step_output` discarded the `CountingClient`
+    and only the counts line printed. With the fake `claude` on PATH
+    (123 input / 45 output / 7 cache-read tokens per call) a `--limit 2` run
+    must write a `model_usage` block into the output JSON and print one
+    line with the same numbers."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--limit",
+            "2",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    usage = output["model_usage"]
+    assert usage["provider"] == "claude-code"
+    assert usage["model"] == DEFAULT_MODEL
+    assert usage["skeletons_requested"] == 2
+    assert usage["results"] == 2
+    assert usage["calls"] == 2
+    assert (usage["input_tokens"], usage["output_tokens"]) == (246, 90)
+    assert (usage["cache_creation_tokens"], usage["cache_read_tokens"]) == (0, 14)
+    assert usage["usage_missing"] is False
+    assert usage["dollars"] == pytest.approx((246 * 3.0 + 90 * 15.0 + 14 * 0.30) / 1e6, abs=1e-6)
+    assert usage["elapsed_seconds"] >= 0
+    assert output["counts"]["statements"] > 2  # the other skeletons kept their rules facts
+    model_facts = [f for f in output["facts"] if f["statement"] == "Skeleton is proven."]
+    assert len(model_facts) == 2  # the two model results reached the output, the rest are rules
+    printed = capsys.readouterr().out
+    assert "  model: provider=claude-code" in printed
+    assert "calls=2 input_tokens=246 output_tokens=90 cache_tokens=14" in printed
+    assert "dollars~$0.0021" in printed
+
+
+@pytest.mark.fixture
+def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """asbuilt#15, the first full run: the budget stop (D-013) raised bare
+    through the CLI and the 16 facts already paid for were lost with no
+    output file. Now `extract_with_model` raises `ModelRunStopped` carrying
+    the completed payloads; the CLI keeps them, lets the rest keep their
+    rules guess, writes the output with the stop recorded, prints it, and
+    exits 3. With the fake `claude` (175 tokens per call) and a 300-token
+    budget the counters pass 80% after the second call, so exactly two
+    calls happen and one payload survives (the second's response is refused
+    on the post-call check, as `CountingClient` documents)."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ASBUILT_BUDGET_TOKENS", "300")
+    monkeypatch.delenv("ASBUILT_BUDGET_DOLLARS", raising=False)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 3
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    usage = output["model_usage"]
+    assert usage["calls"] == 2
+    assert usage["results"] == 1
+    assert usage["skeletons_requested"] == output["counts"]["statements"]  # the full list was asked
+    assert "300" in usage["stopped"] and "tokens" in usage["stopped"]
+    assert output["counts"]["statements"] > 2  # every other skeleton kept its rules fact
+    assert (tmp_path / "build" / "stop-stack-b-model.json").is_file()
+    printed = capsys.readouterr().out
+    assert "  model: provider=claude-code" in printed and "calls=2" in printed
+    assert "STOPPED at the budget threshold" in printed
+
+
+@pytest.mark.fixture
+def test_extractor_model_provider_failure_keeps_output_and_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """A local review note on asbuilt#15: a provider error mid-run (here the
+    fake `claude` failing every call with a non-zero exit) must not lose
+    the output either — `ModelRunFailed` carries the results so far, the CLI
+    records the error's first line under `model_usage.failed`, keeps the
+    rules facts, and exits 2. The second stderr line never surfaces."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "fail")
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--limit",
+            "3",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    usage = output["model_usage"]
+    assert usage["calls"] == 0 and usage["results"] == 0 and usage["stopped"] is None
+    assert "rate limited" in usage["failed"]
+    assert "must never be surfaced" not in json.dumps(output)
+    assert output["counts"]["statements"] > 3  # every skeleton kept its rules fact
+    printed = capsys.readouterr().out
+    assert "FAILED mid-run" in printed and "must never be surfaced" not in printed
+
+
+@pytest.mark.fixture
+def test_extractor_model_budget_stop_halts_the_run_under_all_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """Blocking finding of the second local lens round on asbuilt#15: with
+    `--all-steps`, keeping the stopped step's output and moving on would
+    build a fresh `CountingClient` for the next step (counters at zero,
+    budget re-read from the environment) and spend the same budget again,
+    turning D-013's stop condition into a per-step cap. The run must halt
+    after the stopped step: only that step's file exists, written under the
+    `-stopped` name (no `--out`), exit 3, and the fake `claude` was invoked
+    exactly twice in total."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.setenv("ASBUILT_BUDGET_TOKENS", "300")
+    monkeypatch.delenv("ASBUILT_BUDGET_DOLLARS", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--all-steps",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+        ]
+    )
+
+    assert exit_code == 3
+    written = sorted(p.name for p in (tmp_path / "build" / "connector").glob("tests-*.json"))
+    assert written == ["tests-c1-stopped.json"]
+    assert marker_path.read_text().count("called") == 2
+    printed = capsys.readouterr().out
+    assert "STOPPED at the budget threshold" in printed
+    assert "halted before c2, c3, c4, c5, c6" in printed
+
+
+def test_dry_run_for_the_anthropic_provider_carries_no_headless_overhead():
+    """The overhead is the claude-code CLI's own system prompt; the opt-in
+    `anthropic` SDK path sends the prompt alone, priced at the input rate."""
+    skeletons = [_skeleton("test_a")]
+
+    result = dry_run(skeletons, {}, provider="anthropic")
+
+    assert result.estimated_overhead_tokens == 0
+    assert result.priced_input_as == "input"
+    prices = PRICE_TABLE[DEFAULT_MODEL]
+    expected = (
+        result.estimated_input_tokens * prices["input"]
+        + result.estimated_output_tokens * prices["output"]
+    ) / 1e6
+    assert result.estimated_dollars == pytest.approx(expected)
+
+
+def test_dry_run_adds_the_measured_per_call_overhead_at_the_cache_creation_rate():
+    """asbuilt#15: the first estimate priced the prompts' own text at the
+    input rate and came out 25x under the measured run, which wrote about
+    8,200 tokens per call to the cache (the CLI's own system prompt plus the
+    prompt). The dry run now adds that per call and prices input at the
+    cache-creation rate; the numbers are the module's own constants."""
+    skeletons = [_skeleton("test_a"), _skeleton("test_b")]
+
+    result = dry_run(skeletons, {})
+
+    assert result.prompts == 2
+    assert result.estimated_overhead_tokens == 2 * CLAUDE_CODE_CALL_OVERHEAD_TOKENS
+    assert result.estimated_input_tokens > result.estimated_overhead_tokens
+    assert result.estimated_output_tokens == 2 * DEFAULT_OUTPUT_TOKENS_PER_CALL
+    prices = PRICE_TABLE[DEFAULT_MODEL]
+    expected = (
+        result.estimated_input_tokens * prices["cache_creation"]
+        + result.estimated_output_tokens * prices["output"]
+    ) / 1e6
+    assert result.estimated_dollars == pytest.approx(expected)
+    assert result.priced_input_as == "cache_creation"
+
+
+@pytest.mark.fixture
+def test_extractor_dry_run_and_rules_carry_no_model_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The other side of asbuilt#15: `model_usage` appears only after a real
+    model run — never on the rules path, never on a dry run."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    for extra in (["--extractor", "rules"], ["--extractor", "model", "--model-dry-run"]):
+        out_dir = tmp_path / ("out-" + "-".join(extra).strip("-"))
+        assert (
+            main_module.main(
+                ["--fixture", str(fixture_root), "--step", "c6", "--out", str(out_dir), *extra]
+            )
+            == 0
+        )
+        assert "model_usage" not in json.loads((out_dir / "tests-c6.json").read_text())
 
 
 def test_claude_code_oauth_token_falls_back_to_config_file(
