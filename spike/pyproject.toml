@@ -16,6 +16,14 @@ model = ["anthropic>=0.40"]
 # runtime, not just this repo's own tests. `uv sync --extra serve` to install
 # it; `mcp.py`'s own tests use FastMCP's in-process client, no subprocess.
 serve = ["fastmcp==4.0.10"]
+# The shared extraction pipeline and stack B (konyklabs/asbuilt#4): the
+# Postgres driver, and the pinned embedder and NLI cross-encoder (both
+# imported lazily; without them the pipeline falls back to its hash
+# embedder and skips the NLI pre-filter). `uv sync --extra pipeline`.
+pipeline = [
+    "psycopg[binary]>=3.2",
+    "sentence-transformers>=6.1,<7",
+]
 
 [dependency-groups]
 dev = [
@@ -27,6 +35,10 @@ dev = [
     # serve`; listed again here so a plain `uv sync` in this repo already has
     # it for tests/test_mcp.py's in-process FastMCP client (asbuilt#9).
     "fastmcp==4.0.10",
+    # Stack B's store tests (konyklabs/asbuilt#4): the driver, and a
+    # throwaway pgvector container per test session.
+    "psycopg[binary]>=3.2",
+    "testcontainers>=4.15",
 ]
 
 [tool.pytest.ini_options]
@@ -38,6 +50,7 @@ pythonpath = ["."]
 norecursedirs = ["fixtures", "history", "build", ".git", "node_modules"]
 markers = [
     "fixture: exercises the real spike fixture (truth/, sources/, system/), not tests/fixtures/mini/; deselect with -m 'not fixture'",
+    "postgres: needs Docker for a throwaway pgvector container (stack B); skipped when Docker is unavailable; deselect with -m 'not postgres'",
 ]
 
 [tool.ruff]
@@ -52,4 +65,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["bench", "connectors", "prototypes"]
+packages = ["bench", "connectors", "pipeline", "prototypes"]

@@ -129,8 +129,14 @@ def build_step_output(
     model_dry_run_enabled: bool = False,
     provider: str = DEFAULT_PROVIDER,
     limit: int | None = None,
+    timeline: Any | None = None,
 ) -> dict[str, Any]:
-    timeline = Timeline(fixture_root)
+    # `timeline` (asbuilt#4): anything with `content_at(path, step)` and
+    # `active_paths_at(step)` — a benchmark arm passes an adapter over the
+    # built git repository, so the connector never reads the raw fixture
+    # (`system/history/steps.yaml` carries authoring notes an arm must not
+    # see). Default: the fixture's own Timeline, exactly as before.
+    timeline = timeline if timeline is not None else Timeline(fixture_root)
     skeletons = collect_from_timeline(timeline, step)
     rules = extract_all(skeletons, _source_lookup(timeline, step))
     rules_by_id = {r.node_id: r for r in rules}
