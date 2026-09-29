@@ -3,7 +3,10 @@
 # statement at c6 against the truth fact its test carries, with the truth's
 # own claim and the candidate's claim where present, judged by hand (expect:
 # true = the candidate states the fact, however fully; false = it does not),
-# plus one cross pair per model statement against a different fact's truth.
+# plus one cross pair per model statement against a different fact's truth,
+# and, after the first local lens round, targeted pairs for each rule the
+# set loosened or added (the hedge, the numberless fact, HTTP codes, the
+# flag state, claim units and vocabulary, ordinals) in both directions.
 # Invented fixture only (Gearwell). Run with
 # `uv run python bench/score.py --calibrate tests/fixtures/calibration-model-run.yaml`.
 - truth_id: F-017
@@ -1071,3 +1074,196 @@
     attribute: severityThresholdToPause
     value: 3
     unit: null
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: rule-negative
+  candidate: Members ride free for the first 45 minutes of every ride; the code applies 30 minutes.
+  expect: false
+  why: a hedge naming both the superseded and the current value
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
+- truth_id: F-036
+  truth: Members ride free for the first 45 minutes of every ride.
+  source: rule-negative
+  candidate: Members ride free for the first 45 minutes of every ride; the code applies 30 minutes.
+  expect: false
+  why: a hedge naming both the superseded and the current value
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 45
+    unit: minute
+- truth_id: null
+  truth: The maintenance sweep job runs every hour.
+  source: rule-negative
+  candidate: The maintenance sweep job runs every 2 hours.
+  expect: false
+  why: a quantity the fact does not name
+- truth_id: null
+  truth: Refunds are approved automatically.
+  source: rule-negative
+  candidate: Refunds under $25 are approved automatically.
+  expect: false
+  why: a narrower rule than the fact states
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: rule-positive
+  candidate: A refund requested more than 14 days after the ride ended is rejected with HTTP 422.
+  expect: true
+  why: the response code beside the fact's own number
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: rule-positive
+  candidate: Checking in at a full station returns HTTP 409 with error code station_full.
+  expect: true
+  why: the fact is about the response and the code agrees
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: rule-negative
+  candidate: Checking in at a full station returns HTTP 404 with error code station_full.
+  expect: false
+  why: the fact is about the response and the code differs
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rule-positive
+  candidate: Check-in at a full station is refused.
+  expect: true
+  why: the same fact without naming the flag state
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rule-negative
+  candidate: A check-in at a full station is refused when the overflow_parking flag is on.
+  expect: false
+  why: the opposite flag state on the same words
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rule-positive
+  candidate: With overflow parking off, a check-in at a full station is refused when the station is on
+    its full list.
+  expect: true
+  why: '''on its full list'' names no flag state'
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-positive
+  candidate: A ride closed as lost is charged a lost-bike fee of $150.00.
+  expect: true
+  why: the same claim in cents
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: fee
+    value: 15000
+    unit: usd_cents
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-negative
+  candidate: A ride closed as lost is charged a $150.00 lost-bike fee.
+  expect: false
+  why: the claim says 150 cents, a value conflict on the same attribute
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: fee
+    value: 150
+    unit: cents
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-positive
+  candidate: A ride closed as lost is charged a $150.00 lost-bike fee.
+  expect: true
+  why: a camelCase attribute with the fact's own words
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: lostBikeFeeAmount
+    value: 150
+    unit: usd
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-negative
+  candidate: A ride closed as lost is charged a $150.00 lost-bike fee.
+  expect: false
+  why: an attribute about something else on the same entity and value
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: retries
+    value: 150
+    unit: usd
+- truth_id: F-022
+  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  source: rule-positive
+  candidate: Rebalancing is paused while the latest Skyglass severity is 3 or higher.
+  expect: true
+  why: a camelCase attribute in the code's own words; the statement decides
+  truth_claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
+  candidate_claim:
+    entity: stormPause
+    attribute: severityThresholdToPause
+    value: 3
+    unit: null
+- truth_id: F-022
+  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  source: rule-negative
+  candidate: Rebalancing is paused while the latest Skyglass severity is 3 or higher.
+  expect: false
+  why: the claim's value contradicts the fact on the same attribute
+  truth_claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
+  candidate_claim:
+    entity: stormPause
+    attribute: min_severity
+    value: 4
+    unit: null
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: rule-positive
+  candidate: A member's 1st 30 minutes of every ride are free.
+  expect: true
+  why: a digit ordinal is a position, not a quantity
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute

@@ -28,6 +28,7 @@ from bench.score import (
     _has_test_carrier_by_step,
     _mentioned_entities,
     _normalise_unit,
+    _number_tokens,
     _resolve_step_or_sha,
     _resolve_temporal_value_to_step,
     _shares_matching_version,
@@ -35,6 +36,7 @@ from bench.score import (
     _statement_matches,
     _step_order,
     _temporal_field_matches,
+    _without_http_codes,
     aggregate_reports,
     align_entities,
     bootstrap_compare,
@@ -2191,21 +2193,32 @@ def test_real_fixture_score_test_connector_smoke():
 def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
     """The judged pairs from the first real model run (2026-09-29): every
     model and rules statement at c6 against its truth fact, plus a cross
-    pair per model statement. Precision must be perfect (no candidate is
-    credited with a fact it does not state) and recall is pinned at the
-    measured floor, not at 1.0: the remaining misses are narratives of the
-    test scenario, a negated side clause, a missing number and two close
-    paraphrases under the similarity threshold, all listed on #17. Raising
-    this floor by changing the matcher needs a judged pair in each
-    direction, never the model's output alone."""
+    pair per model statement, plus targeted pairs in both directions for
+    each rule the matcher loosened or added (the cross pairs all sit far
+    below the similarity threshold, so they alone prove nothing about
+    those rules — a local lens round's finding). Precision must be perfect
+    (no candidate is credited with a fact it does not state) and recall is
+    pinned at the measured floor, not at 1.0: the remaining misses are
+    narratives of the test scenario, a negated side clause, a missing or
+    competing number of the fact's own kind and close paraphrases under
+    the similarity threshold, all listed on #17. Raising this floor by
+    changing the matcher needs a judged pair in each direction, never the
+    model's output alone."""
     pairs = load_calibration(SPIKE_ROOT / "tests/fixtures/calibration-model-run.yaml")
-    assert len(pairs) == 72
+    assert len(pairs) == 89
     truth = load_truth(SPIKE_ROOT / "truth")
     report = calibrate(pairs, build_mention_index(truth), build_alias_index(truth), truth.entities)
     assert report["fp"] == 0, report["misclassified"]
     assert report["precision"] == 1.0
-    assert report["recall"] >= 0.68, report["misclassified"]
+    assert report["recall"] >= 0.63, report["misclassified"]
     assert report["recall"] < 0.9  # an honest floor: see the docstring
+    # every targeted rule pair (both directions) must hold exactly
+    rule_pairs = [p for p in pairs if str(p.get("source", "")).startswith("rule-")]
+    assert len(rule_pairs) == 17
+    missed_rule_pairs = [
+        m for m in report["misclassified"] if str(m.get("source", "")).startswith("rule-")
+    ]
+    assert missed_rule_pairs == []
 
 
 def _wiki_truth(statement: str, claim: dict | None = None, entities=("E-x",)) -> TruthFact:
@@ -2250,9 +2263,13 @@ def test_off_is_a_flag_state_not_a_negation():
         truth,
     )
     assert not _has_negation("The dynamic_pricing flag is off by default.")
-    assert _flag_states("enabled by the feature flag") == {"on"}
+    assert _flag_states("the feature flag is enabled.") == {"on"}
     assert _flag_states("switched off") == {"off"}
+    assert _flag_states("Dynamic pricing is on in production.") == {"on"}
+    # a state word leading into a noun names no state (a lens-round finding)
     assert _flag_states("depends on the station") == set()
+    assert _flag_states("The fee is on the invoice.") == set()
+    assert _flag_states("the station was disabled for maintenance") == set()
 
 
 def test_numbers_a_fuller_statement_may_name_more_than_the_truth_never_fewer():
@@ -2276,6 +2293,47 @@ def test_numbers_a_fuller_statement_may_name_more_than_the_truth_never_fewer():
     free = _wiki_truth("A member's first 30 minutes of every ride are free.")
     assert not facts_match(_wiki_fact("A member's first 45 minutes of every ride are free."), free)
     assert not facts_match(_wiki_fact("A member's first minutes of every ride are free."), free)
+    # a second value of the fact's own kind is a competing value, never an
+    # extra (the hedge must match neither side of a supersession); a number of
+    # another kind beside the fact's is fine; a digit ordinal is no quantity
+    assert not facts_match(
+        _wiki_fact("A member's first 45 minutes of every ride are free; the code applies 30."),
+        free,
+    )
+    assert facts_match(_wiki_fact("A member's first 30 minutes of every ride are free ($0)."), free)
+    assert facts_match(_wiki_fact("A member's 1st 30 minutes of every ride are free."), free)
+    # a fact naming no quantity admits none
+    hourly = _wiki_truth("The maintenance sweep job runs every hour.")
+    assert not facts_match(_wiki_fact("The maintenance sweep job runs every 2 hours."), hourly)
+
+
+def test_http_status_codes_are_set_aside_unless_the_fact_is_about_the_response():
+    """A code named as one ("returns HTTP 422", "with a 200 response") is
+    not a quantity of the fact, so a fuller statement naming it beside the
+    fact's number is the same fact. When the truth itself names a code the
+    fact is about the response: the code stays and must agree."""
+    refund = _wiki_truth("A refund requested more than 14 days after the ride ended is rejected.")
+    assert facts_match(
+        _wiki_fact(
+            "A refund requested more than 14 days after the ride ended is rejected with HTTP 422."
+        ),
+        refund,
+    )
+    checkin = _wiki_truth(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full."
+    )
+    assert facts_match(
+        _wiki_fact("Checking in at a full station returns HTTP 409 with error code station_full."),
+        checkin,
+    )
+    assert not facts_match(
+        _wiki_fact("Checking in at a full station returns HTTP 404 with error code station_full."),
+        checkin,
+    )
+    assert (
+        _number_tokens(_without_http_codes("retries after a 5xx response, never after a 4xx"))
+        == set()
+    )
 
 
 def test_claim_in_the_candidates_own_vocabulary_lets_the_statement_decide():
