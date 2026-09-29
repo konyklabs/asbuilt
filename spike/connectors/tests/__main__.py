@@ -14,7 +14,14 @@ against for the tier rule (``lift.py``).
 
 ``--model-dry-run`` additionally runs ``extract_model.dry_run`` over each
 processed step's skeletons (using the rules extractor's own guesses as the
-prompt's context) and prints the token/dollar totals — no call is made.
+prompt's context) and prints the token/dollar totals — no call is made
+under either extractor.
+
+``--extractor model`` makes one real call per skeleton through
+``extract_model.extract_with_model`` instead of the deterministic rules
+extractor (``--provider``: ``claude-code`` — the default, Oleg's Claude
+Code subscription, never an API key — or ``anthropic``, opt-in;
+``--limit N`` caps it to the first N tests, the smoke-test knob).
 """
 
 from __future__ import annotations
@@ -34,6 +41,11 @@ from bench.build import Timeline  # noqa: E402
 from bench.build import build as build_repo  # noqa: E402
 from connectors.tests.collect import Skeleton, collect_from_timeline  # noqa: E402
 from connectors.tests.evidence import Outcome, read_runs_directory  # noqa: E402
+from connectors.tests.extract_model import (  # noqa: E402
+    DEFAULT_PROVIDER,
+    PROVIDERS,
+    extract_with_model,
+)
 from connectors.tests.extract_model import dry_run as model_dry_run  # noqa: E402
 from connectors.tests.extract_rules import Rule, extract_all  # noqa: E402
 from connectors.tests.lift import Lift, build_contradiction_payload, lift  # noqa: E402
@@ -83,6 +95,23 @@ def _fact_dict(
     }
 
 
+def _rule_from_model_result(result: dict[str, Any]) -> Rule:
+    """Normalises one `extract_with_model` result dict into the same `Rule`
+    shape the rules extractor produces, so every downstream step (tier,
+    citations, `_fact_dict`) runs unchanged regardless of which extractor
+    supplied the statement/category/entities/claim."""
+    claim = result.get("claim")
+    return Rule(
+        node_id=result["node_id"],
+        statement=result.get("statement", ""),
+        category=result.get("category", "business-logic"),
+        entities=tuple(result.get("entities") or ()),
+        claim=claim,
+        claims=(claim,) if claim else (),
+        detail="",
+    )
+
+
 def build_step_output(
     fixture_root: Path,
     step: str,
@@ -91,12 +120,30 @@ def build_step_output(
     outcomes_by_step: dict[str, list[Outcome]],
     step_order: list[str],
     *,
+    extractor: str = "rules",
     model_dry_run_enabled: bool = False,
+    provider: str = DEFAULT_PROVIDER,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     timeline = Timeline(fixture_root)
     skeletons = collect_from_timeline(timeline, step)
     rules = extract_all(skeletons, _source_lookup(timeline, step))
     rules_by_id = {r.node_id: r for r in rules}
+
+    if extractor == "model":
+        # `--limit N`: the smoke test — only the first N skeletons ever get
+        # a real call. The rules-extractor's own guesses (`rules_by_id`,
+        # already computed above) are passed through unchanged as the
+        # prompt's own context (`build_prompt`); only the SKELETONS actually
+        # sent to the model are capped.
+        skeletons = skeletons[:limit] if limit is not None else skeletons
+        model_results, _wrapped = extract_with_model(
+            skeletons, rules_by_id, client_factory=PROVIDERS[provider]
+        )
+        rules_by_id = {
+            **rules_by_id,
+            **{r["node_id"]: _rule_from_model_result(r) for r in model_results},
+        }
 
     facts: list[dict[str, Any]] = []
     contradiction_candidates: list[dict[str, Any]] = []
@@ -158,12 +205,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--step", default=None, help="a single step id (default: the last step)")
     parser.add_argument("--all-steps", action="store_true", help="process every history step")
     parser.add_argument(
-        "--extractor", default="rules", choices=["rules"], help="only 'rules' this slice"
+        "--extractor",
+        default="rules",
+        choices=["rules", "model"],
+        help="'rules' (deterministic, default) or 'model' (real calls — see --provider/--limit)",
     )
     parser.add_argument(
         "--model-dry-run",
         action="store_true",
-        help="also print model-extractor token/dollar estimates",
+        help="also print model-extractor token/dollar estimates; makes no call under any extractor",
+    )
+    parser.add_argument(
+        "--provider",
+        default=DEFAULT_PROVIDER,
+        choices=sorted(PROVIDERS),
+        help=f"model provider for --extractor model (default: {DEFAULT_PROVIDER})",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="with --extractor model, only the first N tests get a real call (the smoke test)",
     )
     parser.add_argument("--out", default="build/connector", help="output directory")
     args = parser.parse_args(argv)
@@ -192,7 +255,10 @@ def main(argv: list[str] | None = None) -> int:
             commits,
             outcomes_by_step,
             step_order,
+            extractor=args.extractor,
             model_dry_run_enabled=args.model_dry_run,
+            provider=args.provider,
+            limit=args.limit,
         )
         out_path = out_dir / f"tests-{step}.json"
         out_path.write_text(json.dumps(output, indent=2) + "\n")
@@ -206,10 +272,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.model_dry_run:
             d = output["model_dry_run"]
             print(
-                f"  model-dry-run: prompts={d['prompts']} "
+                f"  model-dry-run: provider={args.provider} prompts={d['prompts']} "
                 f"input_tokens~{d['estimated_input_tokens']} "
                 f"output_tokens~{d['estimated_output_tokens']} "
-                f"model={d['model']} dollars~${d['estimated_dollars']:.4f}"
+                f"model={d['model']} dollars~${d['estimated_dollars']:.4f} "
+                "(token-based estimate; claude-code billing is subscription, not per-call)"
             )
 
     return 0
