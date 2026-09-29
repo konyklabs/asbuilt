@@ -397,6 +397,7 @@ def test_claude_code_client_missing_usage_triggers_countingclients_estimate(
     assert wrapped.input_tokens > 0  # CountingClient's own len(text)//4 estimate, not zero
 
 
+@pytest.mark.fixture
 def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -423,6 +424,7 @@ def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
     assert not marker_path.exists()  # the fake claude was never actually run
 
 
+@pytest.mark.fixture
 def test_extractor_model_records_usage_in_output_and_prints_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
@@ -478,6 +480,7 @@ def test_extractor_model_records_usage_in_output_and_prints_it(
     assert "dollars~$0.0021" in printed
 
 
+@pytest.mark.fixture
 def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
@@ -528,6 +531,7 @@ def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
     assert "STOPPED at the budget threshold" in printed
 
 
+@pytest.mark.fixture
 def test_extractor_model_provider_failure_keeps_output_and_exits_2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
@@ -572,6 +576,7 @@ def test_extractor_model_provider_failure_keeps_output_and_exits_2(
     assert "FAILED mid-run" in printed and "must never be surfaced" not in printed
 
 
+@pytest.mark.fixture
 def test_extractor_model_budget_stop_halts_the_run_under_all_steps(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
@@ -654,6 +659,7 @@ def test_dry_run_adds_the_measured_per_call_overhead_at_the_cache_creation_rate(
     assert result.priced_input_as == "cache_creation"
 
 
+@pytest.mark.fixture
 def test_extractor_dry_run_and_rules_carry_no_model_usage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

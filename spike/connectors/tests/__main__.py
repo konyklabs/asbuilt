@@ -9,8 +9,10 @@ executed — ``valid_from`` the step, claim), plus ``contradiction_candidates``,
 ``flaky``, ``skipped`` node ids, and ``counts``; after a real model run
 also ``model_usage`` (provider, model, skeletons requested, results, calls,
 token kinds, seconds, dollars at the assumed price table, ``usage_missing``,
-and ``stopped``/``failed`` when the run did not complete — its facts are
-kept either way, the run halts there even under ``--all-steps``, the file
+and ``stopped``/``failed`` when the run did not complete — every fact
+extracted before the refused call is kept (the call that crosses the
+threshold is counted but its response discarded, so ``results`` is one
+below ``calls`` on a stop), the run halts there even under ``--all-steps``, the file
 is ``tests-<step>-stopped.json``/``-failed.json`` unless ``--out`` was
 given; exit 3 on a budget stop, 2 on a provider failure).
 ``--all-steps`` does every history step (c1..c6). Builds the fixture first
@@ -181,7 +183,7 @@ def build_step_output(
             # A provider error mid-run: same treatment, recorded as `failed`
             # (the error's own first line, never a credential), exit 2.
             model_results, counting = exc.results, exc.client
-            failed = str(exc).splitlines()[0] if str(exc) else "provider error"
+            failed = next((ln for ln in str(exc).splitlines() if ln.strip()), "provider error")
         rules_by_id = {
             **rules_by_id,
             **{r["node_id"]: _rule_from_model_result(r) for r in model_results},
@@ -384,8 +386,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             if u["stopped"]:
                 print(
-                    f"  STOPPED at the budget threshold ({u['stopped']}): the facts above "
-                    f"the {u['results']} extracted keep their rules guess; see build/stop-*.json "
+                    f"  STOPPED at the budget threshold ({u['stopped']}): {u['results']} facts "
+                    f"extracted before the refused call are kept (the crossing call's response "
+                    "is discarded), the rest keep their rules guess; see build/stop-*.json "
                     "and comment on the driving issue before continuing"
                 )
                 stopped_runs += 1
@@ -412,8 +415,12 @@ def main(argv: list[str] | None = None) -> int:
                 f"(of which per-call overhead~{d['estimated_overhead_tokens']}) "
                 f"output_tokens~{d['estimated_output_tokens']} "
                 f"model={d['model']} dollars~${d['estimated_dollars']:.4f} "
-                "(token-based estimate at the cache-creation rate; claude-code billing is "
-                "subscription, not per-call)"
+                f"(token-based estimate at the {d['priced_input_as']} rate; "
+                + (
+                    "claude-code billing is subscription, not per-call)"
+                    if args.provider == "claude-code"
+                    else "the anthropic provider bills the API key per call)"
+                )
             )
 
     return 3 if stopped_runs else 2 if failed_runs else 0

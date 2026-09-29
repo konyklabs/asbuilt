@@ -371,8 +371,10 @@ test still exists and hasn't passed again), `flaky` and `skipped` node ids,
 and `counts`. After a real model run the file also carries `model_usage`
 (provider, model, skeletons requested, results, calls, input/output/cache
 tokens, seconds, dollars at the assumed price table, `usage_missing`, and
-`stopped` or `failed` when the run did not complete: the facts already paid
-for are kept, the rest keep their rules guess, the run halts there even
+`stopped` or `failed` when the run did not complete: every fact extracted
+before the refused call is kept (the call that crosses the threshold is
+counted, its response discarded, so `results` is one below `calls` on a
+stop), the rest keep their rules guess, the run halts there even
 under `--all-steps` (the next step would spend the same budget again on a
 fresh counting client), the file is named `tests-<step>-stopped.json` or
 `-failed.json` unless `--out` was given, and the CLI exits 3 on a budget
