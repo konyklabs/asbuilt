@@ -12,6 +12,7 @@ anywhere in this file."""
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 from pathlib import Path
@@ -23,6 +24,7 @@ import connectors.tests.__main__ as main_module
 from bench.llm import Budget, BudgetExceeded
 from connectors.tests.collect import Skeleton
 from connectors.tests.extract_model import (
+    DEFAULT_MODEL,
     ClaudeCodeClient,
     _claude_code_oauth_token,
     extract_with_model,
@@ -415,6 +417,81 @@ def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
 
     assert exit_code == 0
     assert not marker_path.exists()  # the fake claude was never actually run
+
+
+def test_extractor_model_records_usage_in_output_and_prints_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """asbuilt#15: the first real model run made its calls but recorded
+    nothing about them — `build_step_output` discarded the `CountingClient`
+    and only the counts line printed. With the fake `claude` on PATH
+    (123 input / 45 output / 7 cache-read tokens per call) a `--limit 2` run
+    must write a `model_usage` block into the output JSON and print one
+    line with the same numbers."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--limit",
+            "2",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    usage = output["model_usage"]
+    assert usage["provider"] == "claude-code"
+    assert usage["model"] == DEFAULT_MODEL
+    assert usage["skeletons_called"] == 2
+    assert usage["results"] == 2
+    assert usage["calls"] == 2
+    assert (usage["input_tokens"], usage["output_tokens"]) == (246, 90)
+    assert (usage["cache_creation_tokens"], usage["cache_read_tokens"]) == (0, 14)
+    assert usage["usage_missing"] is False
+    assert usage["dollars"] == pytest.approx((246 * 3.0 + 90 * 15.0 + 14 * 0.30) / 1e6, abs=1e-6)
+    assert usage["elapsed_seconds"] >= 0
+    assert output["counts"]["statements"] > 2  # the other skeletons kept their rules facts
+    printed = capsys.readouterr().out
+    assert "  model: provider=claude-code" in printed
+    assert "calls=2 input_tokens=246 output_tokens=90 cache_tokens=14" in printed
+    assert "dollars~$0.0021" in printed
+
+
+def test_extractor_dry_run_and_rules_carry_no_model_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The other side of asbuilt#15: `model_usage` appears only after a real
+    model run — never on the rules path, never on a dry run."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    for extra in (["--extractor", "rules"], ["--extractor", "model", "--model-dry-run"]):
+        out_dir = tmp_path / ("out-" + "-".join(extra).strip("-"))
+        assert (
+            main_module.main(
+                ["--fixture", str(fixture_root), "--step", "c6", "--out", str(out_dir), *extra]
+            )
+            == 0
+        )
+        assert "model_usage" not in json.loads((out_dir / "tests-c6.json").read_text())
 
 
 def test_claude_code_oauth_token_falls_back_to_config_file(

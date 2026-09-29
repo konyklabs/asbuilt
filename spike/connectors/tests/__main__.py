@@ -141,6 +141,7 @@ def build_step_output(
     rules = extract_all(skeletons, _source_lookup(timeline, step))
     rules_by_id = {r.node_id: r for r in rules}
 
+    model_usage: dict[str, Any] | None = None
     if extractor == "model" and not model_dry_run_enabled:
         # Review fix, asbuilt#8 (hazard): `--model-dry-run` promises no call
         # under any extractor — `not model_dry_run_enabled` is what makes
@@ -157,13 +158,14 @@ def build_step_output(
         # model never saw keeps its rules-extractor guess, already in
         # `rules_by_id` from `extract_all` above.
         model_skeletons = skeletons[:limit] if limit is not None else skeletons
-        model_results, _wrapped = extract_with_model(
+        model_results, counting = extract_with_model(
             model_skeletons, rules_by_id, client_factory=PROVIDERS[provider]
         )
         rules_by_id = {
             **rules_by_id,
             **{r["node_id"]: _rule_from_model_result(r) for r in model_results},
         }
+        model_usage = _model_usage(counting, provider, len(model_skeletons), len(model_results))
 
     facts: list[dict[str, Any]] = []
     contradiction_candidates: list[dict[str, Any]] = []
@@ -215,8 +217,36 @@ def build_step_output(
     if model_dry_run_enabled:
         result = model_dry_run(skeletons, rules_by_id)
         output["model_dry_run"] = dataclasses.asdict(result)
+    if model_usage is not None:
+        output["model_usage"] = model_usage
 
     return output
+
+
+def _model_usage(
+    counting: Any, provider: str, skeletons_called: int, results: int
+) -> dict[str, Any]:
+    """What a real model run cost, read off the `CountingClient` that
+    `extract_with_model` returns (asbuilt#15: the first real run recorded
+    nothing — the client was discarded and only the counts line printed).
+    `dollars` is at the assumed price table (`PRICE_TABLE`), a token-priced
+    estimate: the claude-code provider bills the subscription. `usage_missing`
+    is true when any call came back without usage and the client's own
+    estimate stood in for it."""
+    return {
+        "provider": provider,
+        "model": counting.model,
+        "skeletons_called": skeletons_called,
+        "results": results,
+        "calls": counting.calls,
+        "input_tokens": counting.input_tokens,
+        "output_tokens": counting.output_tokens,
+        "cache_creation_tokens": counting.cache_creation_tokens,
+        "cache_read_tokens": counting.cache_read_tokens,
+        "elapsed_seconds": round(counting.elapsed_seconds, 3),
+        "dollars": round(counting.dollars(), 6) if counting.prices is not None else None,
+        "usage_missing": counting.usage_missing,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -300,6 +330,18 @@ def main(argv: list[str] | None = None) -> int:
             f"candidates={c['candidates']} flaky={c['flaky']} skipped={c['skipped']}"
         )
         print(line)
+        if "model_usage" in output:
+            u = output["model_usage"]
+            dollars = "n/a" if u["dollars"] is None else f"${u['dollars']:.4f}"
+            print(
+                f"  model: provider={u['provider']} model={u['model']} "
+                f"skeletons={u['skeletons_called']} results={u['results']} calls={u['calls']} "
+                f"input_tokens={u['input_tokens']} output_tokens={u['output_tokens']} "
+                f"cache_tokens={u['cache_creation_tokens'] + u['cache_read_tokens']} "
+                f"seconds={u['elapsed_seconds']} dollars~{dollars}"
+                f"{' usage_missing' if u['usage_missing'] else ''} "
+                "(token-priced estimate; claude-code billing is subscription, not per-call)"
+            )
         if args.model_dry_run:
             d = output["model_dry_run"]
             print(
