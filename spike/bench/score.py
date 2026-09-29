@@ -152,11 +152,15 @@ keep passing at 1.0/1.0):
   returned statement, and the returned statement may add numbers only of a
   kind the fact does not use (the cents beside the dollars, the count
   beside the rate — ``_numbers_compatible``). A second value of the fact's
-  own kind still fails: a hedge naming both 45 and 30 minutes matches
-  neither fact, so the contradiction winner check cannot credit it (the
-  first draft of this change let it match both; a local lens round caught
-  it). A fact naming no quantity admits none ("every 2 hours" is not
-  "every hour"). Eight of the run's 24 facts had been vetoed on the old
+  own kind still fails on the statement path, and the boundary escape
+  (`_boundary_numbers_ok`) admits extras of other kinds only: a hedge
+  naming both 45 and 30 minutes, or both 3 and 2 bikes, matches neither
+  fact, so the contradiction winner check cannot credit it (the first
+  draft let it match both, the second allowed the claim value's immediate
+  neighbour; two local lens rounds caught them). On the claim path a
+  candidate whose own claim names the truth value is decided by that
+  claim, as it always was. A fact naming no quantity admits none ("every
+  2 hours" is not "every hour"). Eight of the run's 24 facts had been vetoed on the old
   set-equality rule; the ones vetoed on a competing count of the fact's
   own kind stay vetoed by design.
 * Flag state: ``off`` is a state, not a negation. ``_flag_states`` reads
@@ -167,15 +171,18 @@ keep passing at 1.0/1.0):
   thing without the word was vetoed as a polarity flip.
 * Claims decide the match on their own only when they AGREE in full. A
   value conflict on the same quantity (attributes match) vetoes, as
-  before. A claim that agrees on the value but names the entity, attribute
-  or unit in its own vocabulary (the model's ``refund`` for the truth's
-  rule entity, ``severityThresholdToPause`` for ``min_severity``, ``days``
-  for ``day``) hands the decision to the statement rule instead of
-  vetoing — unless its attribute shares no word with the fact at all
-  (``retries`` against "first 30 minutes are free"), which is a different
-  quantity and still a veto. Attributes are split at camelCase boundaries
-  before comparison; money units fold cents to dollars
-  (``_normalise_unit``) before values are compared.
+  before, whatever the attribute says (a claim of 45 on a statement that
+  says 30 is a candidate at odds with itself, not a paraphrase); so does a
+  different attribute (``retries``, or ``snapshot_interval`` against a
+  snapshot-retention fact — a different quantity) or a different unit
+  after folding. A claim that agrees on value, attribute (after camelCase
+  splitting, ``faultReportLockThreshold`` for ``fault_reports``) and unit
+  (``days`` for ``day``, cents for dollars) but names the ENTITY its own way
+  (the model's ``refund`` table for the truth's rule entity) hands the
+  decision to the statement rule instead of vetoing. A second local lens
+  round showed that no word rule tells ``severityThresholdToPause`` from
+  ``snapshot_interval`` against ``min_severity``/``snapshot_retention``, so
+  attribute vocabulary is not forgiven and the first is a miss by design.
 * The judged set's own numbers are pinned in ``tests/test_score.py`` at
   precision 1.0 and a recall floor, deliberately not 1.0: the remaining
   misses are narratives of the test scenario, a negated side clause, a
@@ -658,25 +665,6 @@ def _attributes_match(returned_attr: Any, truth_attr: Any) -> bool:
     return a == b or _text_similarity(a, b) >= _SIMILARITY_THRESHOLD
 
 
-def _attribute_about(returned_attr: Any, truth_statement: str, truth_attr: Any) -> bool:
-    """Whether a returned claim's attribute is about the fact at all: at
-    least one of its content words (three letters or more, after camelCase
-    and snake_case splitting) occurs in the truth statement or the truth
-    attribute. `eligible_window_days` is about "...more than 14 days after
-    the ride ended..."; `retries` is not about "first 30 minutes are free"
-    (konyklabs/asbuilt#17)."""
-    if returned_attr is None:
-        return False
-    words = {
-        w for w in _words(_split_camel(str(returned_attr))) if len(w) >= 3 and w not in _STOPWORDS
-    }
-    target = set(_words(truth_statement)) | set(_words(_split_camel(str(truth_attr or ""))))
-    return bool(words & target)
-
-
-_STOPWORDS = frozenset(
-    "the and for per its are was has not all any one two with from into than then this that".split()
-)
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 
@@ -751,7 +739,7 @@ def _boundary_numbers_ok(
             value_token is not None
             and value_token in returned_numbers
             and truth_numbers <= returned_numbers
-            and _extras_are_neighbours(returned_numbers - truth_numbers, truth_numbers, value_token)
+            and _extras_of_other_kinds(returned_numbers - truth_numbers, truth_numbers)
         )
     if returned_claim is not None and truth_claim is None:
         value_token = _claim_value_as_number_token(
@@ -765,22 +753,17 @@ def _boundary_numbers_ok(
     return False
 
 
-def _extras_are_neighbours(extras: set[str], truth_numbers: set[str], value_token: str) -> bool:
+def _extras_of_other_kinds(extras: set[str], truth_numbers: set[str]) -> bool:
     """konyklabs/asbuilt#17: the boundary pair a claim justifies ("a
     30-minute ride costs $0.00 and a 31-minute ride costs $0.15" against
-    "30") may add numbers of another kind freely, but a number of the
-    claim's own kind only as its immediate neighbour (30 -> 31): a second
-    value further away is a competing value, and a hedge naming both 45
-    and 30 minutes is exactly the statement this rule must not admit."""
+    "30") may add numbers of another kind (the amounts), never a second
+    number of the claim's own kind: a first draft allowed the claim value's
+    immediate neighbour (31), and a second local lens round showed that
+    re-admits the hedge for every contradiction whose two values differ by
+    one (3 against 2 bikes). The boundary sentence's "31 minutes" is then a
+    miss by design — a token matcher cannot tell it from a competing value."""
     truth_kinds = {_number_kind(t) for t in truth_numbers}
-    value = _numeric_claim_value(value_token.lstrip("$").rstrip("%"))
-    for extra in extras:
-        if _number_kind(extra) not in truth_kinds:
-            continue
-        number = _numeric_claim_value(extra.lstrip("$").rstrip("%"))
-        if value is None or number is None or abs(number - value) > 1:
-            return False
-    return True
+    return all(_number_kind(extra) not in truth_kinds for extra in extras)
 
 
 def _claim_is_comparable(returned_claim: dict[str, Any], truth_claim: dict[str, Any]) -> bool:
@@ -858,27 +841,37 @@ def _statement_matches(
             # facts were lost to that veto with statements at 0.42-0.91.
             if _claims_match(returned_claim, truth_claim):
                 return True
-            same_quantity = _attributes_match(
-                returned_claim.get("attribute"), truth_claim.get("attribute")
-            )
             values_agree = _claim_values_match(
                 returned_claim.get("value"),
                 truth_claim.get("value"),
                 returned_claim.get("unit"),
                 truth_claim.get("unit"),
             )
-            if same_quantity and not values_agree:
+            if not values_agree:
+                # A comparable claim whose value disagrees with the fact's
+                # always vetoes (30 against 45; a claim of 45 on a statement
+                # that says 30 is a candidate at odds with itself, not a
+                # paraphrase — a second local lens round's case).
                 return False
-            if not same_quantity and not _attribute_about(
-                returned_claim.get("attribute"), truth_statement, truth_claim.get("attribute")
+            if not _attributes_match(returned_claim.get("attribute"), truth_claim.get("attribute")):
+                # Same entity, same number, another attribute: a different
+                # quantity (`retries`; `snapshot_interval` against a
+                # retention fact) — still a veto, as on main. No word rule
+                # tells `severityThresholdToPause` from `snapshot_interval`
+                # against `min_severity`/`snapshot_retention` (both share one
+                # word of two), so the first is a miss by design.
+                return False
+            returned_unit, truth_unit = returned_claim.get("unit"), truth_claim.get("unit")
+            if (
+                returned_unit is not None
+                and truth_unit is not None
+                and _normalise_unit(returned_unit)[0] != _normalise_unit(truth_unit)[0]
             ):
-                # A claim on the same entity with the same number but an
-                # attribute that shares no word with the fact (`retries`
-                # against "first 30 minutes are free") is a different
-                # quantity: still a veto, as the calibration set has always
-                # required.
                 return False
-        returned_claim = None  # vocabulary-only disagreement -> the statement decides
+        # Value, attribute and unit agree; only the claim's ENTITY is the
+        # candidate's own (the model's `refund` for the truth's rule entity):
+        # the statement decides, as if the returned claim were absent.
+        returned_claim = None
 
     if _names_http_code(truth_statement):
         # The fact is about the response: its code is a value to agree on
@@ -902,11 +895,19 @@ def _statement_matches(
 # naming the response code beside the fact's own number is not a different
 # fact, and a truth fact about the response ("returns HTTP 409") compares
 # on its words. Everything else the regex leaves is a quantity.
+# Without "HTTP", a three-digit number after "returns"/"with a" is a code
+# only where a code reads as one: followed by punctuation, the end, or a
+# response word — never by a unit or a noun ("with a 250 limit", "with a
+# 300 second delay" are quantities; a second local lens round's case).
+_CODE_END = (
+    r"(?=\s*(?:[,.;:)]|$)"
+    r"|\s+(?:response|status|error|with|and|or|body|returning|because|when|so|then|for|to|if)\b)"
+)
 _HTTP_CODE_RE = re.compile(
     r"\bHTTP\s+[1-5]\d\d\b"
     r"|\b(?:returns?|returning|returned|responds?\s+with|succeeds?\s+with|refused\s+with|"
     r"rejected\s+with|fails?\s+with|with\s+an?|an?\s+status(?:\s+code)?(?:\s+of)?|status\s+code)"
-    r"\s+[1-5]\d\d\b",
+    r"\s+[1-5]\d\d\b" + _CODE_END,
     re.IGNORECASE,
 )
 
@@ -2476,13 +2477,18 @@ def score_test_connector(
     er_stats = _entity_resolution_stats(matches, expected)
     er_stats["precision"] = _ratio(er_stats["tp"], er_stats["returned"])
     er_stats["recall"] = _ratio(er_stats["tp"], er_stats["expected"])
-    # Claim-first matching (konyklabs/asbuilt#8): a match decided entirely
-    # by _claims_match (both sides carry a claim) vs. one that fell through
-    # to the statement rule (see _statement_matches) — post-hoc, from the
-    # same "both sides have a claim" condition _statement_matches itself
-    # branches on, not a second source of truth.
+    # Claim-first matching (konyklabs/asbuilt#8, narrowed by #17): a match
+    # the claim decided on its own (both sides carry one, comparable, and
+    # `_claims_match` agrees in full) vs. one the statement rule decided —
+    # since #17 a both-claims pair can fall through to the statement, so
+    # "both have a claim" no longer means "decided by the claim".
     matched_by_claim = sum(
-        1 for rf, fid in matches if rf.get("claim") is not None and expected[fid].claim is not None
+        1
+        for rf, fid in matches
+        if rf.get("claim") is not None
+        and expected[fid].claim is not None
+        and _claim_is_comparable(rf["claim"], expected[fid].claim)
+        and _claims_match(rf["claim"], expected[fid].claim)
     )
     matched_by_statement = len(matches) - matched_by_claim
 

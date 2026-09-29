@@ -200,8 +200,8 @@ uv sync
    design — the misses are narratives of a test scenario, not matcher
    defects). The rules a fuller statement is held to — HTTP codes set
    aside, extra numbers only of a kind the fact does not use, flag state as
-   its own polarity, a claim in the candidate's own vocabulary handed to
-   the statement rule — are in the module docstring under asbuilt#17.
+   its own polarity, a claim naming the entity its own way handed to the
+   statement rule — are in the module docstring under asbuilt#17.
 
 5. **Check the fixture's own consistency** (a library call, not yet a CLI):
 

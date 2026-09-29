@@ -1226,22 +1226,6 @@
     unit: usd
 - truth_id: F-022
   truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
-  source: rule-positive
-  candidate: Rebalancing is paused while the latest Skyglass severity is 3 or higher.
-  expect: true
-  why: a camelCase attribute in the code's own words; the statement decides
-  truth_claim:
-    entity: E-rule-storm-pause
-    attribute: min_severity
-    value: 3
-    unit: null
-  candidate_claim:
-    entity: stormPause
-    attribute: severityThresholdToPause
-    value: 3
-    unit: null
-- truth_id: F-022
-  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
   source: rule-negative
   candidate: Rebalancing is paused while the latest Skyglass severity is 3 or higher.
   expect: false
@@ -1267,3 +1251,36 @@
     attribute: free_minutes
     value: 30
     unit: minute
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: rule-positive
+  candidate: A refund requested more than 14 days after the ride ended is rejected.
+  expect: true
+  why: the claim names the refunds table where the truth's claim sits on the rule; value, attribute and
+    unit agree, the statement decides
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+  candidate_claim:
+    entity: refund
+    attribute: window
+    value: 14
+    unit: days
+- truth_id: F-103
+  truth: Database snapshots are kept for 14 days.
+  source: rule-negative
+  candidate: Database snapshots are taken every 14 days.
+  expect: false
+  why: 'the same entity and number under another attribute: a different quantity'
+  truth_claim:
+    entity: E-dockyard
+    attribute: snapshot_retention
+    value: 14
+    unit: day
+  candidate_claim:
+    entity: dockyard
+    attribute: snapshot_interval
+    value: 14
+    unit: day

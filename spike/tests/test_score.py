@@ -2001,9 +2001,15 @@ def test_claim_value_as_number_token_renders_by_unit():
 
 def test_boundary_numbers_ok_requires_subset_and_membership():
     truth_claim = {"value": 30, "unit": "minute"}
-    # returned names extra numbers but contains everything truth's own
-    # statement names, and the claim's own value is among them.
-    assert _boundary_numbers_ok({"30", "31", "$0.15"}, {"30"}, None, truth_claim)
+    # returned names extra numbers of ANOTHER kind (the amounts), contains
+    # everything truth's own statement names, and the claim's own value is
+    # among them.
+    assert _boundary_numbers_ok({"30", "$0", "$0.15"}, {"30"}, None, truth_claim)
+    # an extra of the claim's own kind is a competing value, not a boundary:
+    # "31 minutes" beside 30 is refused (konyklabs/asbuilt#17 — the first
+    # draft allowed the immediate neighbour, which re-admitted the hedge for
+    # every contradiction whose values differ by one).
+    assert not _boundary_numbers_ok({"30", "31", "$0.15"}, {"30"}, None, truth_claim)
     # returned is missing one of truth's own numbers -> not a superset.
     assert not _boundary_numbers_ok({"31", "$0.15"}, {"30", "99"}, None, truth_claim)
     # the claim's value never appears in the other side's numbers at all.
@@ -2205,7 +2211,7 @@ def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
     changing the matcher needs a judged pair in each direction, never the
     model's output alone."""
     pairs = load_calibration(SPIKE_ROOT / "tests/fixtures/calibration-model-run.yaml")
-    assert len(pairs) == 89
+    assert len(pairs) == 90
     truth = load_truth(SPIKE_ROOT / "truth")
     report = calibrate(pairs, build_mention_index(truth), build_alias_index(truth), truth.entities)
     assert report["fp"] == 0, report["misclassified"]
@@ -2214,7 +2220,7 @@ def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
     assert report["recall"] < 0.9  # an honest floor: see the docstring
     # every targeted rule pair (both directions) must hold exactly
     rule_pairs = [p for p in pairs if str(p.get("source", "")).startswith("rule-")]
-    assert len(rule_pairs) == 17
+    assert len(rule_pairs) == 18
     missed_rule_pairs = [
         m for m in report["misclassified"] if str(m.get("source", "")).startswith("rule-")
     ]
@@ -2336,12 +2342,13 @@ def test_http_status_codes_are_set_aside_unless_the_fact_is_about_the_response()
     )
 
 
-def test_claim_in_the_candidates_own_vocabulary_lets_the_statement_decide():
-    """A comparable claim that agrees on the value but names the attribute
-    its own way (`severityThresholdToPause` against `min_severity`) no
-    longer vetoes: the statement decides. A claim on the same entity and
-    value whose attribute is about something else entirely (`retries`)
-    still vetoes, and a value conflict on the same attribute always does."""
+def test_claim_naming_the_entity_its_own_way_lets_the_statement_decide():
+    """A comparable claim decides the match when it agrees in full; a value
+    conflict, another attribute (a different quantity; `snapshot_interval`
+    against a retention fact was the second lens round's case, and no word
+    rule separates it from a camelCase paraphrase) or another unit vetoes;
+    only a claim naming the ENTITY its own way, with value, attribute and
+    unit agreeing, hands the decision to the statement."""
     truth = load_truth(MINI_ROOT / "truth")
     index = build_alias_index(truth)
     truth_fact = TruthFact(
@@ -2359,34 +2366,36 @@ def test_claim_in_the_candidates_own_vocabulary_lets_the_statement_decide():
         },
     )
 
-    def fact(attribute: str, value, unit="minute", statement="A member's free minutes are 15."):
+    def fact(entity: str, attribute: str, value, unit="minute"):
         return resolve_fact_entities(
             {
-                "statement": statement,
+                "statement": "A member's free minutes are 15.",
                 "entities": ["Farebox", "member-free-minutes"],
                 "category": "business-logic",
                 "citations": [{"document": "wiki/x"}],
-                "claim": {
-                    "entity": "member-free-minutes",
-                    "attribute": attribute,
-                    "value": value,
-                    "unit": unit,
-                },
+                "claim": {"entity": entity, "attribute": attribute, "value": value, "unit": unit},
             },
             index,
             truth.entities,
         )
 
-    # camelCase with the same words; a different attribute about minutes (the
-    # statement decides); an attribute about something else; the same quantity
-    # with another value. A related-but-different attribute with another value
-    # (`minutesBeforeBilling`, 30) is not a conflict: it may be another quantity
-    # of the same rule, and the statement decides.
-    assert facts_match(fact("memberFreeMinuteAllowance", 15), truth_fact)
-    assert facts_match(fact("minutesBeforeBilling", 15), truth_fact)
-    assert not facts_match(fact("retries", 15), truth_fact)
-    assert not facts_match(fact("free_minutes", 30), truth_fact)
-    assert facts_match(fact("minutesBeforeBilling", 30), truth_fact)
+    assert facts_match(
+        fact("member-free-minutes", "memberFreeMinutes", 15), truth_fact
+    )  # camelCase
+    assert facts_match(
+        fact("member-free-minutes", "free_minutes", 15, "minutes"), truth_fact
+    )  # plural
+    assert not facts_match(fact("member-free-minutes", "retries", 15), truth_fact)  # other quantity
+    assert not facts_match(fact("member-free-minutes", "minutesBeforeBilling", 15), truth_fact)
+    assert not facts_match(fact("member-free-minutes", "free_minutes", 30), truth_fact)  # value
+    assert not facts_match(
+        fact("member-free-minutes", "free_minutes", 15, "hour"), truth_fact
+    )  # unit
+    # the entity named the candidate's way: resolves to the service, not the
+    # rule; value, attribute and unit agree, so the statement decides
+    other = fact("Farebox", "free_minutes", 15)
+    assert other["claim"]["_resolved_entities"] == ["E-farebox"]
+    assert facts_match(other, truth_fact)
 
 
 def test_claim_units_fold_cents_to_dollars_and_plurals_to_singular():
