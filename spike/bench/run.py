@@ -3,7 +3,16 @@ over warm repeats, and writes raw results.
 
 CLI: ``uv run python bench/run.py --prototype null [--fixture .]
 [--out build/results-null.json] [--through-step c6] [--repeats 20]
-[--budget-tokens N] [--budget-dollars N] [--reset] [--incremental]``.
+[--budget-tokens N] [--budget-dollars N] [--reset] [--incremental]
+[--only-surfaces explain,contradictions] [--transcript build/transcripts/<arm>-<step>.md]``.
+
+``--only-surfaces`` (asbuilt#9) restricts the query mix to the given
+comma-separated surface names before running anything — a subset run for a
+quick check or a smoke demo, never a different mix file. ``--transcript``
+writes a markdown file (``write_transcript``): one ``##`` section per query
+actually run, each with the question, the answer (facts as lines, or the
+`ask` sentences) and its citations — so a benchmark run's own output is
+usable as a demo script, not just a scored artefact.
 
 Ingest-root integrity (D-013): ``ingest()`` is never handed the raw fixture.
 ``assemble_ingest_root`` builds ``build/ingest/`` from three things only —
@@ -205,6 +214,14 @@ def assemble_ingest_root(fixture_root: Path, through_step: str, ingest_root: Pat
             if step_ids.index(step) <= through_index:
                 shutil.copy2(report_path, runs_dst / report_path.name)
 
+    # Records which history step this root was assembled through — not
+    # fixture content, just the one fact a prototype needs to resolve a
+    # `code/<path>` citation's version against `build/commits.json` (asbuilt#9:
+    # prototypes/baseline reads this to avoid guessing at the step from
+    # commits.json alone, which breaks once that file holds steps beyond
+    # this root's own, e.g. after a full `bench/build.py` run).
+    (ingest_root / "step.json").write_text(json.dumps({"step": through_step}) + "\n")
+
     return ingest_root
 
 
@@ -297,6 +314,89 @@ def run_query(
     }
 
 
+def _format_citations(citations: list[dict[str, Any]] | None) -> str:
+    if not citations:
+        return "(no citations)"
+    parts = []
+    for c in citations:
+        document = c.get("document", "?")
+        location = c.get("location")
+        parts.append(f"{document}#{location}" if location else document)
+    return ", ".join(parts)
+
+
+def _format_fact_line(fact: dict[str, Any]) -> str:
+    tier = fact.get("tier", "?")
+    statement = fact.get("statement", "")
+    return f"- [{tier}] {statement} ({_format_citations(fact.get('citations'))})"
+
+
+def _query_question(query_out: dict[str, Any]) -> str:
+    """A one-line rendering of what was asked, from the query's own
+    `params` (`run_query`'s copy of every query field but `id`/`surface`) —
+    used by `write_transcript` (asbuilt#9) so a transcript reads as the
+    question, then the answer, never just the raw params dict."""
+    params = query_out.get("params") or {}
+    surface = query_out["surface"]
+    if surface == "explain":
+        return f"explain({params.get('entity')!r})"
+    if surface == "search":
+        return f"search({params.get('query')!r})"
+    if surface == "ask":
+        return f"ask({params.get('question')!r})"
+    if surface == "contradictions":
+        return f"contradictions({params.get('entity')!r})"
+    if surface == "stale":
+        return f"stale(since={params.get('since')!r})"
+    return f"{surface}({params!r})"
+
+
+def _render_transcript_entry(query_out: dict[str, Any]) -> str:
+    lines = [f"## {query_out.get('id')} — {_query_question(query_out)}", ""]
+    surface = query_out["surface"]
+    result = query_out.get("result")
+    if surface == "ask":
+        sentences = (result or {}).get("sentences") or []
+        if not sentences:
+            lines.append("(no answer)")
+        for sentence in sentences:
+            citations = _format_citations(sentence.get("citations"))
+            lines.append(f"- {sentence.get('text', '')} ({citations})")
+    elif surface == "contradictions":
+        items = result or []
+        if not items:
+            lines.append("(no contradictions)")
+        for contradiction in items:
+            a = contradiction.get("a") or {}
+            b = contradiction.get("b") or {}
+            winner = contradiction.get("winner")
+            winner_text = winner.get("statement") if winner else "undecided"
+            lines.append(f"- A: {_format_fact_line(a)}")
+            lines.append(f"  B: {_format_fact_line(b)}")
+            lines.append(f"  label={contradiction.get('label')}, winner={winner_text!r}")
+    else:  # explain, search, stale: list[Fact]
+        items = result or []
+        if not items:
+            lines.append("(no facts)")
+        for fact in items:
+            lines.append(_format_fact_line(fact))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_transcript(
+    path: Path, prototype_name: str, step: str, queries_out: list[dict[str, Any]]
+) -> None:
+    """Writes `path` (asbuilt#9): for every query, the question, the answer
+    (facts as lines, or the ask sentences) and the citations — so a
+    benchmark run's own output doubles as a demo script. Markdown, one `##`
+    section per query, in the query mix's own order."""
+    header = f"# {prototype_name} @ {step}\n\n"
+    body = "\n".join(_render_transcript_entry(q) for q in queries_out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(header + body)
+
+
 def run(
     fixture_root: Path,
     prototype_name: str,
@@ -307,6 +407,8 @@ def run(
     budget_tokens: int | None = None,
     budget_dollars: float | None = None,
     incremental: bool = False,
+    only_surfaces: frozenset[str] | None = None,
+    transcript_path: Path | None = None,
 ) -> dict[str, Any]:
     prototype = load_prototype(prototype_name)
     timeline = Timeline(fixture_root)
@@ -353,10 +455,20 @@ def run(
         ingest_report = prototype.ingest(assembled, ENTITY_KINDS, False)
 
     mix = load_mix(fixture_root / "queries" / "mix.yaml")
-    queries_out = [run_query(prototype, query, repeats) for query in mix["queries"]]
+    selected_queries = (
+        mix["queries"]
+        if only_surfaces is None
+        else [q for q in mix["queries"] if q["surface"] in only_surfaces]
+    )
+    queries_out = [run_query(prototype, query, repeats) for query in selected_queries]
+
+    prototype_display_name = getattr(prototype, "name", prototype_name)
+
+    if transcript_path is not None:
+        write_transcript(transcript_path, prototype_display_name, step, queries_out)
 
     result: dict[str, Any] = {
-        "prototype": getattr(prototype, "name", prototype_name),
+        "prototype": prototype_display_name,
         "fixture": str(fixture_root),
         "through_step": step,
         "phase": "incremental" if incremental else "full",
@@ -398,6 +510,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="two-phase ingest: second-to-last step, then the last with incremental=True",
     )
+    parser.add_argument(
+        "--only-surfaces",
+        default=None,
+        help="comma-separated surface names (e.g. explain,contradictions); default: every surface",
+    )
+    parser.add_argument(
+        "--transcript",
+        default=None,
+        help="write a cited markdown transcript (question, answer, citations) per query",
+    )
     args = parser.parse_args(argv)
 
     fixture_root = Path(args.fixture).resolve()
@@ -405,6 +527,15 @@ def main(argv: list[str] | None = None) -> int:
     if not out_path.is_absolute():
         out_path = Path.cwd() / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    only_surfaces = (
+        frozenset(s.strip() for s in args.only_surfaces.split(",") if s.strip())
+        if args.only_surfaces
+        else None
+    )
+    transcript_path = Path(args.transcript) if args.transcript else None
+    if transcript_path is not None and not transcript_path.is_absolute():
+        transcript_path = Path.cwd() / transcript_path
 
     if args.reset:
         # spike_root=fixture_root: in the documented invocation (`cd spike
@@ -423,6 +554,8 @@ def main(argv: list[str] | None = None) -> int:
             budget_tokens=args.budget_tokens,
             budget_dollars=args.budget_dollars,
             incremental=args.incremental,
+            only_surfaces=only_surfaces,
+            transcript_path=transcript_path,
         )
     except BudgetExceeded as exc:
         print(f"STOPPED: {exc}")

@@ -33,6 +33,56 @@ def test_run_null_on_mini_writes_results_file(tmp_path: Path, monkeypatch):
     assert all(q["result"] in ([], {"sentences": []}) for q in data["queries"])
 
 
+def test_run_only_surfaces_restricts_the_query_mix(tmp_path: Path, monkeypatch):
+    out_path = tmp_path / "results-null.json"
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--only-surfaces",
+            "explain,stale",
+        ]
+    )
+
+    assert exit_code == 0
+    data = json.loads(out_path.read_text())
+    assert {q["surface"] for q in data["queries"]} == {"explain", "stale"}
+
+
+def test_run_transcript_writes_one_section_per_query(tmp_path: Path, monkeypatch):
+    out_path = tmp_path / "results-null.json"
+    transcript_path = tmp_path / "transcripts" / "null-c4.md"
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--transcript",
+            str(transcript_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert transcript_path.is_file()
+    text = transcript_path.read_text()
+    assert text.startswith("# null @ c4")
+    assert "## q-explain-1 — explain('member-free-minutes')" in text
+    assert "## q-ask-1 — ask('How many free minutes does a member get?')" in text
+    assert "(no facts)" in text  # the null prototype answers nothing
+    assert "(no answer)" in text
+
+
 def test_assemble_ingest_root_excludes_truth_and_queries(tmp_path: Path):
     ingest_root = tmp_path / "ingest"
     result = assemble_ingest_root(MINI_ROOT, "c2", ingest_root)

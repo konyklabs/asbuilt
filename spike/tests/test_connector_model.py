@@ -420,10 +420,14 @@ def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
 def test_claude_code_oauth_token_falls_back_to_config_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    """`_claude_code_oauth_token` and `_CLAUDE_CODE_TOKEN_FILE` moved to
+    `bench.claude_code` (asbuilt#9) — `connectors.tests.extract_model` only
+    re-exports the names, so the module actually read at call time (and thus
+    the one to patch) is the new home, not the re-exporting one."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     token_file = tmp_path / "claude-code-oauth-token"
     token_file.write_text("file-token-do-not-print\n")
-    monkeypatch.setattr("connectors.tests.extract_model._CLAUDE_CODE_TOKEN_FILE", token_file)
+    monkeypatch.setattr("bench.claude_code._CLAUDE_CODE_TOKEN_FILE", token_file)
 
     assert _claude_code_oauth_token() == "file-token-do-not-print"
 

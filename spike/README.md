@@ -372,6 +372,135 @@ and `counts`. `--model-dry-run` additionally prints token/dollar totals
 without making a call. `connectors/tests/RUNNERS.md` documents how to
 actually produce `runs/` output for a CI-sourced corpus.
 
+## The baseline arm and the MCP adapter
+
+`prototypes/baseline/` (asbuilt#9) is the no-store baseline (D-013): the
+corpus handed to the model directly, no store behind it. `ingest()` reads
+the assembled ingest root into an in-memory document manifest — `code/<path>`
+for every non-binary file under `repo/` (skipping `node_modules` and the
+other directories `bench.build.EXCLUDED_DIRNAMES` already excludes),
+`wiki/<slug>`, `doc/<id>`, `ticket/<KEY>`, `pull/<n>` (one per file under
+`sources/<kind>/`, id = the filename stem) and `run/<id>` (one per
+`runs/*.json`) — and makes no model call: zero tokens, `documents` set to
+the manifest's size. Every query surface (`explain`, `search`, `ask`,
+`contradictions`, `stale`) then issues exactly one structured call through
+`bench.claude_code.structured_call`, wrapped in one `bench.llm.CountingClient`
+kept for the prototype's whole lifetime, so the 80% budget stop (D-013)
+applies across every query, not per call.
+
+Two variants, `ASBUILT_BASELINE_VARIANT` (default `full`):
+
+- **`full`**: the whole corpus goes into the prompt (a `=== <document id>
+  ===` header per document) alongside the query, the allowed entity kinds
+  and an output schema. If the corpus's estimated size (`len(text) // 4`
+  against `ASBUILT_BASELINE_MAX_TOKENS`, default 150k) is over the estimate,
+  that query falls back to the `grep` call instead.
+- **`grep`**: one headless `claude -p` call with tools enabled (`--tools
+  Read,Grep,Glob`), working directory set to the ingest root, and a turn cap
+  (`ASBUILT_BASELINE_GREP_TURNS`, default 6) — the model reads the corpus
+  itself; the prompt explains the on-disk layout and the document-id
+  convention it must reconstruct.
+
+A `code/<path>` citation's `version` is the SHA `build/commits.json`
+(`bench.build.build`'s own output) records for the ingest root's own history
+step, read from `step.json` — a small file `bench.run.assemble_ingest_root`
+now writes into every root it assembles, recording which `--through-step` it
+was built from, so an incremental run's two phase roots each resolve to
+their own correct step rather than guessing from `commits.json` alone (see
+`prototypes/baseline`'s module docstring for the narrower fallback used when
+a root wasn't produced by `assemble_ingest_root` at all).
+
+`bench/claude_code.py` (moved from `connectors/tests/extract_model.py`,
+which still re-exports every name so nothing that already imported it
+breaks) is `ClaudeCodeClient`'s new home: the `claude -p` subprocess
+provider, generalised to accept `tools`/`cwd`/`max_turns`/`timeout` so the
+baseline's `grep` variant can enable tools and set a working directory,
+which the test connector's own no-tools call never needed.
+`structured_call(client, system, prompt, schema)` is the generic "one
+structured call, through the one wrapped client" helper both the connector
+and every arm use.
+
+The prompt travels over stdin, never as an argv element (review fix,
+asbuilt#9): the `full` variant embeds the whole corpus — hundreds of KB on
+the real fixture — and Linux caps a single argv element around 128 KB
+(`ARG_MAX` is much larger, but the per-argument limit still applies; macOS
+tolerates it, which is why this shipped once uncaught). `subprocess.run(...,
+input=prompt)` also means a `claude -p` subprocess launched from inside
+`asbuilt_mcp.py`'s own stdio server never inherits the server's JSON-RPC
+pipe on stdin — it gets its own pipe, written once and closed. Every call
+also passes `--strict-mcp-config` (verified present via `claude -p --help`
+on the installed CLI) so it loads no project-scoped MCP servers — without
+it, a call made with `spike/` as its cwd would also try to load a
+`.mcp.json` there, if one existed — and has a `timeout` (default 600s,
+`ASBUILT_BASELINE_TIMEOUT` for the baseline arm) that raises `RuntimeError`
+rather than leaving a hung subprocess.
+
+### The MCP adapter
+
+`asbuilt_mcp.py` is a thin [FastMCP](https://gofastmcp.com) server over any
+`bench.protocol.Prototype` — the sequence's own promise (D-013): the
+invented system can be queried from a Claude Code session during the spike,
+using the same tool contract a real ingest would serve behind. Not named
+`mcp.py`: Python puts a script's own directory first on `sys.path` before
+any of its code runs, so a same-directory `mcp.py` shadows the real `mcp`
+package `fastmcp` itself imports (confirmed by trying it — a
+`ModuleNotFoundError` importing `mcp.server`, because the import resolved to
+this file instead of site-packages).
+
+`ASBUILT_ARM` selects the prototype (default `null`; `baseline`; later
+`b_postgres`, looked up the same way `bench.run.load_prototype` is);
+`ASBUILT_FIXTURE` names the fixture root to ingest FROM — this module
+assembles its own ingest root through the fixture's last history step,
+exactly as `bench/run.py` does for a scored run, never handing `ingest()`
+the raw fixture. Ingestion is lazy and thread-safe: the first tool call
+triggers it, guarded by a lock with a double check, since fastmcp 4.0.10
+runs sync tools in a threadpool and two requests can otherwise race to
+`ingest()` twice (a review-caught concurrency bug — two parallel first
+calls both rebuilding the ingest root).
+
+Tools: `search`, `explain` (an entity name), `entities` (a name lookup —
+`bench.protocol.Prototype` has no first-class entity directory, so this is
+derived: the distinct entity names across `search(name)`'s own returned
+facts, a stated interpretation, not a separate store query),
+`contradictions`, `stale`, `ask`. Every result carries `structuredContent`
+(the facts/sentences/contradictions with their citations) and a text block
+with the same content rendered as inline-cited lines. `search`/`explain`/
+`contradictions`/`stale` paginate with `limit`/`offset` (default page 20,
+capped at 100); invalid arguments and a failing prototype surface as MCP
+tool errors (`fastmcp.exceptions.ToolError`), never a raw exception.
+
+`uv sync --extra serve` installs `fastmcp` (pinned exact in `pyproject.toml`,
+since this is a dependency real Claude Code sessions load at runtime, not
+just this repo's own tests — also listed in the `dev` group so a plain
+`uv sync` already has it for `tests/test_asbuilt_mcp.py`'s in-process
+client). `plugin/.claude-plugin/plugin.json` and `plugin/.mcp.json` register
+the server as a Claude Code plugin — in its own `plugin/` subdirectory, not
+`spike/` itself (review fix): `spike/` is the harness's own documented cwd
+for every `claude -p` benchmark call, and a `.mcp.json` sitting there too
+would be picked up as a *project-scoped* server on top of `--strict-mcp-
+config` guarding the calls this code makes itself, which is one hazard
+fewer to reason about. The command is `uv run --project
+${CLAUDE_PLUGIN_ROOT}/.. --extra serve python
+${CLAUDE_PLUGIN_ROOT}/../asbuilt_mcp.py` (`..` because the plugin root is
+`spike/plugin`, one level below the `uv` project and `asbuilt_mcp.py`
+itself), with `ASBUILT_ARM`/`ASBUILT_FIXTURE` passed through from the
+launching environment. Try it:
+
+```
+cd spike
+ASBUILT_ARM=baseline ASBUILT_FIXTURE=. claude --plugin-dir plugin
+# then, in the session: use the asbuilt MCP server's explain tool on "farebox"
+```
+
+### Trying a benchmark run's own transcript
+
+`bench/run.py --transcript build/transcripts/<arm>-<step>.md` writes a
+markdown file alongside the results JSON: one `##` section per query
+actually run, with the question, the answer (facts as lines, or the `ask`
+sentences) and its citations — so a benchmark run doubles as a demo script,
+not just a scored artefact. `--only-surfaces explain,contradictions` runs
+(and transcribes) just that subset of the query mix, for a quick check.
+
 ## Testing the harness itself
 
 `tests/fixtures/mini/` is a tiny, self-contained invented fixture used only
