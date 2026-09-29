@@ -7,19 +7,44 @@ from there so nothing that already imports it breaks).
 
 `ClaudeCodeClient` is the default provider (Oleg's decision: model calls run
 on his Claude Code subscription, never an API key). One subprocess per
-prompt, no vendor SDK: `-p`, `--output-format json`, `--model`, an optional
-`--json-schema` (pulled out of the Anthropic-shaped call's own
-`tools[0]["input_schema"]` — see `structured_call` below — so a caller never
-constructs the CLI flag directly), `--no-session-persistence`, and
-`--max-turns` (hidden from `claude --help`/`claude -p --help` on the
-installed CLI (2.1.284) but real and type-checked: `claude --max-turns
-notanumber --version` fails with "must be a number"). `tools`/`cwd`
-generalise the original test-connector-only call (which always ran with
-`--tools ""` and the parent's own cwd) so a caller that needs the model to
-read the corpus itself — the baseline arm's `grep` variant
+prompt, no vendor SDK: `-p` with NO inline prompt, `--output-format json`,
+`--model`, an optional `--json-schema` (pulled out of the Anthropic-shaped
+call's own `tools[0]["input_schema"]` — see `structured_call` below — so a
+caller never constructs the CLI flag directly), `--no-session-persistence`,
+`--strict-mcp-config`, and `--max-turns` (hidden from `claude --help`/
+`claude -p --help` on the installed CLI (2.1.284) but real and type-checked:
+`claude --max-turns notanumber --version` fails with "must be a number").
+`tools`/`cwd` generalise the original test-connector-only call (which always
+ran with `--tools ""` and the parent's own cwd) so a caller that needs the
+model to read the corpus itself — the baseline arm's `grep` variant
 (`prototypes/baseline`, asbuilt#9) — can pass `tools="Read,Grep,Glob"` and a
 working directory, while the connector's own no-tools, cwd-less call keeps
 working unchanged.
+
+**The prompt travels over stdin, never argv** (asbuilt#9 review, blocking):
+an earlier version passed it as `-p <prompt>`, one argv element — fine for a
+short test-connector prompt, but the baseline arm's `full` variant embeds
+the whole ingested corpus (hundreds of KB on the real fixture) in that same
+prompt, and Linux caps a single argv element around 128 KB (`ARG_MAX` is
+much larger, but the per-argument limit still applies; macOS tolerates it,
+which is why this shipped once before it was caught). `subprocess.run(...,
+input=prompt, text=True)` writes it to the child's stdin instead — the CLI
+reads `-p` with no value as "read the prompt from stdin", so nothing else
+about the call changes — and, as a side effect, this is also what keeps a
+`claude -p` subprocess launched from inside `asbuilt_mcp.py`'s own stdio
+server from inheriting the parent's JSON-RPC pipe on stdin (review point 2):
+`subprocess.run(input=...)` always gives the child its own pipe, written
+once and closed, never the parent's real stdin descriptor. `--strict-mcp-
+config` (review point 3, verified present on the installed CLI via `claude
+-p --help`) stops a `claude -p` call made from inside `spike/` from also
+loading `spike/.mcp.json` as a *project-scoped* server — that file exists
+for a person's own interactive `claude --plugin-dir spike/plugin` session,
+not for this module's own headless calls, and loading it added an
+unresolved-`${CLAUDE_PLUGIN_ROOT}` failure plus ~2s of startup to every
+timed query. `timeout` (default `DEFAULT_TIMEOUT_SECONDS`, review point 1)
+bounds the subprocess call; a `subprocess.TimeoutExpired` is turned into the
+same kind of `RuntimeError` every other failure path here raises, never a
+raw exception escaping to the caller.
 
 The schema-validated object comes back under `structured_output`, NOT
 `result` (`result` is the assistant's own prose text — read only as a
@@ -28,11 +53,15 @@ own). `is_error: true` or a `subtype` other than `"success"` is an error,
 reported with `result`'s own first line. `CLAUDE_CODE_OAUTH_TOKEN` is read
 from the environment or, if unset, `~/.config/konyklabs/claude-code-oauth-
 token` — placed into the subprocess's own env, which also has every
-`ANTHROPIC_*` variable stripped first (`_anthropic_credential_env`): in `-p`
-mode the CLI prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over the
-OAuth token whenever both are set, which would silently switch billing onto
-an API key the moment the parent process happens to export one. The token
-itself is never printed, never logged, never part of an exception message.
+`ANTHROPIC_*`, `CLAUDE_CODE_USE_*` (`_BEDROCK`/`_VERTEX`/`_FOUNDRY`) and
+`AWS_BEARER_TOKEN_BEDROCK` variable stripped first (`_isolated_credential_env`
+— exactly that list, nothing else in the parent environment is touched): in
+`-p` mode the CLI prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over the
+OAuth token whenever both are set, and any of the third-party-provider
+variables would redirect the call off the subscription entirely — either
+would silently switch billing or provider the moment the parent process
+happens to have one set (stack-B review, asbuilt#9). The token itself is
+never printed, never logged, never part of an exception message.
 
 `structured_call(client, system, prompt, schema, *, model=, max_tokens=,
 tool_name=)` is the generic, provider-agnostic helper both
@@ -58,6 +87,7 @@ from types import SimpleNamespace
 from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_TIMEOUT_SECONDS = 600.0
 
 DEFAULT_SYSTEM_PROMPT = (
     "You extract exactly one structured fact from a single test's own source "
@@ -95,9 +125,19 @@ def _usage_namespace_from_result(payload: dict[str, Any]) -> Any:
     fallback model fired mid-call) into `bench.llm.CountingClient`'s own
     response-usage shape. Field names are read defensively, camelCase (the
     Claude Code CLI's own convention) with a snake_case fallback, since this
-    shape is a stated assumption pending a real call (asbuilt#8)."""
+    shape is a stated assumption pending a real call (asbuilt#8).
+
+    Returns `None` when the payload carries no `modelUsage` at all (or an
+    empty one) — stack-B review, asbuilt#9: an earlier version returned a
+    zero-filled `SimpleNamespace` here instead, which `bench.llm.
+    CountingClient._call`'s `usage is None` check treats as genuine
+    zero-token usage, silently bypassing its own missing-usage estimate and
+    `usage_missing` flag rather than tripping them."""
+    model_usage = payload.get("modelUsage")
+    if not model_usage:
+        return None
     totals = {"input": 0, "output": 0, "cache_creation": 0, "cache_read": 0}
-    for usage in (payload.get("modelUsage") or {}).values():
+    for usage in model_usage.values():
         totals["input"] += usage.get("inputTokens", usage.get("input_tokens", 0)) or 0
         totals["output"] += usage.get("outputTokens", usage.get("output_tokens", 0)) or 0
         totals["cache_creation"] += (
@@ -122,15 +162,30 @@ def _matches_schema(obj: Any, schema: dict[str, Any]) -> bool:
     return isinstance(obj, dict) and all(key in obj for key in schema.get("required", []))
 
 
-def _anthropic_credential_env() -> dict[str, str]:
-    """A copy of the parent environment with every `ANTHROPIC_*` variable
-    removed — in `-p` mode the CLI prefers `ANTHROPIC_API_KEY` (and
-    `ANTHROPIC_AUTH_TOKEN`) over `CLAUDE_CODE_OAUTH_TOKEN` whenever both are
-    set, which would silently switch a claude-code call onto API-key billing
-    the moment the parent process happens to have one exported (review
-    finding, asbuilt#8). Only `CLAUDE_CODE_OAUTH_TOKEN` is added back, by the
-    caller, never any `ANTHROPIC_*` name."""
-    return {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_")}
+_STRIPPED_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_USE_")
+_STRIPPED_NAMES = ("AWS_BEARER_TOKEN_BEDROCK",)
+
+
+def _isolated_credential_env() -> dict[str, str]:
+    """A copy of the parent environment with every credential/provider
+    variable that could redirect a claude-code call away from Oleg's
+    subscription removed: every `ANTHROPIC_*` name (`ANTHROPIC_API_KEY`/
+    `ANTHROPIC_AUTH_TOKEN` are preferred by the CLI over
+    `CLAUDE_CODE_OAUTH_TOKEN` whenever both are set — review finding,
+    asbuilt#8), every `CLAUDE_CODE_USE_*` name (`CLAUDE_CODE_USE_BEDROCK`/
+    `_VERTEX`/`_FOUNDRY` switch the CLI onto a third-party provider), and
+    `AWS_BEARER_TOKEN_BEDROCK` (Bedrock's own bearer-token credential) —
+    stack-B review, asbuilt#9: any of these, inherited from the parent
+    process, would silently switch a call meant for the subscription onto a
+    different provider or billing path. This list is exactly what is
+    stripped; nothing else in the parent environment is touched. Only
+    `CLAUDE_CODE_OAUTH_TOKEN` is added back, by the caller, never any of the
+    names stripped here."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(_STRIPPED_PREFIXES) and k not in _STRIPPED_NAMES
+    }
 
 
 def _invoke_claude_code(
@@ -143,12 +198,14 @@ def _invoke_claude_code(
     tools: str = "",
     cwd: Path | None = None,
     max_turns: int = 1,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> Any:
     """One `claude -p` subprocess call — see the module docstring for the
-    flag choices and the credential rule. Returns an Anthropic-response-
-    shaped object (`.usage`, `.content` with one `tool_use` block carrying
-    the schema-validated dict, when `schema` is given) so `_extract_tool_input`
-    and `structured_call` need no provider-specific branch at all.
+    flag choices, the stdin-not-argv rule and the credential rule. Returns
+    an Anthropic-response-shaped object (`.usage`, `.content` with one
+    `tool_use` block carrying the schema-validated dict, when `schema` is
+    given) so `_extract_tool_input` and `structured_call` need no
+    provider-specific branch at all.
 
     `structured_output` is read first; `result` is only a fallback, and only
     when it happens to already be schema-shaped JSON on its own — prose in
@@ -158,16 +215,17 @@ def _invoke_claude_code(
     not a process-level one). `tools`/`cwd` let a caller enable the CLI's own
     tools (e.g. `"Read,Grep,Glob"`) and set the subprocess's working
     directory — the baseline arm's `grep` variant needs both; the
-    test-connector's own calls pass neither (no tools, inherited cwd)."""
-    env = _anthropic_credential_env()
+    test-connector's own calls pass neither (no tools, inherited cwd).
+    `timeout` bounds the whole call; a `subprocess.TimeoutExpired` becomes a
+    `RuntimeError` like every other failure path here, not a raw exception."""
+    env = _isolated_credential_env()
     token = _claude_code_oauth_token()
     if token:
         env[_CLAUDE_CODE_OAUTH_TOKEN_ENV] = token
 
     args = [
         claude_bin,
-        "-p",
-        prompt,
+        "-p",  # no inline prompt — sent over stdin below, never as an argv element
         "--output-format",
         "json",
         "--model",
@@ -181,6 +239,11 @@ def _invoke_claude_code(
         "--system-prompt",
         system_prompt,
         "--no-session-persistence",
+        # Loads no project-scoped MCP servers (e.g. spike/.mcp.json, meant
+        # for an interactive plugin session, not this headless call) —
+        # without it, a call made from inside spike/ fails resolving
+        # ${CLAUDE_PLUGIN_ROOT} and adds ~2s startup to every query (review).
+        "--strict-mcp-config",
         # Hidden from `claude --help`/`claude -p --help` on 2.1.284, but a
         # real, type-checked option — the closest thing to a turn cap this
         # CLI has, on top of `--tools ""` (when no tools are given) already
@@ -188,14 +251,19 @@ def _invoke_claude_code(
         "--max-turns",
         str(max_turns),
     ]
-    result = subprocess.run(
-        args,
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-        cwd=str(cwd) if cwd is not None else None,
-    )
+    try:
+        result = subprocess.run(
+            args,
+            input=prompt,  # stdin, not argv (review, blocking) — see module docstring
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+            cwd=str(cwd) if cwd is not None else None,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"claude -p timed out after {timeout}s") from exc
     if result.returncode != 0:
         raise RuntimeError(
             f"claude -p exited {result.returncode}: {_first_line(result.stderr, '(no stderr)')}"
@@ -235,12 +303,14 @@ class _ClaudeCodeMessages:
         tools: str = "",
         cwd: Path | None = None,
         max_turns: int = 1,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
         default_system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ) -> None:
         self._claude_bin = claude_bin
         self._tools = tools
         self._cwd = cwd
         self._max_turns = max_turns
+        self._timeout = timeout
         self._default_system_prompt = default_system_prompt
 
     def create(self, **kwargs: Any) -> Any:
@@ -265,6 +335,7 @@ class _ClaudeCodeMessages:
             tools=self._tools,
             cwd=self._cwd,
             max_turns=self._max_turns,
+            timeout=self._timeout,
         )
 
 
@@ -273,9 +344,10 @@ class ClaudeCodeClient:
     **kwargs)`-shaped wrapper over one `claude -p` subprocess call per
     prompt, dropping into `structured_call`/`bench.llm.CountingClient`
     exactly where an `anthropic.Anthropic()` client would. `tools`/`cwd`/
-    `max_turns` are fixed for the life of one client — the baseline arm's
-    `grep` variant constructs a separate instance with `tools="Read,Grep,
-    Glob"` and `cwd=<ingest root>` rather than varying them per call."""
+    `max_turns`/`timeout` are fixed for the life of one client — the
+    baseline arm's `grep` variant constructs a separate instance with
+    `tools="Read,Grep,Glob"` and `cwd=<ingest root>` rather than varying them
+    per call."""
 
     def __init__(
         self,
@@ -284,6 +356,7 @@ class ClaudeCodeClient:
         tools: str = "",
         cwd: Path | None = None,
         max_turns: int = 1,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
         system_prompt: str | None = None,
     ) -> None:
         self.messages = _ClaudeCodeMessages(
@@ -291,6 +364,7 @@ class ClaudeCodeClient:
             tools=tools,
             cwd=cwd,
             max_turns=max_turns,
+            timeout=timeout,
             default_system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
         )
 

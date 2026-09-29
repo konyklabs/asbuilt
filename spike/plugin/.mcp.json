@@ -5,11 +5,11 @@
       "args": [
         "run",
         "--project",
-        "${CLAUDE_PLUGIN_ROOT}",
+        "${CLAUDE_PLUGIN_ROOT}/..",
         "--extra",
         "serve",
         "python",
-        "${CLAUDE_PLUGIN_ROOT}/asbuilt_mcp.py"
+        "${CLAUDE_PLUGIN_ROOT}/../asbuilt_mcp.py"
       ],
       "env": {
         "ASBUILT_ARM": "${ASBUILT_ARM:-null}",

@@ -12,7 +12,10 @@ benchmark run, so a person pointing a Claude Code session at `spike/`
 (`ASBUILT_FIXTURE=.`) gets the same ingest-root-integrity behaviour a scored
 run gets). Ingest is lazy: the first tool call triggers it, not server
 startup, so importing this module (as the test suite does, via `create_app`)
-never assembles anything on its own.
+never assembles anything on its own. It is also thread-safe (review fix,
+asbuilt#9): fastmcp 4.0.10 runs a sync tool function in a threadpool, so two
+requests can otherwise race into `ingest()` concurrently — `_ServerState`
+guards it with a lock and a double check.
 
 Tools: `search`, `explain` (an entity name), `entities` (a name lookup —
 `bench.protocol.Prototype` has no first-class entity directory, so this is
@@ -51,6 +54,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -103,19 +107,34 @@ class _ServerState:
     server construction — `fixture_root=None` (the test double's own case)
     skips fixture assembly entirely and trusts the injected prototype is
     already queryable (e.g. a stub primed with facts in its own
-    constructor)."""
+    constructor).
+
+    Thread-safe (review fix, asbuilt#9): fastmcp 4.0.10 runs a sync tool
+    function in a threadpool, so two requests can reach `ensure_ingested`
+    before either has set `_ingested`, both rebuilding the ingest root and
+    calling `prototype.ingest()` twice concurrently. `_lock` plus a double
+    check (read `_ingested` once unlocked as the fast path once ingestion
+    has happened; re-check it just inside the lock before doing the work, so
+    only the first caller through the lock actually ingests) — the standard
+    double-checked-locking shape, not a queue: any call arriving after the
+    first has taken the lock simply blocks until ingestion finishes, then
+    proceeds without ingesting again."""
 
     prototype: Any
     fixture_root: Path | None = None
     _ingested: bool = field(default=False, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
     def ensure_ingested(self) -> None:
-        if self._ingested:
+        if self._ingested:  # fast path once ingestion has already happened
             return
-        if self.fixture_root is not None:
-            ingest_root = _assemble_from_fixture(self.fixture_root)
-            self.prototype.ingest(ingest_root, ENTITY_KINDS)
-        self._ingested = True
+        with self._lock:
+            if self._ingested:  # a concurrent caller may have finished first
+                return
+            if self.fixture_root is not None:
+                ingest_root = _assemble_from_fixture(self.fixture_root)
+                self.prototype.ingest(ingest_root, ENTITY_KINDS)
+            self._ingested = True
 
 
 def _require_nonempty(value: str, field_name: str) -> None:

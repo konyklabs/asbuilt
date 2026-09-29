@@ -23,6 +23,11 @@ Two variants, `ASBUILT_BASELINE_VARIANT` (default `"full"`):
   corpus itself rather than having it pasted in, and the prompt explains
   the on-disk layout and the document-id convention it must reconstruct.
 
+Every call's subprocess timeout is `ASBUILT_BASELINE_TIMEOUT` seconds
+(default `bench.claude_code.DEFAULT_TIMEOUT_SECONDS`, 600) — passed straight
+through to `ClaudeCodeClient`, which surfaces an expired timeout as the same
+kind of `RuntimeError` every other `claude -p` failure raises.
+
 Document ids (`bench/protocol.py`'s conventions): `code/<path>` (walking the
 ingest root's `repo/`, skipping `node_modules`/`.git`/binaries — the same
 `EXCLUDED_DIRNAMES` `bench.build` already excludes from the built
@@ -60,7 +65,12 @@ from pathlib import Path
 from typing import Any
 
 from bench.build import EXCLUDED_DIRNAMES
-from bench.claude_code import DEFAULT_MODEL, ClaudeCodeClient, structured_call
+from bench.claude_code import (
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    ClaudeCodeClient,
+    structured_call,
+)
 from bench.llm import CountingClient
 from bench.protocol import (
     Answer,
@@ -372,11 +382,12 @@ class Prototype:
         self._grep_max_turns = int(
             os.environ.get("ASBUILT_BASELINE_GREP_TURNS", DEFAULT_GREP_MAX_TURNS)
         )
+        self._timeout = float(os.environ.get("ASBUILT_BASELINE_TIMEOUT", DEFAULT_TIMEOUT_SECONDS))
         self._documents: list[tuple[str, str]] = []
         self._entity_kinds: tuple[str, ...] = ()
         self._root: Path | None = None
         self._commits_sha: str | None = None
-        self._full_client = ClaudeCodeClient(system_prompt=SYSTEM_PROMPT)
+        self._full_client = ClaudeCodeClient(system_prompt=SYSTEM_PROMPT, timeout=self._timeout)
         self._grep_client: ClaudeCodeClient | None = None  # built once `ingest` knows the root
         # One CountingClient for the whole prototype lifetime, so the 80%
         # budget stop (D-013) applies across every query this instance ever
@@ -410,6 +421,7 @@ class Prototype:
             tools="Read,Grep,Glob",
             cwd=self._root,
             max_turns=self._grep_max_turns,
+            timeout=self._timeout,
             system_prompt=SYSTEM_PROMPT,
         )
         elapsed = time.perf_counter() - started

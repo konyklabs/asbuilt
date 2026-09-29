@@ -8,13 +8,15 @@ that pagination and validation work). No network, no subprocess — the
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from datetime import UTC, datetime
 
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from asbuilt_mcp import create_app
+from asbuilt_mcp import _ServerState, create_app
 from bench.null import NullPrototype
 from bench.protocol import (
     Answer,
@@ -202,6 +204,35 @@ def test_ingest_runs_lazily_on_first_call_when_a_fixture_root_is_given():
     stub.ingested = False
     _call(app, "explain", {"name": "farebox"})
     assert stub.ingested is False
+
+
+def test_ensure_ingested_is_thread_safe_under_two_concurrent_first_calls():
+    """Review fix: fastmcp 4.0.10 runs sync tools in a threadpool, so two
+    parallel first calls could both find `_ingested` False and both ingest.
+    A short sleep inside the stub's own `ingest()` widens the race window
+    that a lock-free version would fall into; with the lock, exactly one
+    call does the work."""
+
+    class _SlowIngestPrototype(_StubPrototype):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ingest_calls = 0
+
+        def ingest(self, fixture_root, entity_kinds=(), incremental=False) -> IngestReport:
+            self.ingest_calls += 1
+            time.sleep(0.05)
+            return super().ingest(fixture_root, entity_kinds, incremental)
+
+    prototype = _SlowIngestPrototype()
+    state = _ServerState(prototype=prototype, fixture_root=MINI_ROOT)
+
+    threads = [threading.Thread(target=state.ensure_ingested) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert prototype.ingest_calls == 1
 
 
 # ------------------------------------------------------------- validation

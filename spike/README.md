@@ -413,11 +413,27 @@ a root wasn't produced by `assemble_ingest_root` at all).
 `bench/claude_code.py` (moved from `connectors/tests/extract_model.py`,
 which still re-exports every name so nothing that already imported it
 breaks) is `ClaudeCodeClient`'s new home: the `claude -p` subprocess
-provider, generalised to accept `tools`/`cwd`/`max_turns` so the baseline's
-`grep` variant can enable tools and set a working directory, which the test
-connector's own no-tools call never needed. `structured_call(client,
-system, prompt, schema)` is the generic "one structured call, through the
-one wrapped client" helper both the connector and every arm use.
+provider, generalised to accept `tools`/`cwd`/`max_turns`/`timeout` so the
+baseline's `grep` variant can enable tools and set a working directory,
+which the test connector's own no-tools call never needed.
+`structured_call(client, system, prompt, schema)` is the generic "one
+structured call, through the one wrapped client" helper both the connector
+and every arm use.
+
+The prompt travels over stdin, never as an argv element (review fix,
+asbuilt#9): the `full` variant embeds the whole corpus — hundreds of KB on
+the real fixture — and Linux caps a single argv element around 128 KB
+(`ARG_MAX` is much larger, but the per-argument limit still applies; macOS
+tolerates it, which is why this shipped once uncaught). `subprocess.run(...,
+input=prompt)` also means a `claude -p` subprocess launched from inside
+`asbuilt_mcp.py`'s own stdio server never inherits the server's JSON-RPC
+pipe on stdin — it gets its own pipe, written once and closed. Every call
+also passes `--strict-mcp-config` (verified present via `claude -p --help`
+on the installed CLI) so it loads no project-scoped MCP servers — without
+it, a call made with `spike/` as its cwd would also try to load a
+`.mcp.json` there, if one existed — and has a `timeout` (default 600s,
+`ASBUILT_BASELINE_TIMEOUT` for the baseline arm) that raises `RuntimeError`
+rather than leaving a hung subprocess.
 
 ### The MCP adapter
 
@@ -436,8 +452,11 @@ this file instead of site-packages).
 `ASBUILT_FIXTURE` names the fixture root to ingest FROM — this module
 assembles its own ingest root through the fixture's last history step,
 exactly as `bench/run.py` does for a scored run, never handing `ingest()`
-the raw fixture. Ingestion is lazy: the first tool call triggers it, not
-server startup.
+the raw fixture. Ingestion is lazy and thread-safe: the first tool call
+triggers it, guarded by a lock with a double check, since fastmcp 4.0.10
+runs sync tools in a threadpool and two requests can otherwise race to
+`ingest()` twice (a review-caught concurrency bug — two parallel first
+calls both rebuilding the ingest root).
 
 Tools: `search`, `explain` (an entity name), `entities` (a name lookup —
 `bench.protocol.Prototype` has no first-class entity directory, so this is
@@ -454,15 +473,22 @@ tool errors (`fastmcp.exceptions.ToolError`), never a raw exception.
 since this is a dependency real Claude Code sessions load at runtime, not
 just this repo's own tests — also listed in the `dev` group so a plain
 `uv sync` already has it for `tests/test_asbuilt_mcp.py`'s in-process
-client). `.claude-plugin/plugin.json` and `.mcp.json` register the server as
-a Claude Code plugin (`claude --plugin-dir spike`): the command is `uv run
---project ${CLAUDE_PLUGIN_ROOT} --extra serve python
-${CLAUDE_PLUGIN_ROOT}/asbuilt_mcp.py`, with `ASBUILT_ARM`/`ASBUILT_FIXTURE`
-passed through from the launching environment. Try it:
+client). `plugin/.claude-plugin/plugin.json` and `plugin/.mcp.json` register
+the server as a Claude Code plugin — in its own `plugin/` subdirectory, not
+`spike/` itself (review fix): `spike/` is the harness's own documented cwd
+for every `claude -p` benchmark call, and a `.mcp.json` sitting there too
+would be picked up as a *project-scoped* server on top of `--strict-mcp-
+config` guarding the calls this code makes itself, which is one hazard
+fewer to reason about. The command is `uv run --project
+${CLAUDE_PLUGIN_ROOT}/.. --extra serve python
+${CLAUDE_PLUGIN_ROOT}/../asbuilt_mcp.py` (`..` because the plugin root is
+`spike/plugin`, one level below the `uv` project and `asbuilt_mcp.py`
+itself), with `ASBUILT_ARM`/`ASBUILT_FIXTURE` passed through from the
+launching environment. Try it:
 
 ```
 cd spike
-ASBUILT_ARM=baseline ASBUILT_FIXTURE=. claude --plugin-dir .
+ASBUILT_ARM=baseline ASBUILT_FIXTURE=. claude --plugin-dir plugin
 # then, in the session: use the asbuilt MCP server's explain tool on "farebox"
 ```
 

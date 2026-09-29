@@ -29,7 +29,9 @@ import sys
 
 schema = None
 tools = None
-prompt = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "-p" else None
+# The prompt travels over stdin, never as an argv element (asbuilt#9 review:
+# a single argv element is capped well under a corpus-sized prompt on Linux).
+prompt = sys.stdin.read()
 for i, arg in enumerate(sys.argv):
     if arg == "--json-schema" and i + 1 < len(sys.argv):
         schema = json.loads(sys.argv[i + 1])
