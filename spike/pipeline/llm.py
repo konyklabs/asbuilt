@@ -1,15 +1,15 @@
 """Model calls for the pipeline, all through one counting client (D-013:
 "every model call counted through one wrapped client").
 
-The provider is the test connector's: ``claude-code`` by default (one
-``claude -p`` subprocess per call on the owner's Claude Code subscription,
-``ANTHROPIC_*`` stripped from its environment — ``connectors/tests/
-extract_model.py``), ``anthropic`` by opt-in. ``structured_call`` sends a
-prompt with a JSON schema (as the first tool's ``input_schema``, which the
-claude-code provider passes as ``--json-schema``) and returns the
-schema-shaped dict, or None when the call returned nothing usable. Same model
-as every other arm (``extract_model.DEFAULT_MODEL``); the CLI takes no
-temperature, so none is set on either path.
+The provider is the benchmark's shared one, ``bench/claude_code.py``
+(asbuilt#9): ``claude-code`` by default (one ``claude -p`` subprocess per
+call on the owner's Claude Code subscription, ``ANTHROPIC_*`` and the cloud
+backend selectors stripped from its environment), ``anthropic`` by opt-in
+through the test connector's ``PROVIDERS`` table. ``structured_call`` here is
+the pipeline's keyword-only front for ``bench.claude_code.structured_call``:
+it takes the model from the counting client so every call in one arm uses
+the arm's model (``bench.claude_code.DEFAULT_MODEL``, the same as every other
+arm); the CLI takes no temperature, so none is set on either path.
 
 No real call is made in this repository's tests: they hand in a fake client
 factory or put a fake ``claude`` on ``PATH``.
@@ -22,8 +22,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from bench.claude_code import DEFAULT_MODEL
+from bench.claude_code import structured_call as _structured_call
 from bench.llm import CountingClient
-from connectors.tests.extract_model import DEFAULT_MODEL, PRICE_TABLE, PROVIDERS
+from connectors.tests.extract_model import PRICE_TABLE, PROVIDERS
 from pipeline.store import StoredFact
 
 
@@ -53,19 +55,17 @@ def structured_call(
     tool_name: str,
     max_tokens: int = 2000,
 ) -> dict[str, Any] | None:
-    response = client.messages.create(
+    """``bench.claude_code.structured_call`` with the model taken from the
+    counting client (module docstring)."""
+    return _structured_call(
+        client,
+        system,
+        prompt,
+        schema,
         model=client.model,
         max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": prompt}],
-        tools=[{"name": tool_name, "input_schema": schema}],
-        tool_choice={"type": "tool", "name": tool_name},
+        tool_name=tool_name,
     )
-    for block in getattr(response, "content", None) or []:
-        if getattr(block, "type", None) == "tool_use":
-            payload = getattr(block, "input", None)
-            return payload if isinstance(payload, dict) else None
-    return None
 
 
 VERDICT_SCHEMA: dict[str, Any] = {
