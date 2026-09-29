@@ -192,6 +192,15 @@ uv sync
    where the spec leaves a choice (aggregation is by summing raw counts
    across a surface's queries — micro-averaged — before computing ratios,
    and per-category breakdowns bucket by the *truth* fact's category only).
+   The matcher itself is calibrated: `bench/score.py --calibrate` runs the
+   118 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
+   (1.0/1.0), and `--calibrate tests/fixtures/calibration-model-run.yaml`
+   the 72 pairs judged from the test connector's first real model run
+   (asbuilt#17: precision 1.0, recall 0.68 by design — the misses are
+   narratives of a test scenario, not matcher defects). The rules a fuller
+   statement is held to — numbers by containment, flag state as its own
+   polarity, a claim in the candidate's own vocabulary handed to the
+   statement rule — are in the module docstring under asbuilt#17.
 
 5. **Check the fixture's own consistency** (a library call, not yet a CLI):
 
