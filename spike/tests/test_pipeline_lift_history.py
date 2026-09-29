@@ -124,12 +124,16 @@ def test_lift_tiers_supersessions_and_run_contradictions():
 
     third = apply_step(store, resolver, embedder, s3, history)
     facts = _by_statement(store)
-    assert facts["Late fee $6.00."].tier == "executed"
+    fee6 = facts["Late fee $6.00."]
+    # One claim, one fact: the test merges into the code constant's row,
+    # which keeps the earlier step and every citation.
+    assert (fee6.id, fee6.tier, fee6.valid_at) == (fee6_code.id, "executed", S2)
+    assert "Also stated as: Late fee is $6.00." in fee6.detail
+    assert {"code/ticketbox/fees.py", "run/pytest-s3"} <= {c.document for c in fee6.citations}
     assert store.fact(fee4.id).superseded_by == fee6_code.id  # the first supersession stands
     assert third.contradictions_resolved == 1
     assert store.query_contradictions()[0].resolved_at == S3
     assert {f.statement for f in store.all_facts() if f.invalid_at is None} == {
-        "Late fee is $6.00.",
         "Late fee $6.00.",
         "Member 1st 20 minutes free.",
         "Waiver off by default.",

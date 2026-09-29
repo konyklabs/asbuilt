@@ -425,20 +425,24 @@ class PostgresStore(BaseStore):
         with self.conn.transaction():
             self.conn.execute(
                 """
-                UPDATE fact SET tier = %s, detail = %s, valid_at = %s, confidence = %s,
-                    source_key = COALESCE(source_key, %s),
-                    embedding = COALESCE(embedding, %s::vector)
-                WHERE id = %s
+                UPDATE fact SET statement = %(statement)s, tier = %(tier)s,
+                    detail = %(detail)s, valid_at = %(valid_at)s, confidence = %(confidence)s,
+                    source_key = COALESCE(source_key, %(source_key)s),
+                    embedding = CASE WHEN statement <> %(statement)s
+                                     THEN COALESCE(%(embedding)s::vector, embedding)
+                                     ELSE COALESCE(embedding, %(embedding)s::vector) END
+                WHERE id = %(id)s
                 """,
-                (
-                    fact.tier,
-                    fact.detail,
-                    fact.valid_at,
-                    fact.confidence,
-                    fact.source_key,
-                    vector_literal(fact.embedding),
-                    fact.id,
-                ),
+                {
+                    "statement": fact.statement,
+                    "tier": fact.tier,
+                    "detail": fact.detail,
+                    "valid_at": fact.valid_at,
+                    "confidence": fact.confidence,
+                    "source_key": fact.source_key,
+                    "embedding": vector_literal(fact.embedding),
+                    "id": fact.id,
+                },
             )
             self._write_links(fact)
 

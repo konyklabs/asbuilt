@@ -8,19 +8,25 @@
 2. The built repository's history (``pipeline.history``), and which step
    the root's ``repo/`` is (by blob hash; the latest run report's step if it
    matches none).
-3. Every source document registered with its version: wiki pages, documents,
-   tickets, pull requests, run reports and every code file (a code file's
-   version is the commit that last changed it). Only new or changed ones are
-   extracted from again.
+3. Every source document registered with its version: run reports and every
+   code file now (a code file's version is the commit that last changed it);
+   a wiki page, document, ticket or pull request only after step 5 has
+   stored its facts, so one a budget stop or a crash interrupted stays
+   pending and the next ingest extracts it. Only new, changed or pending
+   text documents are extracted from.
 4. The test connector (``connectors.tests``, rules extractor) at every step
    not yet ingested, in commit order, over the git history and the root's
    runs; ``pipeline.lift`` stores its facts, tiers, candidates and
    supersessions.
 5. One structured call per changed wiki/doc/ticket/pull document
    (``extract.py``) through the counting client — skipped entirely when
-   ``ASBUILT_B_NO_MODEL=1``. A document whose new version no longer states a
-   fact retracts its citation (the fact expires when nothing else cites it);
-   one that states a new value on the same claim key supersedes the old one.
+   ``ASBUILT_B_NO_MODEL=1`` (the text documents then stay pending). A
+   document whose new version no longer states a fact retracts its citation
+   (the fact expires when nothing else cites it); a new value on the same
+   claim key supersedes the old one only when the old one is documented and
+   this document was its only source — a code or executed row, or one
+   another page still states, is never closed by a page: the pair becomes a
+   ``claim`` contradiction, winner by tier.
 6. The contradiction pass (``pipeline.contradict``: claim join; prose pairs
    through the NLI pre-filter and a model verdict, none without a model).
 7. The ``IngestReport``: tokens, dollars (a token-priced estimate: the
@@ -82,6 +88,7 @@ from pipeline.store import (
     aware,
     claims_conflict,
     display_value,
+    winner_of,
 )
 from prototypes.b_postgres.extract import apply_extraction, extract_document, known_context
 
@@ -92,6 +99,15 @@ ASK_FACTS = 5
 CITATIONS_PER_SENTENCE = 3
 SUPERSEDED_WEIGHT = 0.5
 VECTOR_FLOOR = float(os.environ.get("ASBUILT_B_VECTOR_FLOOR", "0.3"))
+
+
+def _needs_extraction(store: StoreInterface, doc: SourceDocument) -> bool:
+    known = store.document(doc.id)
+    return (
+        known is None
+        or known.version != doc.document.version
+        or known.content_hash != doc.document.content_hash
+    )
 
 
 def no_model() -> bool:
@@ -269,7 +285,17 @@ class Prototype:
             *read_run_documents(root, history),
             *code_documents(history, step),
         ]
-        changed = [d for d in documents if store.register_document(d.document)]
+        # Code files and runs are registered now; a text document only once
+        # its facts are stored (below), so a budget stop or a crash
+        # mid-extraction leaves it pending for the next ingest to extract.
+        registered = [
+            d
+            for d in documents
+            if d.document.kind not in TEXT_KINDS and store.register_document(d.document)
+        ]
+        pending = [
+            d for d in documents if d.document.kind in TEXT_KINDS and _needs_extraction(store, d)
+        ]
 
         outcomes = _outcomes_by_step(root)
         lift_totals = {"facts": 0, "superseded": 0, "opened": 0, "resolved": 0}
@@ -289,8 +315,9 @@ class Prototype:
         if not no_model():
             client = self._client or make_client(ARM, client_factory=self._client_factory)
             self._client = client
-            for doc in (d for d in changed if d.document.kind in TEXT_KINDS):
+            for doc in pending:
                 self._extract(store, resolver, embedder, client, doc, entity_kinds)
+                store.register_document(doc.document)  # only after its facts are stored
                 extracted += 1
 
         judge = ModelJudge(client) if client is not None else None
@@ -306,7 +333,8 @@ class Prototype:
             "step": step,
             "steps": steps,
             "resumed_from": resumed_from,
-            "documents_changed": len(changed),
+            "documents_changed": len(registered) + len(pending),
+            "documents_pending": len(pending) - extracted,
             "documents_extracted": extracted,
             "lift": lift_totals,
             "contradiction_pass": contradiction_pass,
@@ -315,8 +343,8 @@ class Prototype:
             "model": None if client is None else client.model,
         }
         print(
-            f"{ARM}: step {step}, steps {steps}, documents changed {len(changed)}, "
-            f"extracted {extracted}, lift {lift_totals}, claim pairs "
+            f"{ARM}: step {step}, steps {steps}, documents registered {len(registered)}, "
+            f"pending {len(pending)}, extracted {extracted}, lift {lift_totals}, claim pairs "
             f"{contradiction_pass.claim_pairs}, prose pairs {contradiction_pass.prose_pairs} "
             f"({contradiction_pass.skipped_reason or contradiction_pass.prefilter}), "
             f"embedder {embedder.name}",
@@ -328,7 +356,7 @@ class Prototype:
             output_tokens=client.output_tokens if client else 0,
             dollars=client.dollars() if client and client.prices else 0.0,
             services=("postgres",),
-            documents=len(changed),
+            documents=len(registered) + extracted,
             model=client.model if client else None,
             embedder=embedder.name,
             calls=client.calls if client else 0,
@@ -368,10 +396,25 @@ class Prototype:
                 ),
                 None,
             )
-            if replacement is not None:
+            sole_source = all(c.document == doc.id for c in old.citations)
+            if replacement is not None and old.tier == "documented" and sole_source:
+                # The page changed its own value: the new version supersedes the old.
                 store.supersede(fact_id, replacement.id, doc.document.lastmodified)
-            else:
-                store.retract_citation(fact_id, doc.id)
+                continue
+            store.retract_citation(fact_id, doc.id)
+            if replacement is not None:
+                # A page never closes a code or executed row, nor one another
+                # page still states (the same rule as lift._supersede_by_claim):
+                # its new value is a contradiction candidate against it.
+                winner = winner_of(old, replacement)
+                store.link_contradiction(
+                    fact_id,
+                    replacement.id,
+                    "refutes",
+                    winner=winner.id,
+                    opened_at=doc.document.lastmodified,
+                    kind="claim",
+                )
 
     # ------------------------------------------------------------ surfaces
 

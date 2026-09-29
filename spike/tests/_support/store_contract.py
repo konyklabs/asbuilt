@@ -69,7 +69,9 @@ def check_identity_and_merge(store) -> None:
     merged = store.fact(first)
     assert merged.tier == "executed"  # a page agreeing never lowers the tier
     assert {c.document for c in merged.citations} == {"code/ticketbox/fees.py", "wiki/fees"}
-    store.upsert_fact(fact("Late return fee is $4.00.", tier="code", valid_at=T2))
+    store.upsert_fact(
+        fact("Late return fee is $4.00.", tier="code", valid_at=T2, source_key="test:t1")
+    )
     demoted = store.fact(first)
     assert demoted.tier == "code"  # the connector's demotion replaces executed
     assert demoted.valid_at == T1  # the earliest valid_at is kept
@@ -82,6 +84,71 @@ def check_claim_is_part_of_identity(store) -> None:
     without = store.upsert_fact(fact("Late return fee is $4.00.", cite="wiki/fees"))
     assert with_claim != without
     assert store.fact(with_claim).claim == claim
+
+
+def check_claim_facts_merge_across_statements(store) -> None:
+    """D-013's identity rule: the claim is the fact. The code constant and
+    the test asserting it are one row from the earliest step, with every
+    citation, the higher-tier sentence as the statement and the other kept
+    in detail; a code constant re-read or a page never lowers the tier."""
+    _entities(store)
+    claim = StoredClaim("e-rule", "late_fee", 6.0, "usd")
+    constant = store.upsert_fact(
+        fact("Late fee is $6.00.", claim=claim, valid_at=T1, source_key="code:fees.py#LATE_FEE")
+    )
+    test = store.upsert_fact(
+        fact(
+            "Late fee $6.00.",
+            tier="executed",
+            claim=claim,
+            valid_at=T2,
+            cite="run/pytest-s2",
+            location="tests/test_fees.py::test_fee_6",
+            version=None,
+            source_key="test:tests/test_fees.py::test_fee_6",
+            detail="fee equals $6.00",
+        )
+    )
+    assert test == constant
+    merged = store.fact(constant)
+    assert (merged.statement, merged.tier, merged.valid_at) == ("Late fee $6.00.", "executed", T1)
+    assert merged.detail == "fee equals $6.00; Also stated as: Late fee is $6.00."
+    assert {c.document for c in merged.citations} == {"code/ticketbox/fees.py", "run/pytest-s2"}
+    store.upsert_fact(
+        fact("Late fee is $6.00.", claim=claim, valid_at=T3, source_key="code:fees.py#LATE_FEE")
+    )
+    store.upsert_fact(
+        fact("The late fee is six dollars.", tier="documented", claim=claim, cite="wiki/fees")
+    )
+    again = store.fact(constant)
+    assert (again.statement, again.tier) == ("Late fee $6.00.", "executed")
+    assert again.detail.endswith("; Also stated as: The late fee is six dollars.")
+    assert [f.id for f, _ in store.query_text("six dollars")] == [constant]
+
+
+def check_superseded_claim_and_pages(store) -> None:
+    """A page still stating a superseded claim as current is its own
+    documented row; a page stating it as history joins the old episode."""
+    _entities(store)
+    four = StoredClaim("e-rule", "late_fee", 4.0, "usd")
+    old = store.upsert_fact(fact("Late fee $4.00.", claim=four, valid_at=T1))
+    new = store.upsert_fact(
+        fact("Late fee $6.00.", claim=StoredClaim("e-rule", "late_fee", 6.0, "usd"), valid_at=T2)
+    )
+    store.supersede(old, new, T2)
+    history = fact("The fee was $4 until February.", tier="documented", claim=four, cite="doc/h")
+    history.invalid_at = T2
+    assert store.upsert_fact(history) == old
+    current = store.upsert_fact(
+        fact("The late fee is $4.", tier="documented", claim=four, cite="wiki/fees", valid_at=T1)
+    )
+    assert current == f"{old}.1"
+    page = store.fact(current)
+    assert (page.tier, page.invalid_at, page.statement) == (
+        "documented",
+        None,
+        "The late fee is $4.",
+    )
 
 
 def check_rejects_uncited_fact(store) -> None:
@@ -228,6 +295,8 @@ def check_documents_and_steps(store) -> None:
 CHECKS = [
     check_identity_and_merge,
     check_claim_is_part_of_identity,
+    check_claim_facts_merge_across_statements,
+    check_superseded_claim_and_pages,
     check_rejects_uncited_fact,
     check_supersede_and_episodes,
     check_stored_time,

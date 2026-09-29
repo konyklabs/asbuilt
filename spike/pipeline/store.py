@@ -12,10 +12,18 @@ free minutes were 30, then 45, then 30) gets a new *episode* of the same base
 id (``<base>.<n>``) rather than reopening the closed interval: one row, one
 world-time interval.
 
-Tier on merge. The test connector owns the ``executed``/``code`` tiers,
-including demotion, so an incoming ``executed`` or ``code`` tier replaces the
-stored one; an incoming ``documented`` fact never lowers a stored one (a page
-agreeing with a passing test adds a citation, not a weaker tier).
+A fact carrying a claim is identified by the claim alone (resolved entity,
+attribute, value, unit — D-013's identity rule), so the code constant, the
+test asserting it and a page stating it are one row: citations unioned, the
+earliest ``valid_at`` kept, the higher-tier sentence as the statement and any
+other sentence kept in ``detail`` ("Also stated as: ...").
+
+Tier on merge. The test connector owns the ``executed``/``code`` tiers of a
+test, including demotion, so a tier arriving from a test (``source_key``
+``test:...``) replaces the stored one; a ``code`` fact from elsewhere (a code
+constant) never lowers one, and a ``documented`` fact never lowers any (a page
+agreeing with a passing test adds a citation, not a weaker tier). Two tests
+asserting one claim: the later upsert's verdict stands.
 
 Two clocks (Graphiti's shape, D-013). ``valid_at``/``invalid_at`` are world
 time: when the statement held. ``created_at``/``expired_at`` are stored time,
@@ -225,9 +233,14 @@ def display_value(value: float | str) -> float | int | str:
 
 
 def base_fact_id(statement: str, claim: StoredClaim | None) -> str:
-    key = f"{claim.entity_id}|{claim.attribute}|" if claim is not None else "||"
-    digest = hashlib.sha1((key + normalize_statement(statement)).encode()).hexdigest()
-    return "f-" + digest[:16]
+    """A claim fact's identity is its claim (D-013: resolved entity,
+    attribute, value, unit), whatever sentence states it; a fact without one
+    is its normalised statement."""
+    if claim is not None:
+        key = f"claim|{claim.entity_id}|{claim.attribute}|{claim.value!r}|{claim.unit or ''}"
+    else:
+        key = "||" + normalize_statement(statement)
+    return "f-" + hashlib.sha1(key.encode()).hexdigest()[:16]
 
 
 def episode_fact_id(base: str, episode: int) -> str:
@@ -265,18 +278,43 @@ def _union(a: Iterable, b: Iterable) -> tuple:
     return tuple(out)
 
 
+def _tier_on_merge(existing: StoredFact, incoming: StoredFact) -> str:
+    if incoming.tier not in CONNECTOR_TIERS:
+        return existing.tier  # a document never lowers a tier
+    if (incoming.source_key or "").startswith("test:"):
+        return incoming.tier  # the connector's verdict on a test, demotion included
+    return max((existing.tier, incoming.tier), key=lambda t: TIER_RANK.get(t, 0))
+
+
+def _merge_detail(parts: Sequence[str], also: str | None) -> str:
+    out: list[str] = []
+    for part in parts:
+        if part and part not in out:
+            out.append(part)
+    if also and not any(also in part for part in out):
+        out.append(f"Also stated as: {also}")
+    return "; ".join(out)
+
+
 def merge_into(existing: StoredFact, incoming: StoredFact) -> StoredFact:
-    tier = incoming.tier if incoming.tier in CONNECTOR_TIERS else existing.tier
+    """See the module docstring's "Tier on merge". Two statements of one
+    claim keep the higher-tier one as the statement and the other in
+    `detail`."""
+    switch = TIER_RANK.get(incoming.tier, 0) > TIER_RANK.get(existing.tier, 0)
+    statement = incoming.statement if switch else existing.statement
+    other = existing.statement if switch else incoming.statement
+    also = other if normalize_statement(other) != normalize_statement(statement) else None
     confidences = [c for c in (existing.confidence, incoming.confidence) if c is not None]
     return replace(
         existing,
-        tier=tier,
+        statement=statement,
+        tier=_tier_on_merge(existing, incoming),
         citations=_union(existing.citations, incoming.citations),
         entity_ids=_union(existing.entity_ids, incoming.entity_ids),
         valid_at=_min_dt(existing.valid_at, incoming.valid_at),
-        detail=incoming.detail or existing.detail,
+        detail=_merge_detail((existing.detail, incoming.detail), also),
         confidence=max(confidences) if confidences else None,
-        embedding=existing.embedding or incoming.embedding,
+        embedding=incoming.embedding if switch else existing.embedding or incoming.embedding,
         source_key=existing.source_key or incoming.source_key,
     )
 
@@ -289,10 +327,17 @@ def plan_upsert(
     if not episodes:
         return base, base, 0, None
     latest = max(episodes, key=lambda f: f.episode)
+    # A closed episode takes no present-tense statement: one that arrives
+    # after the close starts the next episode, and so does a page stating the
+    # superseded value as still true (no valid_to of its own) — that page is
+    # its own documented fact, which is what makes it stale and contradicted.
+    # A page stating the value as history (valid_to set) joins the old episode.
     closed = latest.expired_at is not None or (
         latest.invalid_at is not None
-        and incoming.valid_at is not None
-        and not later(latest.invalid_at, incoming.valid_at)
+        and (
+            (incoming.valid_at is not None and not later(latest.invalid_at, incoming.valid_at))
+            or (incoming.tier == "documented" and incoming.invalid_at is None)
+        )
     )
     if closed:
         episode = latest.episode + 1

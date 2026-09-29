@@ -145,6 +145,9 @@ def test_real_fixture_on_postgres_c5_then_c6(pg_dsn, tmp_path: Path, monkeypatch
     top = prototype.explain("lost bike fee")[0]
     assert top.tier == Tier.EXECUTED and "150" in top.statement
     assert any(c.document.startswith("run/pytest-c6") for c in top.citations)
+    # One fact for the $150 claim, from the code constant's step (c5), not the test's (c6).
+    assert top.valid_from == datetime.fromisoformat("2026-07-22T14:00:00-04:00")
+    assert "code/farebox/pricing.py" in {c.document for c in top.citations}
     assert len(prototype.contradictions("lost-bike-fee")) == 1
     assert prototype.last_ingest["documents_extracted"] == 0
     assert prototype.stale(datetime.fromisoformat("2025-01-01T00:00:00+00:00")) == []

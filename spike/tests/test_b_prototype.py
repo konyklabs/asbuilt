@@ -17,13 +17,15 @@ from types import SimpleNamespace
 import pytest
 
 from bench.build import build
-from bench.protocol import Tier
+from bench.llm import BudgetExceeded
+from bench.protocol import Citation, Tier
 from bench.run import ENTITY_KINDS, assemble_ingest_root
 from connectors.tests.extract_model import ClaudeCodeClient
 from pipeline.embed import HashEmbedder
 from pipeline.llm import make_client, structured_call
-from pipeline.sources import read_text_sources
-from pipeline.store import MemoryStore
+from pipeline.resolve import Resolver
+from pipeline.sources import SourceDocument, read_text_sources
+from pipeline.store import Document, MemoryStore, StoredClaim, StoredFact
 from prototypes.b_postgres import Prototype
 from prototypes.b_postgres.extract import (
     TOOL_NAME,
@@ -170,10 +172,112 @@ def test_incremental_ingest_extracts_only_changed_documents(mini_built, monkeypa
     assert report.documents > 0  # the code files and the new run did
 
 
+def test_budget_stop_mid_extraction_leaves_the_rest_pending(mini_built, monkeypatch):
+    """Review finding (asbuilt#4): a text document is registered at its new
+    version only once its facts are stored, so a stop after the first
+    document leaves every other one to the next incremental ingest."""
+    monkeypatch.delenv("ASBUILT_B_NO_MODEL", raising=False)
+    monkeypatch.setenv("ASBUILT_NLI", "off")
+    monkeypatch.chdir(mini_built.parent)
+
+    class StopsAfterOne(FakeModel):
+        def create(self, **kwargs):
+            if self.calls:
+                raise BudgetExceeded("b_postgres", "fake: 80% of the cap")
+            return super().create(**kwargs)
+
+    store = MemoryStore()
+    with pytest.raises(BudgetExceeded):
+        Prototype(store=store, client_factory=StopsAfterOne).ingest(mini_built, ENTITY_KINDS)
+    text_ids = [d.id for d in read_text_sources(mini_built)]
+    registered = [i for i in text_ids if (d := store.document(i)) and d.content_hash]
+    assert registered == ["wiki/pricing-rules-2025"]
+
+    fake = FakeModel()
+    resumed = Prototype(store=store, client_factory=lambda: fake)
+    resumed.ingest(mini_built, ENTITY_KINDS, incremental=True)
+    extracted = [
+        re.search(r"Document id: (\S+)", c["messages"][-1]["content"]).group(1)
+        for c in fake.calls
+        if c["tools"][0]["name"] == TOOL_NAME
+    ]
+    assert extracted == text_ids[1:]
+    assert resumed.last_ingest["steps"] == [] and resumed.last_ingest["documents_pending"] == 0
+
+
+def test_a_page_edit_never_closes_a_code_row(tmp_path: Path):
+    """Review finding (asbuilt#4): a page's new value supersedes only a
+    documented fact the page alone stated; against a code row it becomes a
+    contradiction, winner the code, and the page's citation is retracted."""
+    jan, mar = (datetime.fromisoformat(f"2026-0{m}-01T00:00:00+00:00") for m in (1, 3))
+    store, embedder = MemoryStore(), HashEmbedder()
+    resolver = Resolver(store, embedder, ENTITY_KINDS)
+    fee = resolver.resolve("late return fee", "rule")
+    code = store.upsert_fact(
+        StoredFact(
+            statement="Late fee $6.00.",
+            category="business-logic",
+            tier="code",
+            entity_ids=(fee,),
+            citations=(Citation("code/ticketbox/fees.py", "LATE_FEE", "s1"),),
+            claim=StoredClaim(fee, "late_fee", 6.0, "usd"),
+            valid_at=jan,
+            source_key="code:code/ticketbox/fees.py#LATE_FEE",
+        )
+    )
+
+    def page(doc_id: str, version: str, when: datetime) -> SourceDocument:
+        meta = Document(doc_id, "wiki", "wiki", version, when, content_hash=f"{doc_id}@{version}")
+        return SourceDocument(meta, text="(invented)", anchors=("#fee",))
+
+    def payload(doc_id: str, attribute: str, value: int, unit: str) -> dict:
+        claim = {"entity": "late return fee", "attribute": attribute, "value": value, "unit": unit}
+        fact = {
+            "statement": f"The late return fee {attribute} is {value}.",
+            "category": "business-logic",
+            "entities": ["late return fee"],
+            "claim": claim,
+            "citation": {"document": doc_id, "location": "#fee"},
+        }
+        return {"entities": [], "facts": [fact]}
+
+    script = [
+        payload("wiki/fees", "late_fee", 6, "usd"),
+        payload("wiki/fees", "late_fee", 4, "usd"),
+        payload("wiki/waiver", "waiver_days", 2, "day"),
+        payload("wiki/waiver", "waiver_days", 3, "day"),
+    ]
+
+    class Scripted:
+        def __init__(self) -> None:
+            self.messages = self
+
+        def create(self, **kwargs):
+            block = SimpleNamespace(type="tool_use", input=script.pop(0))
+            return SimpleNamespace(usage=_usage(), content=[block])
+
+    client = make_client("b_postgres", client_factory=Scripted, stop_dir=tmp_path)
+    prototype = Prototype(store=store, embedder=embedder)
+    for doc in (page("wiki/fees", "1", jan), page("wiki/fees", "2", mar)):
+        prototype._extract(store, resolver, embedder, client, doc, ENTITY_KINDS)
+    row = store.fact(code)
+    assert (row.tier, row.invalid_at) == ("code", None)  # not closed by the page
+    assert "wiki/fees" not in {c.document for c in row.citations}
+    (pair,) = store.query_contradictions()
+    (page_fact,) = store.facts_citing("wiki/fees")
+    assert {pair.a, pair.b} == {code, page_fact.id} and pair.winner == code
+
+    for doc in (page("wiki/waiver", "1", jan), page("wiki/waiver", "2", mar)):
+        prototype._extract(store, resolver, embedder, client, doc, ENTITY_KINDS)
+    old, new = sorted(
+        (f for f in store.all_facts() if f.claim and f.claim.attribute == "waiver_days"),
+        key=lambda f: f.claim.value,
+    )
+    assert (old.invalid_at, old.superseded_by) == (mar, new.id)  # the page's own value moved
+
+
 def test_apply_extraction_skips_facts_it_cannot_attach(mini_built):
     store, embedder = MemoryStore(), HashEmbedder()
-    from pipeline.resolve import Resolver
-
     doc = next(d for d in read_text_sources(mini_built) if d.id == "doc/DOC-1")
     payload = {
         "entities": [{"name": "refunds", "kind": "rule", "aliases": ["the refund rules"]}],
@@ -270,4 +374,7 @@ def test_real_fixture_no_model_on_memory(tmp_path: Path, monkeypatch):
     top = prototype.explain("lost bike fee")[0]
     assert top.tier == Tier.EXECUTED and "150" in top.statement
     assert any(c.document == "run/pytest-c6" for c in top.citations)
+    # One fact for the $150 claim, from the code constant's step (c5), not the test's (c6).
+    assert top.valid_from == datetime.fromisoformat("2026-07-22T14:00:00-04:00")
+    assert "code/farebox/pricing.py" in {c.document for c in top.citations}
     assert len(prototype.contradictions("lost-bike-fee")) == 1  # kept, resolved at c6

@@ -584,6 +584,13 @@ Where the `docker compose` plugin is missing (colima with Homebrew),
 - **Reset.** A full ingest (`incremental=False`) drops and re-applies the
   schema by itself; `reset.sh` (what `bench/run.py --reset` runs) also
   deletes the named volume.
+- **Incremental.** A text document is registered at its new version only
+  after its facts are stored, so a budget stop or a crash mid-extraction
+  leaves it pending and the next ingest extracts it. `bench/run.py
+  --incremental` copies `sources/` whole into both phases
+  (`assemble_ingest_root`), so no document version changes between them: the
+  incremental measure exercises the code steps and the runs only, until a
+  document-version delta is planted in the fixture.
 - **Embedder.** `sentence-transformers/all-MiniLM-L6-v2` at revision
   `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` (Apache-2.0, 384 dimensions),
   cached under `build/models/`. `ASBUILT_EMBED=fake`, or sentence-transformers
@@ -594,8 +601,8 @@ Where the `docker compose` plugin is missing (colima with Homebrew),
   when not installed or `ASBUILT_NLI=off`; a lexical stand-in then feeds the
   model verdict, and the ingest log says so.
 - **No-model mode.** `ASBUILT_B_NO_MODEL=1` makes no model call at all: no
-  document extraction, no prose verdict, `ask` composes one sentence per
-  fact deterministically. What remains is the test connector's `executed`
+  document extraction (text documents stay pending, unregistered), no prose
+  verdict, `ask` composes one sentence per fact deterministically. What remains is the test connector's `executed`
   and `code` facts, the run-vs-code contradiction, and supersession; there
   are no `documented` facts, so documented-tier recall is zero and `stale`
   is empty by construction.
