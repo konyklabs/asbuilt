@@ -470,6 +470,8 @@ def test_extractor_model_records_usage_in_output_and_prints_it(
     assert usage["dollars"] == pytest.approx((246 * 3.0 + 90 * 15.0 + 14 * 0.30) / 1e6, abs=1e-6)
     assert usage["elapsed_seconds"] >= 0
     assert output["counts"]["statements"] > 2  # the other skeletons kept their rules facts
+    model_facts = [f for f in output["facts"] if f["statement"] == "Skeleton is proven."]
+    assert len(model_facts) == 2  # the two model results reached the output, the rest are rules
     printed = capsys.readouterr().out
     assert "  model: provider=claude-code" in printed
     assert "calls=2 input_tokens=246 output_tokens=90 cache_tokens=14" in printed
@@ -524,6 +526,50 @@ def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
     printed = capsys.readouterr().out
     assert "  model: provider=claude-code" in printed and "calls=2" in printed
     assert "STOPPED at the budget threshold" in printed
+
+
+def test_extractor_model_provider_failure_keeps_output_and_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """A local review note on asbuilt#15: a provider error mid-run (here the
+    fake `claude` failing every call with a non-zero exit) must not lose
+    the output either — `ModelRunFailed` carries the results so far, the CLI
+    records the error's first line under `model_usage.failed`, keeps the
+    rules facts, and exits 2. The second stderr line never surfaces."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "fail")
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--limit",
+            "3",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    usage = output["model_usage"]
+    assert usage["calls"] == 0 and usage["results"] == 0 and usage["stopped"] is None
+    assert "rate limited" in usage["failed"]
+    assert "must never be surfaced" not in json.dumps(output)
+    assert output["counts"]["statements"] > 3  # every skeleton kept its rules fact
+    printed = capsys.readouterr().out
+    assert "FAILED mid-run" in printed and "must never be surfaced" not in printed
 
 
 def test_dry_run_adds_the_measured_per_call_overhead_at_the_cache_creation_rate():

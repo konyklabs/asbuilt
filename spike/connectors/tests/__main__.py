@@ -6,10 +6,14 @@
 JSON shape (statement, category, entities as names, tier, citations —
 ``code/tests/...::node`` at the step's SHA always, plus ``run/<id>`` when
 executed — ``valid_from`` the step, claim), plus ``contradiction_candidates``,
-``flaky``, ``skipped`` node ids, and ``counts``. ``--all-steps`` does every
-history step (c1..c6). Builds the fixture first (``bench.build.build``, the
-same idempotent, fast — under a second — step every other CLI in this
-harness already does) so ``git diff`` has a real repository to compare
+``flaky``, ``skipped`` node ids, and ``counts``; after a real model run
+also ``model_usage`` (provider, model, skeletons called, results, calls,
+token kinds, seconds, dollars at the assumed price table, ``usage_missing``,
+and ``stopped``/``failed`` when the run did not complete — its facts are
+kept either way; exit 3 on a budget stop, 2 on a provider failure).
+``--all-steps`` does every history step (c1..c6). Builds the fixture first
+(``bench.build.build``, the same idempotent, fast — under a second — step
+every other CLI in this harness already does) so ``git diff`` has a real repository to compare
 against for the tier rule (``lift.py``).
 
 ``--model-dry-run`` additionally runs ``extract_model.dry_run`` over each
@@ -49,7 +53,8 @@ from connectors.tests.evidence import Outcome, read_runs_directory  # noqa: E402
 from connectors.tests.extract_model import (  # noqa: E402
     DEFAULT_PROVIDER,
     PROVIDERS,
-    ModelRunStopped,  # noqa: E402
+    ModelRunFailed,
+    ModelRunStopped,
     extract_with_model,
 )
 from connectors.tests.extract_model import dry_run as model_dry_run  # noqa: E402
@@ -160,6 +165,7 @@ def build_step_output(
         # `rules_by_id` from `extract_all` above.
         model_skeletons = skeletons[:limit] if limit is not None else skeletons
         stopped: str | None = None
+        failed: str | None = None
         try:
             model_results, counting = extract_with_model(
                 model_skeletons, rules_by_id, client_factory=PROVIDERS[provider]
@@ -169,12 +175,18 @@ def build_step_output(
             # paid for, let the rest fall back to the rules guess, record the
             # stop in the output, and let `main` exit non-zero (asbuilt#15).
             model_results, counting, stopped = exc.results, exc.client, exc.reason
+        except ModelRunFailed as exc:
+            # A provider error mid-run: same treatment, recorded as `failed`
+            # (the error's own first line, never a credential), exit 2.
+            model_results, counting = exc.results, exc.client
+            failed = str(exc).splitlines()[0] if str(exc) else "provider error"
         rules_by_id = {
             **rules_by_id,
             **{r["node_id"]: _rule_from_model_result(r) for r in model_results},
         }
         model_usage = _model_usage(counting, provider, len(model_skeletons), len(model_results))
         model_usage["stopped"] = stopped
+        model_usage["failed"] = failed
 
     facts: list[dict[str, Any]] = []
     contradiction_candidates: list[dict[str, Any]] = []
@@ -232,6 +244,16 @@ def build_step_output(
     return output
 
 
+def _dollars_or_none(counting: Any) -> float | None:
+    """Never let pricing lose a paid-for output: no price table, or a table
+    missing a token kind (`CountingClient.dollars` raises rather than price
+    it at $0), means `dollars` is None here and the tokens still land."""
+    try:
+        return round(counting.dollars(), 6)
+    except (ValueError, KeyError):
+        return None
+
+
 def _model_usage(
     counting: Any, provider: str, skeletons_called: int, results: int
 ) -> dict[str, Any]:
@@ -253,7 +275,7 @@ def _model_usage(
         "cache_creation_tokens": counting.cache_creation_tokens,
         "cache_read_tokens": counting.cache_read_tokens,
         "elapsed_seconds": round(counting.elapsed_seconds, 3),
-        "dollars": round(counting.dollars(), 6) if counting.prices is not None else None,
+        "dollars": _dollars_or_none(counting),
         "usage_missing": counting.usage_missing,
     }
 
@@ -308,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     outcomes_by_step = _load_outcomes_by_step(fixture_root)
     steps = step_order if args.all_steps else [args.step or step_order[-1]]
 
-    stopped_runs = 0
+    stopped_runs = failed_runs = 0
     for step in steps:
         if step not in commits:
             raise SystemExit(f"unknown step {step!r}; known steps are {step_order}")
@@ -359,6 +381,12 @@ def main(argv: list[str] | None = None) -> int:
                     "and comment on the driving issue before continuing"
                 )
                 stopped_runs += 1
+            elif u["failed"]:
+                print(
+                    f"  FAILED mid-run ({u['failed']}): the {u['results']} facts extracted "
+                    "before it are kept, the rest keep their rules guess"
+                )
+                failed_runs += 1
         if args.model_dry_run:
             d = output["model_dry_run"]
             print(
@@ -371,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
                 "subscription, not per-call)"
             )
 
-    return 3 if stopped_runs else 0
+    return 3 if stopped_runs else 2 if failed_runs else 0
 
 
 if __name__ == "__main__":

@@ -368,8 +368,18 @@ plus `run/<run-id>` when `executed`), `contradiction_candidates` (each
 carrying `opened_step`, the step where the demotion first happened — a
 candidate persists across a later step with no fresh run, as long as the
 test still exists and hasn't passed again), `flaky` and `skipped` node ids,
-and `counts`. `--model-dry-run` additionally prints token/dollar totals
-without making a call. `connectors/tests/RUNNERS.md` documents how to
+and `counts`. After a real model run the file also carries `model_usage`
+(provider, model, skeletons called, results, calls, input/output/cache
+tokens, seconds, dollars at the assumed price table, `usage_missing`, and
+`stopped` or `failed` when the run did not complete: the facts already paid
+for are kept, the rest keep their rules guess, and the CLI exits 3 on a
+budget stop or 2 on a provider failure — asbuilt#15, after the first full
+run lost 16 extracted facts to a bare budget stop) and prints one `model:`
+line with the same numbers. `--model-dry-run` prints token/dollar totals
+without making a call; measured on that first run, one headless call writes
+about 8,200 tokens to the cache (the CLI's own system prompt) on top of the
+prompt, so the estimate adds that per call and prices input at the
+cache-creation rate. `connectors/tests/RUNNERS.md` documents how to
 actually produce `runs/` output for a CI-sourced corpus.
 
 ## The baseline arm and the MCP adapter

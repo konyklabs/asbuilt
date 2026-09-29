@@ -180,6 +180,19 @@ class ModelRunStopped(BudgetExceeded):
         self.client = client
 
 
+class ModelRunFailed(RuntimeError):
+    """A provider error mid-run (a non-zero `claude -p` exit, a timeout,
+    unparsable output — every `RuntimeError` the provider raises), re-raised
+    WITH the results already paid for and the counting client, for the same
+    reason as `ModelRunStopped` (a local review note on asbuilt#15: a
+    transient failure on call 20 of 24 must not lose the first 19)."""
+
+    def __init__(self, cause: RuntimeError, results: list[dict[str, Any]], client: Any):
+        super().__init__(str(cause))
+        self.results = results
+        self.client = client
+
+
 class ClientFactory(Protocol):
     def __call__(self) -> Any: ...
 
@@ -251,6 +264,8 @@ def extract_with_model(
             # The stop file is already written by the client; hand back what
             # was extracted so far rather than losing it (asbuilt#15).
             raise ModelRunStopped(exc, results, wrapped) from exc
+        except RuntimeError as exc:
+            raise ModelRunFailed(exc, results, wrapped) from exc
         if payload is not None:
             results.append({"node_id": skeleton.node_id, **payload})
     return results, wrapped
