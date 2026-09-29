@@ -292,10 +292,35 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   test's own name when no constant resolves. Category is a business-logic/
   technical-implementation heuristic on the test's own name and file path.
   `extract_model.py` is the model alternative — one structured-output call
-  per skeleton through `bench.llm.CountingClient` — but in this slice only
-  its `--dry-run` path runs: it builds every prompt and prices it from a
-  stated, labelled rate table, and makes no call (no key is used until Oleg
-  names the paying account).
+  per skeleton through `bench.llm.CountingClient`, with a provider behind
+  the same interface either way. **`claude-code`** (the default) is one
+  `claude -p` subprocess per skeleton, running on Oleg's Claude Code
+  subscription — never an API key, per his own decision. It needs
+  `CLAUDE_CODE_OAUTH_TOKEN` in the environment, or, if unset, a token file
+  at `~/.config/konyklabs/claude-code-oauth-token` — a credential, so it
+  lives on disk only, is read into the subprocess's own environment, and
+  never appears in a citation, a log, or a commit (the org's proprietary-
+  terms/secrets rule, restated for this one). Every `ANTHROPIC_*` variable
+  is stripped from that same subprocess environment first: `-p` mode
+  prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over the OAuth token
+  whenever both are set, which would otherwise silently switch a
+  claude-code call onto API-key billing the moment the parent process
+  happens to export one; every `CLAUDE_CODE_USE_*` backend selector
+  (`_BEDROCK`/`_VERTEX`/`_FOUNDRY`) and `AWS_BEARER_TOKEN_BEDROCK` are
+  stripped the same way, so none of them can silently route a call onto a
+  cloud account instead. This covers the process environment only — a
+  settings-file `apiKeyHelper` is a separate credential path outside it,
+  and stays the operator's own responsibility to keep unset here.
+  **`anthropic`** (`--provider anthropic`, opt-in) needs `ANTHROPIC_API_KEY`
+  and the optional `model` dependency group (`uv sync --extra model`)
+  instead. `--model-dry-run` builds every prompt and prices it from a
+  stated, labelled rate table and makes no call at all, under either
+  provider, whether or not `--extractor model` is also given — `--extractor
+  model` without `--model-dry-run` is what makes a real call, one per test
+  (or per `--limit N` tests, for the smoke test); none are ever made
+  anywhere in this repo's own tests — a fake `claude` executable on `PATH`
+  proves the `claude-code` subprocess wiring instead
+  (`tests/test_connector_model.py`).
 
 Dynamic evidence comes from `evidence.py`, which reads pytest-json-report,
 pytest-reportlog, JUnit XML (pytest's own shape and the generic
@@ -325,7 +350,16 @@ Run it with:
 uv run python -m connectors.tests --fixture . --step c6 --extractor rules
 uv run python -m connectors.tests --fixture . --all-steps --extractor rules
 uv run python -m connectors.tests --fixture . --step c6 --extractor rules --model-dry-run
+uv run python -m connectors.tests --fixture . --step c6 --extractor model --limit 3
 ```
+
+The last one is the smoke test: `--limit N` caps only how many tests get a
+REAL model call (at most N), never the written output — every other test in
+the step keeps its rules-extractor guess, so `tests-<step>.json` still
+covers the whole step. With no explicit `--out`, a `--limit`ed run writes
+`tests-<step>-limit<N>.json` instead of `tests-<step>.json`, so it can never
+overwrite a full run's own file. `--provider` picks `claude-code` (default)
+or `anthropic`.
 
 Each processed step writes `build/connector/tests-<step>.json`: a list of
 protocol-shaped Facts (citing `code/tests/...::node` at the step's SHA
