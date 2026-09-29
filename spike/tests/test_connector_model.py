@@ -461,7 +461,7 @@ def test_extractor_model_records_usage_in_output_and_prints_it(
     usage = output["model_usage"]
     assert usage["provider"] == "claude-code"
     assert usage["model"] == DEFAULT_MODEL
-    assert usage["skeletons_called"] == 2
+    assert usage["skeletons_requested"] == 2
     assert usage["results"] == 2
     assert usage["calls"] == 2
     assert (usage["input_tokens"], usage["output_tokens"]) == (246, 90)
@@ -519,7 +519,7 @@ def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
     usage = output["model_usage"]
     assert usage["calls"] == 2
     assert usage["results"] == 1
-    assert usage["skeletons_called"] == output["counts"]["statements"]  # the full list was asked
+    assert usage["skeletons_requested"] == output["counts"]["statements"]  # the full list was asked
     assert "300" in usage["stopped"] and "tokens" in usage["stopped"]
     assert output["counts"]["statements"] > 2  # every other skeleton kept its rules fact
     assert (tmp_path / "build" / "stop-stack-b-model.json").is_file()
@@ -570,6 +570,65 @@ def test_extractor_model_provider_failure_keeps_output_and_exits_2(
     assert output["counts"]["statements"] > 3  # every skeleton kept its rules fact
     printed = capsys.readouterr().out
     assert "FAILED mid-run" in printed and "must never be surfaced" not in printed
+
+
+def test_extractor_model_budget_stop_halts_the_run_under_all_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """Blocking finding of the second local lens round on asbuilt#15: with
+    `--all-steps`, keeping the stopped step's output and moving on would
+    build a fresh `CountingClient` for the next step (counters at zero,
+    budget re-read from the environment) and spend the same budget again,
+    turning D-013's stop condition into a per-step cap. The run must halt
+    after the stopped step: only that step's file exists, written under the
+    `-stopped` name (no `--out`), exit 3, and the fake `claude` was invoked
+    exactly twice in total."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.setenv("ASBUILT_BUDGET_TOKENS", "300")
+    monkeypatch.delenv("ASBUILT_BUDGET_DOLLARS", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--all-steps",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+        ]
+    )
+
+    assert exit_code == 3
+    written = sorted(p.name for p in (tmp_path / "build" / "connector").glob("tests-*.json"))
+    assert written == ["tests-c1-stopped.json"]
+    assert marker_path.read_text().count("called") == 2
+    printed = capsys.readouterr().out
+    assert "STOPPED at the budget threshold" in printed
+    assert "halted before c2, c3, c4, c5, c6" in printed
+
+
+def test_dry_run_for_the_anthropic_provider_carries_no_headless_overhead():
+    """The overhead is the claude-code CLI's own system prompt; the opt-in
+    `anthropic` SDK path sends the prompt alone, priced at the input rate."""
+    skeletons = [_skeleton("test_a")]
+
+    result = dry_run(skeletons, {}, provider="anthropic")
+
+    assert result.estimated_overhead_tokens == 0
+    assert result.priced_input_as == "input"
+    prices = PRICE_TABLE[DEFAULT_MODEL]
+    expected = (
+        result.estimated_input_tokens * prices["input"]
+        + result.estimated_output_tokens * prices["output"]
+    ) / 1e6
+    assert result.estimated_dollars == pytest.approx(expected)
 
 
 def test_dry_run_adds_the_measured_per_call_overhead_at_the_cache_creation_rate():

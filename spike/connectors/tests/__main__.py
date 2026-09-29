@@ -7,10 +7,12 @@ JSON shape (statement, category, entities as names, tier, citations —
 ``code/tests/...::node`` at the step's SHA always, plus ``run/<id>`` when
 executed — ``valid_from`` the step, claim), plus ``contradiction_candidates``,
 ``flaky``, ``skipped`` node ids, and ``counts``; after a real model run
-also ``model_usage`` (provider, model, skeletons called, results, calls,
+also ``model_usage`` (provider, model, skeletons requested, results, calls,
 token kinds, seconds, dollars at the assumed price table, ``usage_missing``,
 and ``stopped``/``failed`` when the run did not complete — its facts are
-kept either way; exit 3 on a budget stop, 2 on a provider failure).
+kept either way, the run halts there even under ``--all-steps``, the file
+is ``tests-<step>-stopped.json``/``-failed.json`` unless ``--out`` was
+given; exit 3 on a budget stop, 2 on a provider failure).
 ``--all-steps`` does every history step (c1..c6). Builds the fixture first
 (``bench.build.build``, the same idempotent, fast — under a second — step
 every other CLI in this harness already does) so ``git diff`` has a real repository to compare
@@ -236,7 +238,7 @@ def build_step_output(
     }
 
     if model_dry_run_enabled:
-        result = model_dry_run(skeletons, rules_by_id)
+        result = model_dry_run(skeletons, rules_by_id, provider=provider)
         output["model_dry_run"] = dataclasses.asdict(result)
     if model_usage is not None:
         output["model_usage"] = model_usage
@@ -255,7 +257,7 @@ def _dollars_or_none(counting: Any) -> float | None:
 
 
 def _model_usage(
-    counting: Any, provider: str, skeletons_called: int, results: int
+    counting: Any, provider: str, skeletons_requested: int, results: int
 ) -> dict[str, Any]:
     """What a real model run cost, read off the `CountingClient` that
     `extract_with_model` returns (asbuilt#15: the first real run recorded
@@ -267,7 +269,7 @@ def _model_usage(
     return {
         "provider": provider,
         "model": counting.model,
-        "skeletons_called": skeletons_called,
+        "skeletons_requested": skeletons_requested,
         "results": results,
         "calls": counting.calls,
         "input_tokens": counting.input_tokens,
@@ -350,8 +352,14 @@ def main(argv: list[str] | None = None) -> int:
         # silently overwrite the real `tests-<step>.json` a full run
         # produced — but if the caller gave an explicit `--out`, that
         # choice is respected as-is (they know what they asked for).
-        if args.limit is not None and args.out is None:
+        usage = output.get("model_usage") or {}
+        partial = "stopped" if usage.get("stopped") else "failed" if usage.get("failed") else None
+        if args.out is None and args.limit is not None:
             out_path = out_dir / f"tests-{step}-limit{args.limit}.json"
+        elif args.out is None and partial:
+            # Same rule as --limit (asbuilt#8): a run that did not complete
+            # never overwrites a full run's own file unless --out says so.
+            out_path = out_dir / f"tests-{step}-{partial}.json"
         else:
             out_path = out_dir / f"tests-{step}.json"
         out_path.write_text(json.dumps(output, indent=2) + "\n")
@@ -367,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
             dollars = "n/a" if u["dollars"] is None else f"${u['dollars']:.4f}"
             print(
                 f"  model: provider={u['provider']} model={u['model']} "
-                f"skeletons={u['skeletons_called']} results={u['results']} calls={u['calls']} "
+                f"skeletons={u['skeletons_requested']} results={u['results']} calls={u['calls']} "
                 f"input_tokens={u['input_tokens']} output_tokens={u['output_tokens']} "
                 f"cache_tokens={u['cache_creation_tokens'] + u['cache_read_tokens']} "
                 f"seconds={u['elapsed_seconds']} dollars~{dollars}"
@@ -387,6 +395,15 @@ def main(argv: list[str] | None = None) -> int:
                     "before it are kept, the rest keep their rules guess"
                 )
                 failed_runs += 1
+            if u["stopped"] or u["failed"]:
+                # The stop condition halts the RUN (D-013), not one step: the
+                # next step would build a fresh CountingClient with zeroed
+                # counters and spend the same budget again (a blocking
+                # finding of the second local lens round on asbuilt#15).
+                remaining = steps[steps.index(step) + 1 :]
+                if remaining:
+                    print(f"  halted before {', '.join(remaining)}")
+                break
         if args.model_dry_run:
             d = output["model_dry_run"]
             print(
