@@ -1010,16 +1010,26 @@ def _shares_matching_version(
     returned: dict[str, Any], truth_fact: TruthFact, commits: dict[str, Any]
 ) -> bool:
     """True if some document cited by `returned` is also a carrier of
-    `truth_fact`, with the same version (see _version_matches)."""
-    citation_versions = {
-        c["document"]: c.get("version")
-        for c in (returned.get("citations") or [])
-        if "document" in c
-    }
+    `truth_fact`, with a matching version (see _version_matches) on ANY of
+    the citations to that document — not just the last one. A fact re-cited
+    across several commits (one citation per commit its test ran at, e.g.
+    the same test file cited at c4, c5 and c6) previously kept only the
+    last version seen for a given document (a dict comprehension overwrites
+    on a repeated key), so disambiguating against an EARLIER-versioned
+    truth carrier (e.g. c4) always missed, and two truth facts sharing a
+    statement and document at different versions could be paired the wrong
+    way round (konyklabs/asbuilt#4 review)."""
+    citation_versions: dict[str, list[Any]] = {}
+    for c in returned.get("citations") or []:
+        if "document" in c:
+            citation_versions.setdefault(c["document"], []).append(c.get("version"))
     for carrier in truth_fact.carriers:
-        returned_version = citation_versions.get(carrier.document)
-        if returned_version is not None and carrier.version is not None:
-            if _version_matches(returned_version, carrier.version, commits):
+        if carrier.version is None:
+            continue
+        for returned_version in citation_versions.get(carrier.document, []):
+            if returned_version is not None and _version_matches(
+                returned_version, carrier.version, commits
+            ):
                 return True
     return False
 
@@ -1137,14 +1147,88 @@ def _category_accuracy(
     return {"correct": correct, "total": len(matches)}
 
 
+def _parse_datetime_loose(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _resolve_temporal_value_to_step(value: Any, commits: dict[str, Any]) -> str | None:
+    """A validity field's value — a step id, a commit SHA, or an ISO
+    datetime naming a commit's instant — resolved to the step id it names.
+    A datetime is matched to the step whose `commits[step]["date"]` is the
+    SAME INSTANT, not the same string: an arm's own ingest naturally
+    serialises the commit timestamp in its own offset (measured: UTC
+    "+00:00", against the fixture's own "-05:00"/"-04:00") rather than
+    echoing the fixture's form, so string equality never matched
+    (konyklabs/asbuilt#4 review). Tolerates up to a 1-second rounding
+    difference. A value that isn't datetime-shaped and doesn't resolve via
+    `commits` is returned UNCHANGED (the same "assume it's already a step
+    id" fallback `_resolve_step_or_sha` uses) rather than None — with no
+    `commits.json` at hand (or a minimal one, as in a unit test), a
+    returned value that's already the literal correct step id must still
+    compare equal, the same as before this function existed. A value that
+    IS datetime-shaped but matches no known commit returns None: a
+    plausible-looking but unrecognised instant is a real non-match, not a
+    step id in disguise."""
+    if value is None:
+        return None
+    if value in commits:
+        return value
+    for step, info in commits.items():
+        if info.get("sha") == value:
+            return step
+    parsed = _parse_datetime_loose(value)
+    if parsed is None:
+        return value
+    for step, info in commits.items():
+        commit_dt = _parse_datetime_loose(info.get("date"))
+        if commit_dt is None:
+            continue
+        try:
+            close_enough = abs((parsed - commit_dt).total_seconds()) <= 1.0
+        except TypeError:  # one aware, one naive -- not comparable, not a match
+            continue
+        if close_enough:
+            return step
+    return None
+
+
+def _first_step(commits: dict[str, Any]) -> str | None:
+    order = _step_order(commits)
+    return min(order, key=order.get) if order else None
+
+
 def _temporal_field_matches(
-    returned_value: Any, truth_value: str | None, commits: dict[str, Any]
+    returned_value: Any,
+    truth_value: str | None,
+    commits: dict[str, Any],
+    first_step: str | None = None,
 ) -> bool:
+    """Resolves `returned_value` to a step id (`_resolve_temporal_value_to_
+    step`) and compares it to `truth_value` (already a step id). When
+    `truth_value` is None, an absent `returned_value` matches; for the
+    `valid_from` field specifically, `first_step` (the earliest commit) is
+    also given, since a truth fact open from the very start of history
+    reasonably gets ingested with a `valid_from` stamped to the first
+    commit's own date rather than omitted (measured on a real arm's
+    output) — `valid_to`'s caller leaves `first_step` at its default
+    (None), where only an absent value still counts as open-ended."""
     if truth_value is None:
-        return returned_value is None
+        if returned_value is None:
+            return True
+        return (
+            first_step is not None
+            and _resolve_temporal_value_to_step(returned_value, commits) == first_step
+        )
     if returned_value is None:
         return False
-    return _version_matches(str(returned_value), truth_value, commits)
+    return _resolve_temporal_value_to_step(returned_value, commits) == truth_value
 
 
 def _validity_stats(
@@ -1155,17 +1239,22 @@ def _validity_stats(
     """Over matched facts whose TRUTH fact carries a valid_from or valid_to
     (facts with neither aren't "facts that carry" one, per the task, and are
     excluded from the denominator entirely). A fact counts correct only when
-    both fields agree (compared by step id or by SHA via commits.json — see
-    _version_matches; an open-ended None field on the truth side requires
-    the returned field to also be None/absent)."""
+    both fields agree (compared by step id, by SHA, or by the commit's own
+    date-time instant via commits.json — see
+    `_resolve_temporal_value_to_step`; an open-ended `valid_to` requires the
+    returned field to be None/absent, and an open-ended `valid_from` also
+    accepts the first commit's own date — see `_temporal_field_matches`)."""
     correct = 0
     total = 0
+    first_step = _first_step(commits)
     for rf, fid in matches:
         truth_fact = expected[fid]
         if truth_fact.valid_from is None and truth_fact.valid_to is None:
             continue
         total += 1
-        from_ok = _temporal_field_matches(rf.get("valid_from"), truth_fact.valid_from, commits)
+        from_ok = _temporal_field_matches(
+            rf.get("valid_from"), truth_fact.valid_from, commits, first_step
+        )
         to_ok = _temporal_field_matches(rf.get("valid_to"), truth_fact.valid_to, commits)
         if from_ok and to_ok:
             correct += 1
@@ -1813,8 +1902,10 @@ _TRUTH_FILTER_PREFIXES: dict[str, tuple[str, ...]] = {
 def _step_order(commits: dict[str, Any]) -> dict[str, int]:
     """step id -> its position in commit order, by `commits[step]["date"]"
     (not by parsing "c<N>" out of the id — a real ingest root's step names
-    aren't guaranteed to follow that convention, only the fixture's do)."""
-    ordered = sorted(commits.items(), key=lambda kv: kv[1]["date"])
+    aren't guaranteed to follow that convention, only the fixture's do). A
+    step entry with no "date" (a minimal/partial commits dict, e.g. in a
+    unit test) sorts first rather than raising KeyError."""
+    ordered = sorted(commits.items(), key=lambda kv: kv[1].get("date", ""))
     return {step: i for i, (step, _) in enumerate(ordered)}
 
 

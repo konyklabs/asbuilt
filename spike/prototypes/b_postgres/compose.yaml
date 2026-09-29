@@ -1,0 +1,22 @@
+# Stack B's one service (D-013; konyklabs/asbuilt#4): Postgres 17 with pgvector.
+# Bound to loopback only; trust auth, so no credential lives in this file.
+# Invented benchmark data only. Port: ASBUILT_PG_PORT (default 55432).
+name: asbuilt-b-postgres
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: asbuilt
+      POSTGRES_DB: asbuilt
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:${ASBUILT_PG_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asbuilt -d asbuilt"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  pgdata:

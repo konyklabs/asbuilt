@@ -534,3 +534,93 @@ uv run ruff check .
 `ruff check .` covers the whole `spike/` tree, including `truth/` and
 `sources/`, which are authored separately; `uv run ruff check bench tests`
 scopes it to this harness's own deliverables.
+
+## Stack B
+
+Our own fact model on Postgres + pgvector (konyklabs/asbuilt#4, D-013's
+default stack). Two halves:
+
+- **`pipeline/`**, shared by every arm and written once against the
+  write-side `StoreInterface` (`pipeline/store.py`: upsert fact, supersede,
+  link contradiction, query by entity, time, text and vector, snapshot).
+  `lift.py` applies the test connector's tiers, candidates and supersessions;
+  `resolve.py` maps names to entities (exact name, alias, separator-folded,
+  then embedding similarity within a kind, else a new entity);
+  `contradict.py` joins claims and, for prose, runs the NLI pre-filter then a
+  model verdict; `stale.py` flags documented facts the code has moved past;
+  `history.py` and `sources.py` give every document its version.
+  `MemoryStore` implements the interface in pure Python for the unit tests.
+- **`prototypes/b_postgres/`**: `schema.sql` (plain SQL), `store.py` (psycopg
+  3, recursive CTEs for traversal, a GIN `tsvector` index, HNSW cosine on
+  `vector(384)`), `extract.py` (one structured call per wiki page, document,
+  ticket or pull request, citation mandatory in the schema), and `Prototype`
+  in `__init__.py`. Module docstrings carry the exact rules.
+
+The test connector needs git history the ingest root does not carry (a
+passing run proves a test only if nothing it exercises changed since), so
+the arm builds the invented system's repository with `bench/build.py`'s
+reproducible SHAs into `build/b_postgres/` on every ingest, or reads one
+from `ASBUILT_B_BUILT` (a directory with `repo/` and `commits.json`). It
+never reads `system/history/steps.yaml` itself.
+
+### Commands
+
+```
+uv sync --extra pipeline                       # psycopg, sentence-transformers (torch)
+cd prototypes/b_postgres && docker compose up -d --wait && cd ../..
+ASBUILT_B_NO_MODEL=1 uv run python bench/run.py --prototype b_postgres --fixture .
+uv run python bench/score.py build/results-b_postgres.json
+uv run python -m prototypes.b_postgres --dry-run --fixture .   # token estimate, no call
+prototypes/b_postgres/reset.sh                 # down -v, then up --wait; --down stops there
+```
+
+Where the `docker compose` plugin is missing (colima with Homebrew),
+`docker-compose` is the same command; `reset.sh` picks whichever exists.
+
+- **Port.** `ASBUILT_PG_PORT`, default 55432, bound to 127.0.0.1. Trust
+  auth on loopback, so no credential lives in the repository.
+  `ASBUILT_PG_DSN` overrides the whole DSN; `ASBUILT_PG_SCHEMA` (default
+  `asbuilt`) names the schema.
+- **Reset.** A full ingest (`incremental=False`) drops and re-applies the
+  schema by itself; `reset.sh` (what `bench/run.py --reset` runs) also
+  deletes the named volume.
+- **Incremental.** A text document is registered at its new version only
+  after its facts are stored, so a budget stop or a crash mid-extraction
+  leaves it pending and the next ingest extracts it. `bench/run.py
+  --incremental` copies `sources/` whole into both phases
+  (`assemble_ingest_root`), so no document version changes between them: the
+  incremental measure exercises the code steps and the runs only, until a
+  document-version delta is planted in the fixture.
+- **Embedder.** `sentence-transformers/all-MiniLM-L6-v2` at revision
+  `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` (Apache-2.0, 384 dimensions),
+  cached under `build/models/`. `ASBUILT_EMBED=fake`, or sentence-transformers
+  not installed, selects the deterministic hash embedder of the same
+  dimension; the `IngestReport.embedder` field says which ran and why.
+- **NLI.** `cross-encoder/nli-deberta-v3-base` at revision
+  `6c749ce3425cd33b46d187e45b92bbf96ee12ec7` (Apache-2.0), same cache. Skipped
+  when not installed or `ASBUILT_NLI=off`; a lexical stand-in then feeds the
+  model verdict, and the ingest log says so.
+- **No-model mode.** `ASBUILT_B_NO_MODEL=1` makes no model call at all: no
+  document extraction (text documents stay pending, unregistered), no prose
+  verdict, `ask` composes one sentence per fact deterministically. What remains is the test connector's `executed`
+  and `code` facts, the run-vs-code contradiction, and supersession; there
+  are no `documented` facts, so documented-tier recall is zero and `stale`
+  is empty by construction.
+- **Model mode** (unset `ASBUILT_B_NO_MODEL`) calls `claude -p` on the
+  owner's subscription through the connector's `claude-code` provider, every
+  call through `bench.llm.CountingClient`; `bench/run.py --budget-dollars`
+  is the stop condition. Run the dry run first.
+
+### Tests
+
+```
+uv run pytest tests/test_pipeline_*.py tests/test_b_prototype.py   # no Docker
+uv run pytest -m postgres                                          # a throwaway pgvector container
+```
+
+`tests/test_b_postgres.py` runs the store contract from
+`tests/_support/store_contract.py` (the same one `MemoryStore` passes) and
+the real-fixture integration test on a testcontainers container, skipped
+when Docker does not answer. With colima, the fixture takes `DOCKER_HOST`
+from the active Docker context. No test makes a model call: they use a fake
+client or a fake `claude` on `PATH`.

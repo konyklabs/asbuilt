@@ -22,11 +22,15 @@ from bench.score import (
     _duplicate_count,
     _entity_mention_conflict,
     _expected_tier_at_step,
+    _first_step,
     _has_test_carrier_by_step,
     _mentioned_entities,
     _resolve_step_or_sha,
+    _resolve_temporal_value_to_step,
+    _shares_matching_version,
     _statement_matches,
     _step_order,
+    _temporal_field_matches,
     aggregate_reports,
     align_entities,
     bootstrap_compare,
@@ -907,6 +911,75 @@ def test_score_fact_query_validity_excludes_facts_with_no_valid_from_or_to():
     }
     result = score_fact_query([returned], expected, alias_index=_identity_index("E-x"))
     assert result["validity"] == {"correct": 0, "total": 0}
+
+
+# --------------------------------------------------------------------------
+# Validity matching by datetime instant, and every cited version
+# (konyklabs/asbuilt#4 review)
+# --------------------------------------------------------------------------
+
+_STACK_B_COMMITS = {
+    "c1": {"sha": "s1", "date": "2026-01-12T10:00:00-05:00"},
+    "c5": {"sha": "s5", "date": "2026-07-22T14:00:00-04:00"},
+}
+
+
+def test_resolve_temporal_value_to_step_tolerates_offset_and_rounding():
+    # Same instant as c5, but serialised in UTC with a fractional second.
+    assert _resolve_temporal_value_to_step("2026-07-22T18:00:00.4+00:00", _STACK_B_COMMITS) == "c5"
+    # More than a second off -> no match.
+    assert _resolve_temporal_value_to_step("2026-07-22T18:00:03+00:00", _STACK_B_COMMITS) is None
+    # Already a step id or a SHA still resolves directly.
+    assert _resolve_temporal_value_to_step("c1", _STACK_B_COMMITS) == "c1"
+    assert _resolve_temporal_value_to_step("s5", _STACK_B_COMMITS) == "c5"
+    # Not datetime-shaped and not found in commits -> passed through
+    # unchanged (an already-correct step id must still compare equal even
+    # with no commits.json, or a minimal one, at hand).
+    assert _resolve_temporal_value_to_step("c9", {}) == "c9"
+
+
+def test_temporal_field_matches_maps_a_returned_datetime_to_its_step():
+    assert _temporal_field_matches("2026-07-22T18:00:00+00:00", "c5", _STACK_B_COMMITS)
+    assert not _temporal_field_matches("2026-01-12T15:00:00+00:00", "c5", _STACK_B_COMMITS)
+
+
+def test_temporal_field_matches_open_valid_from_accepts_first_step_or_none():
+    first_step = _first_step(_STACK_B_COMMITS)
+    assert first_step == "c1"
+    assert _temporal_field_matches(None, None, _STACK_B_COMMITS, first_step)
+    assert _temporal_field_matches("2026-01-12T15:00:00+00:00", None, _STACK_B_COMMITS, first_step)
+    # c5's own date, not the first step's -> still open-ended is false.
+    assert not _temporal_field_matches(
+        "2026-07-22T18:00:00+00:00", None, _STACK_B_COMMITS, first_step
+    )
+    # valid_to's caller never passes first_step -- only an absent value
+    # counts as open there.
+    assert not _temporal_field_matches("2026-01-12T15:00:00+00:00", None, _STACK_B_COMMITS)
+
+
+def test_shares_matching_version_checks_every_cited_version_not_just_the_last():
+    """konyklabs/asbuilt#4 review, reproduced: a fact re-cited across every
+    commit its test ran at (c4, c5, c6) previously kept only the LAST
+    version for that document (a dict comprehension overwrites on a
+    repeated key), so a truth carrier at an EARLIER version (c4) never
+    matched."""
+    truth_fact = TruthFact(
+        id="F-early",
+        statement="x",
+        category="business-logic",
+        entities=("E-x",),
+        tier="executed",
+        carriers=(Carrier(document="code/t.py", version="c4"),),
+    )
+    returned = {
+        "citations": [
+            {"document": "code/t.py", "version": "sha-c4"},
+            {"document": "code/t.py", "version": "sha-c5"},
+            {"document": "code/t.py", "version": "sha-c6"},
+        ]
+    }
+    commits = {"c4": {"sha": "sha-c4"}, "c5": {"sha": "sha-c5"}, "c6": {"sha": "sha-c6"}}
+    assert _shares_matching_version(returned, truth_fact, commits)
 
 
 # --------------------------------------------------------------------------
