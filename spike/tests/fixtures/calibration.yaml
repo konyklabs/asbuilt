@@ -382,3 +382,23 @@
 - truth: "The nightly rebalance job runs at 03:00."
   candidate: "The maintenance sweep job runs every hour."
   expect: false
+
+# -- claim-first pairs (konyklabs/asbuilt#8): truth_claim/candidate_claim
+# exercise _claims_match and the boundary-numbers relaxation directly, not
+# just the plain-statement path. Entities are real truth/entities.yaml ids
+# and names (E-rule-member-free-minutes / "member-free-minutes") so these
+# run against the real alias index the same way `score.py --calibrate` does.
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "A member's first 30 minutes of every ride are free, and the 31st minute costs $0.15."
+  truth_claim: {entity: E-rule-member-free-minutes, attribute: free_minutes, value: 30, unit: minute}
+  expect: true
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "A member's first 30 minutes of every ride are free."
+  truth_claim: {entity: E-rule-member-free-minutes, attribute: free_minutes, value: 30, unit: minute}
+  candidate_claim: {entity: member-free-minutes, attribute: free_minutes, value: 45, unit: minute}
+  expect: false
+- truth: "A member's first 30 minutes of every ride are free."
+  candidate: "A member's first 30 minutes of every ride are free."
+  truth_claim: {entity: E-rule-member-free-minutes, attribute: free_minutes, value: 30, unit: minute}
+  candidate_claim: {entity: member-free-minutes, attribute: retries, value: 30, unit: minute}
+  expect: false

@@ -104,3 +104,5 @@
   kind: run-vs-code
   winner: F-012
   label: refutes
+  opened_by: c5
+  resolved_by: c6

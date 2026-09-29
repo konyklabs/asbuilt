@@ -262,6 +262,82 @@ class named `Prototype` with no required constructor arguments. `bench/run.py`
 puts the `spike/` directory on `sys.path` itself, so this works regardless of
 how it's invoked.
 
+## The test connector
+
+`connectors/tests/` turns the fixture's own pytest/Vitest suite into cited
+candidate facts, per D-013's provenance tiers. It has two halves:
+
+- **Static.** `collect.py` walks `tests/**/test_*.py` with `ast` (no
+  execution) into one `Skeleton` per test function — node id, file, line,
+  docstring, markers (including `skip`/`xfail`/`parametrize`, one skeleton
+  per parametrize case), fixtures, imports, called/compared names, and every
+  `assert`'s operands — and tolerantly line-scans `*.test.ts`/`*.spec.ts`
+  for `describe`/`it`/`expect` (no tree-sitter). `collect_from_timeline`
+  collects at any history step via `bench.build.Timeline`, materialized to a
+  temp directory.
+- **Extraction.** `extract_rules.py` is a deterministic extractor: one
+  ONE-SENTENCE `statement` per test, never past its own assertion, built
+  from the test's own name (e.g. `test_lost_bike_fee_150` → "Lost bike fee
+  $150.00." — the name's own trailing number upgraded to its primary
+  assert's money value); every assertion clause, API/error clause and event
+  clause instead goes into a separate `detail` field (semicolon-joined,
+  carried for arms and readers but never matched against truth — appending
+  them to `statement` itself was tried and reverted: the matcher's
+  similarity is a word-overlap coefficient over the whole statement, and
+  enough unrelated clause words pushed even a correct name sentence below
+  its threshold). Claims come from module-level constants the test's own
+  assertions reference first, falling back — conservatively, only when
+  confident (a sole or name-word-matching money/cents/count comparison,
+  never an HTTP status or a bare length) — to a claim derived from the
+  test's own name when no constant resolves. Category is a business-logic/
+  technical-implementation heuristic on the test's own name and file path.
+  `extract_model.py` is the model alternative — one structured-output call
+  per skeleton through `bench.llm.CountingClient` — but in this slice only
+  its `--dry-run` path runs: it builds every prompt and prices it from a
+  stated, labelled rate table, and makes no call (no key is used until Oleg
+  names the paying account).
+
+Dynamic evidence comes from `evidence.py`, which reads pytest-json-report,
+pytest-reportlog, JUnit XML (pytest's own shape and the generic
+testsuite/testcase shape, with commit from a `<property name="commit">` or a
+`.commit.txt` sidecar) and Vitest JSON (fullName rebuilt from
+`ancestorTitles + title`, matching `bench/truth.py`'s own convention) into
+per-test-id outcomes with an attempt number.
+
+`lift.py` applies D-013's tier rule at a target commit: **executed** when a
+passing run exists at some earlier-or-equal commit and neither the test file
+nor the source files its imports approximate (`git diff --name-only`
+between the two, in the built repo) changed since; otherwise **code**. A
+failing run at the target commit demotes to `code` and opens a contradiction
+candidate (statement, failing run id, code citation). Skipped and xfail
+never lift on their own but don't erase an earlier still-valid proof.
+A commit whose attempts disagree (attempt 1 fails, the rerun passes) neither
+lifts nor demotes and is marked `flaky` — D-013 is silent here, so this
+connector follows the fixture's own stated reading
+(`truth/planted-runs.yaml`'s `rules`): a flaky commit's own runs are never
+cited, and the fact simply keeps the tier its latest conclusive (non-flaky)
+step already gave it, without re-checking that step's proof against the
+flaky commit's own code state.
+
+Run it with:
+
+```
+uv run python -m connectors.tests --fixture . --step c6 --extractor rules
+uv run python -m connectors.tests --fixture . --all-steps --extractor rules
+uv run python -m connectors.tests --fixture . --step c6 --extractor rules --model-dry-run
+```
+
+Each processed step writes `build/connector/tests-<step>.json`: a list of
+protocol-shaped Facts (citing `code/tests/...::node` at the step's SHA
+always — with the step id itself alongside as `step`, for a human reader —
+plus `run/<run-id>` when `executed`), `contradiction_candidates` (each
+carrying `opened_step`, the step where the demotion first happened — a
+candidate persists across a later step with no fresh run, as long as the
+test still exists and hasn't passed again), `flaky` and `skipped` node ids,
+and `counts`. `--model-dry-run` additionally prints token/dollar totals
+without making a call. `connectors/tests/RUNNERS.md` documents how to
+actually produce `runs/` output for a CI-sourced corpus.
+
 ## Testing the harness itself
 
 `tests/fixtures/mini/` is a tiny, self-contained invented fixture used only

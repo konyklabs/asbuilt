@@ -47,6 +47,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -85,6 +86,14 @@ class TruthFact:
     carriers: tuple[Carrier, ...]
     valid_from: str | None = None
     valid_to: str | None = None
+    # A numeric claim (konyklabs/asbuilt#8): {entity, attribute, value, unit}
+    # — truth/SCHEMA.md; `entity` is one of the fact's own entity ids,
+    # `value` a number or a string (clock times, dates, codes), `unit` one
+    # of usd|minute|day|hour|second|percent|count|clock|null. Present on
+    # all 78 numeric facts in the real fixture; None on facts with no
+    # single numeric claim to make (and always None on a fixture authored
+    # before this field existed, e.g. tests/fixtures/mini/).
+    claim: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +103,13 @@ class TruthContradiction:
     kind: str
     winner: str | None = None
     label: str = "refutes"
+    # Step ids bracketing when the contradiction exists in history
+    # (konyklabs/asbuilt#8): `opened_by` is the step that created it,
+    # `resolved_by` (optional — a still-open contradiction has none) the
+    # step that resolved it. Only `kind: run-vs-code` entries carry these
+    # so far.
+    opened_by: str | None = None
+    resolved_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +182,7 @@ def load_facts(path: Path) -> dict[str, TruthFact]:
             carriers=carriers,
             valid_from=raw.get("valid_from"),
             valid_to=raw.get("valid_to"),
+            claim=raw.get("claim"),
         )
     return facts
 
@@ -182,6 +199,8 @@ def load_contradictions(path: Path) -> dict[str, TruthContradiction]:
             kind=raw["kind"],
             winner=raw.get("winner"),
             label=raw.get("label", "refutes"),
+            opened_by=raw.get("opened_by"),
+            resolved_by=raw.get("resolved_by"),
         )
     return contradictions
 

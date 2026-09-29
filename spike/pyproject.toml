@@ -5,6 +5,12 @@ description = "Storage-engine spike: synthetic system and benchmark harness for 
 requires-python = ">=3.12"
 dependencies = ["pyyaml>=6.0"]
 
+[project.optional-dependencies]
+# The model extractor's provider adapter (connectors/tests/extract_model.py)
+# imports this lazily, never at module import time; --dry-run needs neither
+# the package nor a key. `uv sync --extra model` to install it.
+model = ["anthropic>=0.40"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -35,4 +41,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["bench"]
+packages = ["bench", "connectors"]

@@ -178,7 +178,7 @@ if str(SPIKE_ROOT) not in sys.path:
 
 import yaml  # noqa: E402
 
-from bench.truth import StaleEntry, Truth, TruthFact, load_truth  # noqa: E402
+from bench.truth import StaleEntry, Truth, TruthContradiction, TruthFact, load_truth  # noqa: E402
 
 _PUNCTUATION = re.compile(r"[^\w\s]")
 _WHITESPACE = re.compile(r"\s+")
@@ -487,29 +487,194 @@ def _entity_mention_conflict(
     return False
 
 
+def _numeric_claim_value(value: Any) -> float | None:
+    """`value` as a float, tolerant of a `$`/`,`/`%` a connector's claim
+    might still carry even though truth/SCHEMA.md fixes `value` as a plain
+    number (konyklabs/asbuilt#8 trace: a real connector payload emitted
+    "$150.00" for a usd claim, which bare `float()` rejects) — None if it
+    isn't number-shaped at all."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    text = str(value).strip().replace(",", "")
+    if text.startswith("$"):
+        text = text[1:]
+    if text.endswith("%"):
+        text = text[:-1]
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _claim_values_match(returned_value: Any, truth_value: Any) -> bool:
+    """ "Equal after unit normalisation": both number-shaped (30 == 30.0,
+    "$150.00" == 150.0 — see `_numeric_claim_value`) -> compared as floats;
+    otherwise compared as text, case-insensitively (clock times, dates,
+    codes)."""
+    returned_number = _numeric_claim_value(returned_value)
+    truth_number = _numeric_claim_value(truth_value)
+    if returned_number is not None and truth_number is not None:
+        return returned_number == truth_number
+    return str(returned_value).strip().lower() == str(truth_value).strip().lower()
+
+
+def _attributes_match(returned_attr: Any, truth_attr: Any) -> bool:
+    """Snake-normalised equality, or >= 0.6 on the SAME word-overlap
+    coefficent `_text_similarity` uses for statements (not a raw
+    `difflib.SequenceMatcher` over the token lists: measured, that scores
+    "cap" vs "single_ride_cap" at 0.5, below any 0.6 cutoff, while the task
+    requires this pair to pass — the overlap coefficient scores it 1.0, and
+    "member_free_minutes" vs "free_minutes" 1.0, and "fee" vs "retries"
+    0.0, matching all three of the task's own worked examples)."""
+    if returned_attr is None or truth_attr is None:
+        return False
+    a, b = str(returned_attr).strip().lower(), str(truth_attr).strip().lower()
+    return a == b or _text_similarity(a, b) >= _SIMILARITY_THRESHOLD
+
+
+def _claims_match(returned_claim: dict[str, Any], truth_claim: dict[str, Any]) -> bool:
+    """Both sides carry a claim (`{entity, attribute, value, unit}` —
+    truth/SCHEMA.md): the claim entities resolve to the same id, values
+    match (`_claim_values_match`), units agree when BOTH are set (an unset
+    unit on either side never blocks a match), and attributes match
+    (`_attributes_match`). `returned_claim["_resolved_entities"]` is
+    populated by `resolve_fact_entities` the same way the fact's own
+    top-level `entities` are — this function does no name alignment
+    itself."""
+    truth_entity = truth_claim.get("entity")
+    if truth_entity is None or truth_entity not in (returned_claim.get("_resolved_entities") or []):
+        return False
+    if not _claim_values_match(returned_claim.get("value"), truth_claim.get("value")):
+        return False
+    returned_unit, truth_unit = returned_claim.get("unit"), truth_claim.get("unit")
+    if returned_unit is not None and truth_unit is not None:
+        if str(returned_unit).strip().lower() != str(truth_unit).strip().lower():
+            return False
+    return _attributes_match(returned_claim.get("attribute"), truth_claim.get("attribute"))
+
+
+def _claim_value_as_number_token(value: Any, unit: str | None) -> str | None:
+    """Renders a claim's `value` in the same normalised shape
+    `_number_tokens` would produce from PROSE naming it — money gets a `$`
+    prefix, a percentage a `%` suffix, everything else (including a clock
+    string, already "HH:MM") passes through unchanged — so it can be
+    checked for membership in a statement's own number-token set (see
+    `_boundary_numbers_ok`). Returns None for a value that isn't number-
+    shaped at all (`_normalize_number`/float conversion both fail)."""
+    if value is None:
+        return None
+    text = str(value)
+    if unit == "usd" and not text.startswith("$"):
+        text = f"${text}"
+    elif unit == "percent" and not text.endswith("%"):
+        text = f"{text}%"
+    return _normalize_number(text)
+
+
+def _boundary_numbers_ok(
+    returned_numbers: set[str],
+    truth_numbers: set[str],
+    returned_claim: dict[str, Any] | None,
+    truth_claim: dict[str, Any] | None,
+) -> bool:
+    """Only reached when the two statements' own number sets are NOT equal
+    and exactly one side carries a claim: that side's statement may name
+    MORE numbers than the other (a boundary pair — "a 30-minute ride costs
+    $0.00 and a 31-minute ride costs $0.15" against a truth statement/claim
+    naming just "30") as long as (a) the claim's own value is among the
+    OTHER side's numbers and (b) the claim-LESS side's numbers are still a
+    subset of the claim-bearing side's — nothing it names goes
+    unaccounted for."""
+    if truth_claim is not None and returned_claim is None:
+        value_token = _claim_value_as_number_token(
+            truth_claim.get("value"), truth_claim.get("unit")
+        )
+        return (
+            value_token is not None
+            and value_token in returned_numbers
+            and truth_numbers <= returned_numbers
+        )
+    if returned_claim is not None and truth_claim is None:
+        value_token = _claim_value_as_number_token(
+            returned_claim.get("value"), returned_claim.get("unit")
+        )
+        return (
+            value_token is not None
+            and value_token in truth_numbers
+            and returned_numbers <= truth_numbers
+        )
+    return False
+
+
+def _claim_is_comparable(returned_claim: dict[str, Any], truth_claim: dict[str, Any]) -> bool:
+    """Whether the returned claim carries enough real signal to decide the
+    match on its own (konyklabs/asbuilt#8 review): its entity must have
+    resolved to at least one candidate id, and its value must be present.
+    When truth's own value is number-shaped (its unit implies a number —
+    everything but a text-shaped clock/code claim), the returned value
+    must ALSO be number-shaped (`_numeric_claim_value`), since a numeric
+    truth claim compared against an unparseable returned value can only
+    ever disagree, and confidently rejecting the fact on that basis is
+    worse than giving it another chance via the statement path below.
+    Interpretation: "value is not numeric-comparable" is read as relative
+    to truth's own claim type, not an unconditional numeric requirement —
+    a valid clock/code claim (e.g. "03:00") would otherwise always fail
+    this check and never get to use `_claims_match`'s string-equality
+    branch at all."""
+    if not returned_claim.get("_resolved_entities"):
+        return False
+    returned_value = returned_claim.get("value")
+    if returned_value is None:
+        return False
+    if _numeric_claim_value(truth_claim.get("value")) is not None:
+        return _numeric_claim_value(returned_value) is not None
+    return True
+
+
 def _statement_matches(
     returned_statement: str,
     truth_statement: str,
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+    returned_claim: dict[str, Any] | None = None,
+    truth_claim: dict[str, Any] | None = None,
 ) -> bool:
-    """Number-aware, negation- and entity-mention-guarded text match: shared
-    by `facts_match` (which additionally requires a shared entity and cited
-    document) and `ask` sentence scoring (which matches by citation, not
-    entity, so it calls this directly). A negation mismatch (one side says
-    "not"/"never"/"no"/"off" and the other doesn't) or an entity-mention
-    conflict (see `_entity_mention_conflict`; `mention_index` is optional —
-    omitting it just skips that check) vetoes the match outright; otherwise
-    numbers named by either side must agree as sets, then text similarity
-    (on the un-prenormalised, punctuation-stripped statements) must be
-    >= 0.6."""
+    """Number-aware, negation- and entity-mention-guarded text match, now
+    claim-first (konyklabs/asbuilt#8: the truth author added a numeric
+    `claim` to every numeric fact, and the test connector emits one too).
+    Shared by `facts_match` (which additionally requires a shared entity
+    and cited document) and `ask` sentence scoring (a Sentence carries no
+    claim, so it always takes the plain-statement path). A negation
+    mismatch or an entity-mention conflict vetoes the match outright,
+    before anything claim- or number-related is even considered.
+
+    When BOTH sides carry a claim AND the returned one is comparable (see
+    `_claim_is_comparable` — reproduced bug: an unresolved returned entity
+    used to reject the fact outright even when its plain entities,
+    document and statement all agreed, since `_claims_match` alone decided
+    the match with no way back), the match is decided ENTIRELY by
+    `_claims_match` — no statement-similarity check at all, since the
+    claim is the more precise signal. Otherwise (one side has no claim, or
+    the returned claim isn't usable), the number check is relaxed via
+    `_boundary_numbers_ok` (a superset, not exact equality, when justified
+    by a claim's own value — an incomparable returned claim is treated the
+    same as no claim at all here) before falling through to the ordinary
+    similarity check; with no claims involved anywhere, this is unchanged
+    from before claims existed."""
     if _has_negation(returned_statement) != _has_negation(truth_statement):
         return False
     if _entity_mention_conflict(returned_statement, truth_statement, mention_index):
         return False
+
+    if returned_claim is not None and truth_claim is not None:
+        if _claim_is_comparable(returned_claim, truth_claim):
+            return _claims_match(returned_claim, truth_claim)
+        returned_claim = None  # unusable signal -> fall back as if absent
+
     returned_numbers = _number_tokens(returned_statement)
     truth_numbers = _number_tokens(truth_statement)
     if (returned_numbers or truth_numbers) and returned_numbers != truth_numbers:
-        return False
+        if not _boundary_numbers_ok(returned_numbers, truth_numbers, returned_claim, truth_claim):
+            return False
     return _text_similarity(returned_statement, truth_statement) >= _SIMILARITY_THRESHOLD
 
 
@@ -583,8 +748,9 @@ def facts_match(
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
 ) -> bool:
     """(a) shared entity, (b) shared cited document, (c) `_statement_matches`
-    on the two statements (number-aware, negation- and mention-guarded).
-    Entities here are expected to already be resolved ids (see
+    on the two statements (number-aware, negation-, mention- and now
+    claim-guarded — konyklabs/asbuilt#8). Entities here, and the claim's own
+    entity if it carries one, are expected already resolved ids (see
     `resolve_fact_entities`) — `facts_match` itself does no name alignment,
     so a caller working directly with arm-returned names must resolve them
     first."""
@@ -597,7 +763,13 @@ def facts_match(
     truth_docs = {c.document for c in truth_fact.carriers}
     if not returned_docs & truth_docs:
         return False
-    return _statement_matches(returned.get("statement", ""), truth_fact.statement, mention_index)
+    return _statement_matches(
+        returned.get("statement", ""),
+        truth_fact.statement,
+        mention_index,
+        returned.get("claim"),
+        truth_fact.claim,
+    )
 
 
 def _citation_documents(citations: list[dict[str, Any]] | None) -> set[str]:
@@ -792,12 +964,21 @@ def resolve_fact_entities(
     replaced by resolved truth ids; unresolved names are kept under the
     private `_unresolved_entities` key for the audit trail. Disambiguation
     context is the fact's OWN `category` field — self-contained, no
-    chicken-and-egg dependency on which truth fact it might go on to match."""
+    chicken-and-egg dependency on which truth fact it might go on to match.
+    A `claim` (konyklabs/asbuilt#8), if present, gets its own `entity` name
+    resolved the same way, into `claim["_resolved_entities"]` — `_claims_match`
+    reads that rather than doing its own alignment."""
     names = fact.get("entities") or []
     resolved, unresolved = align_entities(names, index, entities, fact.get("category"))
     out = dict(fact)
     out["entities"] = resolved
     out["_unresolved_entities"] = unresolved
+    claim = fact.get("claim")
+    if claim is not None:
+        claim_resolved, _ = align_entities(
+            [str(claim.get("entity", ""))], index, entities, fact.get("category")
+        )
+        out["claim"] = {**claim, "_resolved_entities": claim_resolved}
     return out
 
 
@@ -1614,6 +1795,409 @@ def score(
 
 
 # --------------------------------------------------------------------------
+# The test connector's bag of facts (konyklabs/asbuilt#8): no query
+# structure — a flat list of candidate Facts extracted from pytest/Vitest
+# collection plus run outcomes, scored directly against the truth facts a
+# test carries, before any model spend. `spike/connectors/tests/` (owned
+# separately) writes `build/connector/tests-<step>.json`; this module's own
+# assumption about that file's shape (an object with `facts` and
+# `contradiction_candidates`, or a bare list of facts with no candidates) is
+# stated once, here, since no such file exists yet to confirm it against.
+# --------------------------------------------------------------------------
+
+_TRUTH_FILTER_PREFIXES: dict[str, tuple[str, ...]] = {
+    "tests": ("code/tests/", "code/dispatch/test/"),
+}
+
+
+def _step_order(commits: dict[str, Any]) -> dict[str, int]:
+    """step id -> its position in commit order, by `commits[step]["date"]"
+    (not by parsing "c<N>" out of the id — a real ingest root's step names
+    aren't guaranteed to follow that convention, only the fixture's do)."""
+    ordered = sorted(commits.items(), key=lambda kv: kv[1]["date"])
+    return {step: i for i, (step, _) in enumerate(ordered)}
+
+
+def _resolve_step_or_sha(value: str, commits: dict[str, Any]) -> str:
+    """`value` may already be a step id, or a commit SHA a citation/--step
+    carries instead — resolves either to the step id via commits.json.
+    Returns `value` unchanged if neither matches (the caller's step-order
+    lookup then simply misses it, same as an unresolved step already does)."""
+    if value in commits:
+        return value
+    for step, info in commits.items():
+        if info.get("sha") == value:
+            return step
+    return value
+
+
+def _current_at_step(tf: TruthFact, order: dict[str, int], step_rank: int | None) -> bool:
+    """Closed validity window [valid_from, valid_to] at `step_rank`
+    (konyklabs/asbuilt#8 review — this was half-open, excluding `valid_to`
+    itself, until the reviewer's F-011/F-012 reproduction: "F-011 must be
+    expected... at c5", exactly its own `valid_to`). This function's only
+    caller needs "could the connector plausibly find evidence of this fact
+    in the codebase at this step", not "there is exactly one current
+    value" — at a fact's own retirement step, the OLD test's assertion is
+    still literally in the codebase (now failing, demoted) and the NEW
+    code's value isn't proven by a passing test yet; both are legitimate
+    connector targets at once, so both must be in scope there, however
+    "the current value" would be phrased elsewhere. `step_rank=None` (the
+    step didn't resolve) skips the validity filter rather than excluding
+    everything."""
+    if step_rank is None:
+        return True
+    if tf.valid_from is not None and order.get(tf.valid_from, step_rank) > step_rank:
+        return False
+    if tf.valid_to is not None and order.get(tf.valid_to, step_rank) < step_rank:
+        return False
+    return True
+
+
+def _has_test_carrier_by_step(
+    tf: TruthFact,
+    prefixes: tuple[str, ...],
+    order: dict[str, int],
+    step_rank: int | None,
+) -> bool:
+    """A test-shaped carrier (`prefixes`) whose OWN `version` is at or
+    before `step_rank` — the connector can't see a test carrier that
+    doesn't exist in the codebase until its own version (F-012's test
+    carrier is version c6: it must not be in scope at c5, even though
+    F-012 overall is a `code/tests/...`-carrying fact — konyklabs/
+    asbuilt#8 review). A carrier with no `version` at all never counts
+    (its own timing is unknown). `step_rank=None` falls back to "has one
+    at all, any version"."""
+    if step_rank is None:
+        return any(c.document.startswith(prefixes) for c in tf.carriers)
+    return any(
+        c.document.startswith(prefixes)
+        and c.version is not None
+        and order.get(c.version, step_rank + 1) <= step_rank
+        for c in tf.carriers
+    )
+
+
+def _expected_tier_at_step(tf: TruthFact, step_id: str) -> str:
+    """`executed` if the fact has a `run/pytest-<step_id>` or
+    `run/vitest-<step_id>` carrier — an EXACT match, or a "-rerun"-suffixed
+    variant ("a rerun carrier counts" — konyklabs/asbuilt#8 review); `code`
+    otherwise. Every fact `score_test_connector`'s `expected` can contain
+    already carries a test-shaped `code/` document (that is what put it in
+    scope at all — see `_has_test_carrier_by_step`), so `code` is always a
+    meaningful fallback tier here, never `documented`."""
+    for c in tf.carriers:
+        for framework in ("pytest", "vitest"):
+            prefix = f"run/{framework}-{step_id}"
+            if c.document == prefix or c.document.startswith(prefix + "-"):
+                return _EXECUTED
+    return "code"
+
+
+def _tier_precision_recall(
+    resolved: list[dict[str, Any]],
+    matches: list[tuple[dict[str, Any], str]],
+    expected: dict[str, TruthFact],
+    tier: str,
+    step_id: str,
+) -> dict[str, Any]:
+    """Precision/recall for one tier in isolation: among ALL returned facts
+    claiming `tier` (matched or not — an unmatched claim is still a wrong
+    one), what fraction correctly matched a truth fact whose tier AT
+    `step_id` (`_expected_tier_at_step`, not the static, eventual
+    `TruthFact.tier` — konyklabs/asbuilt#8 review) is also `tier`; among
+    truth facts at that per-step `tier` within `expected`, what fraction
+    got matched with that same tier claimed."""
+    returned_n = sum(1 for rf in resolved if rf.get("tier") == tier)
+    expected_n = sum(1 for tf in expected.values() if _expected_tier_at_step(tf, step_id) == tier)
+    tp = sum(
+        1
+        for rf, fid in matches
+        if rf.get("tier") == tier and _expected_tier_at_step(expected[fid], step_id) == tier
+    )
+    return {
+        "tp": tp,
+        "returned": returned_n,
+        "expected": expected_n,
+        "precision": _ratio(tp, returned_n),
+        "recall": _ratio(tp, expected_n),
+    }
+
+
+def _step_tier_confusion(
+    resolved: list[dict[str, Any]],
+    matches: list[tuple[dict[str, Any], str]],
+    expected: dict[str, TruthFact],
+    step_id: str,
+) -> dict[str, Any]:
+    """Like `_tier_stats` (shared by `score_fact_query`'s explain/search
+    path, which has no step concept), but compares the returned tier
+    against the fact's tier AT THIS STEP (`_expected_tier_at_step`), not
+    its static, eventual `TruthFact.tier` — a fact's provenance strength
+    changes across the history a connector ingests incrementally
+    (konyklabs/asbuilt#8 review): F-011 is `code` at c5 (demoted) but was
+    `executed` at c1..c4."""
+    confusion: dict[str, dict[str, int]] = {}
+    for rf, fid in matches:
+        truth_tier = _expected_tier_at_step(expected[fid], step_id)
+        returned_tier = rf.get("tier")
+        row = confusion.setdefault(truth_tier, {})
+        row[returned_tier] = row.get(returned_tier, 0) + 1
+
+    hard_errors = 0
+    returned_executed = 0
+    for rf in resolved:
+        if rf.get("tier") == _EXECUTED:
+            returned_executed += 1
+            if not _has_run_citation(rf):
+                hard_errors += 1
+
+    tp_executed = sum(
+        1
+        for rf, fid in matches
+        if rf.get("tier") == _EXECUTED
+        and _expected_tier_at_step(expected[fid], step_id) == _EXECUTED
+    )
+    expected_executed = sum(
+        1 for tf in expected.values() if _expected_tier_at_step(tf, step_id) == _EXECUTED
+    )
+    return {
+        "confusion": confusion,
+        "hard_errors": hard_errors,
+        "returned_executed": returned_executed,
+        "tp_executed": tp_executed,
+        "expected_executed": expected_executed,
+    }
+
+
+def _claim_metrics(
+    resolved: list[dict[str, Any]],
+    matches: list[tuple[dict[str, Any], str]],
+    expected: dict[str, TruthFact],
+) -> dict[str, Any]:
+    """Two honest numbers (konyklabs/asbuilt#8 review), replacing the
+    earlier "claim accuracy": that version only ever looked at facts that
+    had ALREADY matched by claim, so re-applying `_claims_match` to them
+    was tautologically 1.0.
+
+    precision = returned claims with a resolvable entity that agree with
+    the truth claim of whatever fact they matched, over EVERY returned
+    claim with a resolvable entity — matched or not, and a resolvable
+    claim on a fact that didn't match at all, or that matched but
+    disagrees, counts against precision, not just towards a denominator it
+    never reaches.
+
+    recall = truth facts in `expected` that carry a claim, and got matched
+    by a returned claim that agrees, over every truth fact in `expected`
+    that carries a claim at all.
+
+    Both numerators are the SAME underlying count (a matched pair where
+    both sides have a claim and `_claims_match` — the same predicate
+    `facts_match` used to decide the match — agrees), computed once and
+    read as a numerator against two different denominators."""
+    matched_fid_by_obj = {id(rf): fid for rf, fid in matches}
+    claim_returned = agree = 0
+    for rf in resolved:
+        claim = rf.get("claim")
+        if claim is None or not claim.get("_resolved_entities"):
+            continue
+        claim_returned += 1
+        fid = matched_fid_by_obj.get(id(rf))
+        truth_claim = expected[fid].claim if fid is not None else None
+        if truth_claim is not None and _claims_match(claim, truth_claim):
+            agree += 1
+    claim_expected = sum(1 for tf in expected.values() if tf.claim is not None)
+    return {
+        "agree": agree,
+        "returned": claim_returned,
+        "expected": claim_expected,
+        "precision": _ratio(agree, claim_returned),
+        "recall": _ratio(agree, claim_expected),
+    }
+
+
+def score_test_connector(
+    facts_payload: dict[str, Any] | list[dict[str, Any]],
+    truth_root: Path,
+    step: str,
+    commits: dict[str, Any] | None = None,
+    truth_filter: str = "tests",
+) -> dict[str, Any]:
+    """Scores a connector's flat bag of candidate Facts against the truth
+    facts that carry a test-shaped document (`code/tests/...` or
+    `code/dispatch/test/...` by default — see `_TRUTH_FILTER_PREFIXES`; only
+    "tests" is defined so far) and are current (`_current_at_step`) at
+    `step` (a step id or a commit SHA — resolved via `commits`).
+    `facts_payload` is either a bare list of facts, or an object with
+    `facts` and `contradiction_candidates` keys (see module docstring); a
+    bare list skips contradiction-candidate scoring (reported as all-zero).
+    `contradiction_candidates` entries are expected in `score_contradictions`'s
+    own shape (`{"a": Fact, "b": Fact, "winner": Fact | None}`), scored
+    against every `truth/contradictions.yaml` entry of kind `run-vs-code`."""
+    commits = commits or {}
+    if isinstance(facts_payload, list):
+        facts, candidates = facts_payload, []
+    else:
+        facts, candidates = (
+            facts_payload.get("facts", []),
+            facts_payload.get("contradiction_candidates", []),
+        )
+
+    truth = load_truth(truth_root)
+    alias_index = build_alias_index(truth)
+    mention_index = build_mention_index(truth)
+    entities = truth.entities
+
+    prefixes = _TRUTH_FILTER_PREFIXES.get(truth_filter)
+    if prefixes is None:
+        raise ValueError(
+            f"unknown --truth-filter {truth_filter!r}; known: {sorted(_TRUTH_FILTER_PREFIXES)}"
+        )
+    order = _step_order(commits)
+    step_id = _resolve_step_or_sha(step, commits)
+    step_rank = order.get(step_id)
+
+    expected = {
+        fid: tf
+        for fid, tf in truth.facts.items()
+        if _has_test_carrier_by_step(tf, prefixes, order, step_rank)
+        and _current_at_step(tf, order, step_rank)
+    }
+
+    resolved = [resolve_fact_entities(rf, alias_index, entities) for rf in facts]
+    matches, uncited = match_facts(resolved, expected, commits, mention_index)
+    matched_ids = {fid for _, fid in matches}
+    matched_obj_ids = {id(rf) for rf, _ in matches}
+    unmatched = [
+        rf
+        for rf in resolved
+        if id(rf) not in matched_obj_ids and _citation_documents(rf.get("citations"))
+    ]
+    hard_fp, unplanted = classify_unmatched(unmatched, truth.facts)
+
+    precision, recall = _ratio(len(matches), len(facts)), _ratio(len(matches), len(expected))
+    missed = [
+        {
+            "id": fid,
+            "statement": tf.statement,
+            "test": next(
+                (c.location for c in tf.carriers if c.document.startswith(prefixes)), None
+            ),
+        }
+        for fid, tf in expected.items()
+        if fid not in matched_ids
+    ]
+
+    def _run_vs_code_in_scope(xc: TruthContradiction) -> bool:
+        if xc.kind != "run-vs-code":
+            return False
+        if step_rank is None:
+            return True
+        if xc.opened_by is not None and order.get(xc.opened_by, step_rank + 1) > step_rank:
+            return False
+        if xc.resolved_by is not None and step_rank >= order.get(xc.resolved_by, step_rank):
+            return False
+        return True
+
+    run_vs_code = {xid: xc for xid, xc in truth.contradictions.items() if _run_vs_code_in_scope(xc)}
+    resolved_candidates = [
+        _resolve_contradiction_entities(rc, alias_index, entities) for rc in candidates
+    ]
+
+    cat_stats = _category_accuracy(matches, expected)
+    cat_stats["accuracy"] = _ratio(cat_stats["correct"], cat_stats["total"])
+    er_stats = _entity_resolution_stats(matches, expected)
+    er_stats["precision"] = _ratio(er_stats["tp"], er_stats["returned"])
+    er_stats["recall"] = _ratio(er_stats["tp"], er_stats["expected"])
+    # Claim-first matching (konyklabs/asbuilt#8): a match decided entirely
+    # by _claims_match (both sides carry a claim) vs. one that fell through
+    # to the statement rule (see _statement_matches) — post-hoc, from the
+    # same "both sides have a claim" condition _statement_matches itself
+    # branches on, not a second source of truth.
+    matched_by_claim = sum(
+        1 for rf, fid in matches if rf.get("claim") is not None and expected[fid].claim is not None
+    )
+    matched_by_statement = len(matches) - matched_by_claim
+
+    return {
+        "step": step_id,
+        "truth_filter": truth_filter,
+        "matched_by_claim": matched_by_claim,
+        "matched_by_statement": matched_by_statement,
+        "tp": len(matches),
+        "returned": len(facts),
+        "expected": len(expected),
+        "uncited": uncited,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1_score(precision, recall),
+        "by_tier": {
+            tier: _tier_precision_recall(resolved, matches, expected, tier, step_id)
+            for tier in ("executed", "code")
+        },
+        "tier_confusion": _step_tier_confusion(resolved, matches, expected, step_id),
+        "category_accuracy": cat_stats,
+        "entity_resolution": er_stats,
+        "claim": _claim_metrics(resolved, matches, expected),
+        "hard_false_positives": len(hard_fp),
+        "unplanted_facts": unplanted,
+        "missed": missed,
+        "contradiction_candidates": score_contradictions(
+            resolved_candidates, run_vs_code, truth.facts, mention_index
+        ),
+    }
+
+
+def print_test_connector_report(report: dict[str, Any]) -> None:
+    print(f"step: {report['step']} (truth_filter={report['truth_filter']!r})")
+    print(
+        f"overall: precision={_fmt(report['precision'])} recall={_fmt(report['recall'])} "
+        f"f1={_fmt(report['f1'])} tp={report['tp']}/{report['returned']} "
+        f"vs expected={report['expected']} uncited={report['uncited']}"
+    )
+    print(
+        f"  matched_by_claim={report['matched_by_claim']} "
+        f"matched_by_statement={report['matched_by_statement']}"
+    )
+    for tier, t in report["by_tier"].items():
+        print(
+            f"  tier={tier:<9} precision={_fmt(t['precision'])} ({t['tp']}/{t['returned']}) "
+            f"recall={_fmt(t['recall'])} ({t['tp']}/{t['expected']})"
+        )
+    confusion = report["tier_confusion"]["confusion"]
+    if confusion:
+        print("tier confusion (rows=truth, cols=returned):")
+        for truth_tier in sorted(confusion):
+            row = " ".join(f"{k}={v}" for k, v in sorted(confusion[truth_tier].items()))
+            print(f"  {truth_tier:<12} {row}")
+    print(f"executed-without-run hard errors: {report['tier_confusion']['hard_errors']}")
+    cat = report["category_accuracy"]
+    print(f"category accuracy: {_fmt(cat.get('accuracy'))} ({cat['correct']}/{cat['total']})")
+    er = report["entity_resolution"]
+    print(
+        f"entity resolution: precision={_fmt(er['precision'])} recall={_fmt(er['recall'])} "
+        f"unresolved={len(er['unresolved'])}"
+    )
+    claim = report["claim"]
+    print(
+        f"claim precision={_fmt(claim['precision'])} ({claim['agree']}/{claim['returned']}) "
+        f"recall={_fmt(claim['recall'])} ({claim['agree']}/{claim['expected']})"
+    )
+    print(
+        f"unmatched: hard_false_positives={report['hard_false_positives']} "
+        f"unplanted={len(report['unplanted_facts'])}"
+    )
+    print(f"missed truth facts: {len(report['missed'])}")
+    for m in report["missed"]:
+        print(f"  {m['id']} ({m['test']}): {m['statement']}")
+    cc = report["contradiction_candidates"]
+    print(
+        f"run-vs-code contradiction candidates: matched={cc['matched']}/{cc['returned']} "
+        f"vs expected={cc['expected']}"
+    )
+
+
+# --------------------------------------------------------------------------
 # Multiple runs and the paired-bootstrap comparison
 # --------------------------------------------------------------------------
 
@@ -1779,17 +2363,37 @@ def load_calibration(path: Path) -> list[dict[str, Any]]:
 def calibrate(
     pairs: list[dict[str, Any]],
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+    alias_index: dict[str, list[str]] | None = None,
+    entities: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Runs `_statement_matches(candidate, truth)` over a labelled set of
     {truth, candidate, expect} triples and reports the matcher's own
     precision/recall/f1, plus every misclassified pair for hand review.
     `mention_index` (see `build_mention_index`) is optional; the CLI builds
     one from `--truth` so the entity-mention conflict guard is exercised the
-    same way it would be scoring a real prototype."""
+    same way it would be scoring a real prototype. A pair may also carry
+    `truth_claim`/`candidate_claim` (konyklabs/asbuilt#8, the same shape as
+    TruthFact.claim/Fact.claim) to exercise claim-first matching; the
+    candidate claim's `entity` (a name) is resolved via `alias_index`/
+    `entities` the same way `resolve_fact_entities` would, before
+    `_statement_matches` ever sees it — `truth_claim.entity` is written as
+    an id directly, matching how real truth facts store it."""
     tp = fp = fn = tn = 0
     misclassified: list[dict[str, Any]] = []
     for pair in pairs:
-        predicted = _statement_matches(pair["candidate"], pair["truth"], mention_index)
+        candidate_claim = pair.get("candidate_claim")
+        if candidate_claim is not None:
+            resolved_ids, _ = align_entities(
+                [str(candidate_claim.get("entity", ""))], alias_index or {}, entities
+            )
+            candidate_claim = {**candidate_claim, "_resolved_entities": resolved_ids}
+        predicted = _statement_matches(
+            pair["candidate"],
+            pair["truth"],
+            mention_index,
+            candidate_claim,
+            pair.get("truth_claim"),
+        )
         expected = bool(pair["expect"])
         if predicted and expected:
             tp += 1
@@ -2038,16 +2642,56 @@ def main(argv: list[str] | None = None) -> int:
             "precision/recall; skips normal scoring"
         ),
     )
+    parser.add_argument(
+        "--facts",
+        default=None,
+        metavar="FILE",
+        help=(
+            "score a test connector's bag of candidate Facts (konyklabs/asbuilt#8) "
+            "against truth facts carrying a test document; skips normal scoring"
+        ),
+    )
+    parser.add_argument(
+        "--step",
+        default=None,
+        help="the commit step (or SHA) --facts was extracted at; required with --facts",
+    )
+    parser.add_argument(
+        "--truth-filter",
+        default="tests",
+        help=(
+            "which truth facts --facts is scored against "
+            f"(default: tests; known: {sorted(_TRUTH_FILTER_PREFIXES)})"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.calibrate is not None:
         pairs = load_calibration(Path(args.calibrate))
-        mention_index = build_mention_index(load_truth(Path(args.truth)))
-        print_calibration_report(calibrate(pairs, mention_index))
+        truth = load_truth(Path(args.truth))
+        mention_index = build_mention_index(truth)
+        alias_index = build_alias_index(truth)
+        print_calibration_report(calibrate(pairs, mention_index, alias_index, truth.entities))
+        return 0
+
+    if args.facts is not None:
+        if not args.step:
+            parser.error("--facts requires --step")
+        commits_path = Path(args.commits)
+        commits = json.loads(commits_path.read_text()) if commits_path.is_file() else {}
+        facts_payload = json.loads(Path(args.facts).read_text())
+        report = score_test_connector(
+            facts_payload, Path(args.truth), args.step, commits, args.truth_filter
+        )
+        print_test_connector_report(report)
+        if args.json:
+            Path(args.json).write_text(json.dumps(report, indent=2) + "\n")
         return 0
 
     if not args.results:
-        parser.error("results: at least one results JSON file is required (or use --calibrate)")
+        parser.error(
+            "results: at least one results JSON file is required (or use --calibrate/--facts)"
+        )
 
     truth_root = Path(args.truth)
     commits_path = Path(args.commits)
