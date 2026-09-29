@@ -145,6 +145,12 @@ if check_path and expected is not None:
     with open(check_path, "w") as f:
         f.write("MATCH" if seen == expected else "NOMATCH")  # never the token itself
 
+anthropic_check_path = os.environ.get("FAKE_CLAUDE_ANTHROPIC_CHECK_PATH")
+if anthropic_check_path:
+    leaked = sorted(k for k in os.environ if k.startswith("ANTHROPIC_"))
+    with open(anthropic_check_path, "w") as f:
+        f.write(",".join(leaked))  # names only, never any value
+
 if mode == "fail":
     sys.stderr.write("simulated claude failure: rate limited\\n")
     sys.stderr.write("(a second stderr line that must never be surfaced)\\n")
@@ -154,18 +160,7 @@ if mode == "badjson":
     sys.stdout.write("not json at all")
     sys.exit(0)
 
-structured = {
-    "statement": "Skeleton is proven.",
-    "category": "business-logic",
-    "entities": ["farebox"],
-    "claim": None,
-}
-result = {
-    "type": "result",
-    "subtype": "success",
-    "is_error": False,
-    "result": json.dumps(structured),
-    "total_cost_usd": 0.0042,
+usage = {
     "modelUsage": {
         "claude-sonnet-5": {
             "inputTokens": 123,
@@ -174,6 +169,35 @@ result = {
             "cacheCreationInputTokens": 0,
         }
     },
+    "total_cost_usd": 0.0042,
+}
+
+if mode == "model_error":
+    result = {
+        "type": "result",
+        "subtype": "error_during_execution",
+        "is_error": True,
+        "result": "the model declined: content policy\\nsecond line never surfaced",
+        **usage,
+    }
+    sys.stdout.write(json.dumps(result))
+    sys.exit(0)
+
+# The real 2.1.284 shape: the schema-validated object is `structured_output`,
+# a TOP-LEVEL key — `result` is the assistant's own prose, never the
+# structured value, and is never valid JSON on its own in the ordinary case.
+result = {
+    "type": "result",
+    "subtype": "success",
+    "is_error": False,
+    "result": "I extracted one fact from the test's own assertion.",
+    "structured_output": {
+        "statement": "Skeleton is proven.",
+        "category": "business-logic",
+        "entities": ["farebox"],
+        "claim": None,
+    },
+    **usage,
 }
 sys.stdout.write(json.dumps(result))
 """
@@ -194,9 +218,10 @@ def test_claude_code_client_wires_subprocess_and_parses_usage(
 ):
     """The fake `claude` on PATH proves the whole round trip: the subprocess
     is actually found and invoked by bare name (not a hardcoded path), its
-    `--output-format json` result's `result` field (a JSON string) is
-    parsed into the schema-shaped dict `_extract_tool_input` reads, and its
-    `modelUsage` is summed into `CountingClient`'s own token counters."""
+    `--output-format json` result's `structured_output` (NOT the prose in
+    `result` — review fix, asbuilt#8) is read into the schema-shaped dict
+    `_extract_tool_input` reads, and its `modelUsage` is summed into
+    `CountingClient`'s own token counters."""
     _install_fake_claude(tmp_path, monkeypatch)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     skeleton = Skeleton(
@@ -239,6 +264,46 @@ def test_claude_code_client_sends_oauth_token_from_env_without_exposing_it(
     extract_with_model([skeleton], {}, client_factory=ClaudeCodeClient, stop_dir=tmp_path)
 
     assert check_path.read_text() == "MATCH"
+
+
+def test_claude_code_client_treats_is_error_as_an_error_with_result_first_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Review fix, asbuilt#8: `is_error: true` (or any `subtype` other than
+    `"success"`) is an error even with a clean exit 0 and valid JSON — the
+    process succeeded, but the model call itself didn't — reported from
+    `result`'s own first line, never stderr (there isn't one)."""
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "model_error")
+    skeleton = Skeleton(
+        node_id="tests/x.py::test_x", file="tests/x.py", line=1, name="test_x", language="python"
+    )
+
+    with pytest.raises(RuntimeError, match="the model declined: content policy"):
+        extract_with_model([skeleton], {}, client_factory=ClaudeCodeClient, stop_dir=tmp_path)
+
+
+def test_claude_code_client_strips_anthropic_credentials_from_subprocess_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Review fix, asbuilt#8: in `-p` mode the CLI prefers `ANTHROPIC_API_KEY`/
+    `ANTHROPIC_AUTH_TOKEN` over `CLAUDE_CODE_OAUTH_TOKEN` whenever both are
+    set — a parent process that happens to export an API key would silently
+    switch a claude-code call onto API-key billing. Every `ANTHROPIC_*` name
+    must be gone from the subprocess's own env, checked here by the fake
+    script writing back the (empty) list of surviving names, never a value."""
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-leaked-if-this-test-fails")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "also-should-not-survive")
+    check_path = tmp_path / "anthropic-check.txt"
+    monkeypatch.setenv("FAKE_CLAUDE_ANTHROPIC_CHECK_PATH", str(check_path))
+    skeleton = Skeleton(
+        node_id="tests/x.py::test_x", file="tests/x.py", line=1, name="test_x", language="python"
+    )
+
+    extract_with_model([skeleton], {}, client_factory=ClaudeCodeClient, stop_dir=tmp_path)
+
+    assert check_path.read_text() == ""  # no ANTHROPIC_* name reached the subprocess
 
 
 def test_claude_code_oauth_token_falls_back_to_config_file(

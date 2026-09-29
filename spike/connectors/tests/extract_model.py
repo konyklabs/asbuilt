@@ -6,26 +6,40 @@ Two providers, both behind the same `ClientFactory` shape
 
 - **`claude-code`** (the default — asbuilt#8, Oleg's decision: model calls
   run on his Claude Code subscription, never an API key). One `claude -p`
-  subprocess per skeleton — no tools (`--tools ""`; the installed CLI,
-  version 2.1.284, has no separate turn-cap flag in `claude --help`/
-  `claude -p --help`, but no tools at all means no turn beyond the first is
-  possible either way), a minimal system prompt, `--json-schema` for the
-  same `SCHEMA` the `anthropic` path validates against, `--output-format
-  json` for one parseable result. `CLAUDE_CODE_OAUTH_TOKEN` is read from
-  the environment or, if unset, `~/.config/konyklabs/claude-code-oauth-
-  token` — placed into the subprocess's own env only, never printed, never
+  subprocess per skeleton — no tools (`--tools ""`), a minimal system
+  prompt, `--json-schema` for the same `SCHEMA` the `anthropic` path
+  validates against, `--output-format json` for one parseable result, and
+  `--max-turns 1`: real and type-checked (`claude --max-turns notanumber
+  --version` fails with "must be a number"; an actually-unknown flag is
+  silently accepted instead) but hidden from `claude --help`/`claude -p
+  --help` on the installed CLI (2.1.284) — on top of `--tools ""` already
+  ruling out a tool-driven extra turn. The schema-validated object comes
+  back under `structured_output`, NOT `result` (`result` is the assistant's
+  own prose text — read only as a fallback, and only when it happens to
+  already be schema-shaped JSON on its own; a review round caught this
+  module's first draft reading `result` as the structured value, which is
+  only true when the model's own text response happens to be empty).
+  `is_error: true` or a `subtype` other than `"success"` is an error,
+  reported with `result`'s own first line. `CLAUDE_CODE_OAUTH_TOKEN` is
+  read from the environment or, if unset, `~/.config/konyklabs/claude-code-
+  oauth-token` — placed into the subprocess's own env, which also has every
+  `ANTHROPIC_*` variable stripped first (`_anthropic_credential_env`): in
+  `-p` mode the CLI prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over
+  the OAuth token whenever both are set, which would silently switch
+  billing onto an API key the moment the parent process happens to export
+  one — a second review finding. The token itself is never printed, never
   logged, never part of an exception message (a failure surfaces only
-  stderr's first line). `_usage_namespace_from_result` adapts the result
-  JSON's `modelUsage` (per-model input/output/cache token counts) into the
-  exact `.input_tokens`/`.output_tokens`/`.cache_creation_input_tokens`/
-  `.cache_read_input_tokens` shape `bench.llm.CountingClient._call` already
-  reads off any Anthropic-SDK-shaped response via `getattr` — the "small
-  adapter" that lets its counters, its 80% stop and its stop file work
-  completely unchanged. The exact field names (`modelUsage`, `total_cost_
-  usd`) are this module's own stated assumption, from the driving task's
-  own description, not yet confirmed against a real call: **no real
-  `claude -p` call is made anywhere in this slice** — a fake `claude`
-  executable on `PATH` proves the subprocess wiring in
+  stderr's or `result`'s own first line). `_usage_namespace_from_result`
+  adapts the result JSON's `modelUsage` (per-model input/output/cache token
+  counts) into the exact `.input_tokens`/`.output_tokens`/`.cache_creation_
+  input_tokens`/`.cache_read_input_tokens` shape `bench.llm.CountingClient
+  ._call` already reads off any Anthropic-SDK-shaped response via
+  `getattr` — the "small adapter" that lets its counters, its 80% stop and
+  its stop file work completely unchanged. The exact field names
+  (`modelUsage`, `total_cost_usd`) are this module's own stated assumption,
+  from the driving task's own description, not yet confirmed against a
+  real call: **no real `claude -p` call is made anywhere in this slice** —
+  a fake `claude` executable on `PATH` proves the subprocess wiring in
   `tests/test_connector_model.py`, and `python -m connectors.tests
   --model-dry-run` never invokes either provider at all.
 - **`anthropic`** (opt-in, `--provider anthropic`) imports the SDK lazily
@@ -213,13 +227,44 @@ def _usage_namespace_from_result(payload: dict[str, Any]) -> Any:
     )
 
 
+def _matches_schema(obj: Any) -> bool:
+    """A light check — required top-level keys present on a dict — not a
+    real JSON-Schema validator; enough to tell a genuine structured result
+    parsed out of `result`'s prose apart from an object that merely happens
+    to be valid JSON (an error message, a stray code block, ...)."""
+    return isinstance(obj, dict) and all(key in obj for key in SCHEMA["required"])
+
+
+def _anthropic_credential_env() -> dict[str, str]:
+    """A copy of the parent environment with every `ANTHROPIC_*` variable
+    removed — in `-p` mode the CLI prefers `ANTHROPIC_API_KEY` (and
+    `ANTHROPIC_AUTH_TOKEN`) over `CLAUDE_CODE_OAUTH_TOKEN` whenever both are
+    set, which would silently switch a claude-code call onto API-key
+    billing the moment the parent process happens to have one exported
+    (review finding, asbuilt#8: verified against the installed CLI and its
+    headless docs). Only `CLAUDE_CODE_OAUTH_TOKEN` is added back, by the
+    caller, never any `ANTHROPIC_*` name."""
+    return {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_")}
+
+
 def _invoke_claude_code(prompt: str, model: str, claude_bin: str = "claude") -> Any:
     """One `claude -p` subprocess call — see the module docstring for the
     flag choices and the credential rule. Returns an Anthropic-response-
     shaped object (`.usage`, `.content` with one `tool_use` block carrying
     the schema-validated dict) so `_extract_tool_input` and
-    `extract_with_model` need no provider-specific branch at all."""
-    env = dict(os.environ)
+    `extract_with_model` need no provider-specific branch at all.
+
+    Review fix, asbuilt#8: the installed CLI (2.1.284) puts the schema-
+    validated object under `structured_output`, not `result` — `result`
+    holds the assistant's own prose text (the JSON is back-filled into
+    `result` only when that text is empty, which this function never relies
+    on). `structured_output` is read first; `result` is only a fallback,
+    and only when it happens to already be schema-shaped JSON on its own —
+    prose in `result` never becomes a candidate structured value. `is_error`
+    true or a `subtype` other than `"success"` is an error, reported with
+    the first line of `result`'s own text (never stderr, since a model-
+    level error is not a process-level one)."""
+    env = _anthropic_credential_env()
     token = _claude_code_oauth_token()
     if token:
         env[_CLAUDE_CODE_OAUTH_TOKEN_ENV] = token
@@ -239,6 +284,14 @@ def _invoke_claude_code(prompt: str, model: str, claude_bin: str = "claude") -> 
         "--system-prompt",
         _CLAUDE_CODE_SYSTEM_PROMPT,
         "--no-session-persistence",
+        # Hidden from `claude --help`/`claude -p --help` on 2.1.284, but a
+        # real, type-checked option (`claude --max-turns notanumber
+        # --version` fails with "must be a number"; an actually-unknown
+        # flag is silently accepted instead) — the closest thing to a turn
+        # cap this CLI has, on top of `--tools ""` already ruling out any
+        # tool-driven extra turn.
+        "--max-turns",
+        "1",
     ]
     result = subprocess.run(args, capture_output=True, text=True, env=env, check=False)
     if result.returncode != 0:
@@ -252,13 +305,18 @@ def _invoke_claude_code(prompt: str, model: str, claude_bin: str = "claude") -> 
             f"claude -p produced unparsable JSON: {_first_line(result.stdout, '(empty stdout)')}"
         ) from exc
 
-    raw_result = payload.get("result")
-    structured = raw_result
-    if isinstance(raw_result, str):
+    result_text = payload.get("result") if isinstance(payload.get("result"), str) else ""
+    if payload.get("is_error") or payload.get("subtype", "success") != "success":
+        raise RuntimeError(f"claude -p returned an error: {_first_line(result_text, '(no text)')}")
+
+    structured = payload.get("structured_output")
+    if structured is None and result_text:
         try:
-            structured = json.loads(raw_result)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(f"claude -p's result field wasn't valid JSON: {exc}") from exc
+            candidate = json.loads(result_text)
+        except json.JSONDecodeError:
+            candidate = None
+        if _matches_schema(candidate):
+            structured = candidate
 
     return SimpleNamespace(
         usage=_usage_namespace_from_result(payload),

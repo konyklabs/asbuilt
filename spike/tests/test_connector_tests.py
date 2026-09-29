@@ -9,10 +9,12 @@ import inspect
 import json
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
+import connectors.tests.__main__ as main_module
 from bench.build import Timeline
 from bench.build import build as build_repo
 from connectors.tests.__main__ import build_step_output
@@ -777,6 +779,112 @@ def test_lift_never_imports_truth_or_yaml_at_runtime():
     assert "open(" not in body
     code_lines = [line for line in body.splitlines() if not line.strip().startswith("#")]
     assert "truth" not in "\n".join(code_lines).lower()
+
+
+def _fake_model_client_factory():
+    """A fake `client_factory` (the `anthropic`-shaped call convention
+    `extract_with_model` always uses regardless of provider) that always
+    returns the same canned statement, distinguishable from any real
+    rules-extractor guess — used to prove `--limit` behaviour without
+    calling any real provider."""
+
+    class _Messages:
+        def create(self, **kwargs):
+            payload = {
+                "statement": "Model said so.",
+                "category": "business-logic",
+                "entities": [],
+                "claim": None,
+            }
+            usage = SimpleNamespace(
+                input_tokens=1,
+                output_tokens=1,
+                cache_creation_input_tokens=0,
+                cache_read_input_tokens=0,
+            )
+            return SimpleNamespace(
+                usage=usage, content=[SimpleNamespace(type="tool_use", input=payload)]
+            )
+
+    class _Client:
+        def __init__(self):
+            self.messages = _Messages()
+
+    return _Client()
+
+
+@pytest.mark.fixture
+def test_build_step_output_limit_keeps_full_output_and_only_calls_model_for_n(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Review fix, point 3: `--limit N` caps only how many skeletons get a
+    real model call — the written output still covers every test in the
+    step (facts/counts/candidates), not just N. Reproduces the bug directly:
+    before the fix, `skeletons` itself was rebound to the capped list, so
+    the facts loop only ever saw N tests at all."""
+    fixture_root = SPIKE_ROOT
+    facts_path = fixture_root / "truth" / "facts.yaml"
+    if not facts_path.is_file():
+        pytest.skip(f"real fixture not present yet: no {facts_path}")
+    build_out = fixture_root / "build" / "test-connector-limit"
+    commits = build_repo(fixture_root, build_out)
+    repo = build_out / "repo"
+    step_order = list(commits)
+    outcomes_by_step: dict[str, list[Outcome]] = {}
+    for o in read_runs_directory(fixture_root / "runs"):
+        if o.step:
+            outcomes_by_step.setdefault(o.step, []).append(o)
+
+    full_output = build_step_output(
+        fixture_root, "c6", repo, commits, outcomes_by_step, step_order, extractor="rules"
+    )
+    monkeypatch.setitem(main_module.PROVIDERS, "claude-code", _fake_model_client_factory)
+    limited_output = build_step_output(
+        fixture_root,
+        "c6",
+        repo,
+        commits,
+        outcomes_by_step,
+        step_order,
+        extractor="model",
+        limit=3,
+    )
+
+    assert len(limited_output["facts"]) == len(full_output["facts"])  # every test, not just 3
+    model_facts = [f for f in limited_output["facts"] if f["statement"] == "Model said so."]
+    assert len(model_facts) == 3
+
+
+@pytest.mark.fixture
+def test_main_limit_writes_a_separate_file_without_out(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Review fix, point 3: a `--limit`ed smoke-test run must never
+    overwrite a full run's own `tests-<step>.json` — it writes
+    `tests-<step>-limit<N>.json` instead, only when `--out` wasn't given."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setitem(main_module.PROVIDERS, "claude-code", _fake_model_client_factory)
+
+    assert (
+        main_module.main(["--fixture", str(fixture_root), "--step", "c6", "--extractor", "rules"])
+        == 0
+    )
+    full_path = tmp_path / "build" / "connector" / "tests-c6.json"
+    assert full_path.is_file()
+    full_before = full_path.read_text()
+
+    assert (
+        main_module.main(
+            ["--fixture", str(fixture_root), "--step", "c6", "--extractor", "model", "--limit", "2"]
+        )
+        == 0
+    )
+    limited_path = tmp_path / "build" / "connector" / "tests-c6-limit2.json"
+    assert limited_path.is_file()
+    assert full_path.read_text() == full_before  # untouched by the limited run
 
 
 @pytest.mark.fixture

@@ -300,14 +300,19 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   at `~/.config/konyklabs/claude-code-oauth-token` — a credential, so it
   lives on disk only, is read into the subprocess's own environment, and
   never appears in a citation, a log, or a commit (the org's proprietary-
-  terms/secrets rule, restated for this one). **`anthropic`** (`--provider
-  anthropic`, opt-in) needs `ANTHROPIC_API_KEY` and the optional `model`
-  dependency group (`uv sync --extra model`) instead. `--model-dry-run`
-  builds every prompt and prices it from a stated, labelled rate table
-  without making a call, under either provider; the smoke test (`--limit N`
-  with `--extractor model`) is the only mode that makes real calls, and none
-  are made anywhere in this repo's own tests — a fake `claude` executable on
-  `PATH` proves the `claude-code` subprocess wiring instead
+  terms/secrets rule, restated for this one). Every `ANTHROPIC_*` variable
+  is stripped from that same subprocess environment first: `-p` mode
+  prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over the OAuth token
+  whenever both are set, which would otherwise silently switch a
+  claude-code call onto API-key billing the moment the parent process
+  happens to export one. **`anthropic`** (`--provider anthropic`, opt-in)
+  needs `ANTHROPIC_API_KEY` and the optional `model` dependency group
+  (`uv sync --extra model`) instead. `--model-dry-run` builds every prompt
+  and prices it from a stated, labelled rate table without making a call,
+  under either provider; the smoke test (`--limit N` with `--extractor
+  model`) is the only mode that makes real calls, and none are made
+  anywhere in this repo's own tests — a fake `claude` executable on `PATH`
+  proves the `claude-code` subprocess wiring instead
   (`tests/test_connector_model.py`).
 
 Dynamic evidence comes from `evidence.py`, which reads pytest-json-report,
@@ -341,9 +346,13 @@ uv run python -m connectors.tests --fixture . --step c6 --extractor rules --mode
 uv run python -m connectors.tests --fixture . --step c6 --extractor model --limit 3
 ```
 
-The last one is the smoke test: `--limit N` caps a real `--extractor model`
-run to the first N tests, so trying the provider costs at most N calls;
-`--provider` picks `claude-code` (default) or `anthropic`.
+The last one is the smoke test: `--limit N` caps only how many tests get a
+REAL model call (at most N), never the written output — every other test in
+the step keeps its rules-extractor guess, so `tests-<step>.json` still
+covers the whole step. With no explicit `--out`, a `--limit`ed run writes
+`tests-<step>-limit<N>.json` instead of `tests-<step>.json`, so it can never
+overwrite a full run's own file. `--provider` picks `claude-code` (default)
+or `anthropic`.
 
 Each processed step writes `build/connector/tests-<step>.json`: a list of
 protocol-shaped Facts (citing `code/tests/...::node` at the step's SHA
