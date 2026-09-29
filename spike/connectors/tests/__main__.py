@@ -49,6 +49,7 @@ from connectors.tests.evidence import Outcome, read_runs_directory  # noqa: E402
 from connectors.tests.extract_model import (  # noqa: E402
     DEFAULT_PROVIDER,
     PROVIDERS,
+    ModelRunStopped,  # noqa: E402
     extract_with_model,
 )
 from connectors.tests.extract_model import dry_run as model_dry_run  # noqa: E402
@@ -158,14 +159,22 @@ def build_step_output(
         # model never saw keeps its rules-extractor guess, already in
         # `rules_by_id` from `extract_all` above.
         model_skeletons = skeletons[:limit] if limit is not None else skeletons
-        model_results, counting = extract_with_model(
-            model_skeletons, rules_by_id, client_factory=PROVIDERS[provider]
-        )
+        stopped: str | None = None
+        try:
+            model_results, counting = extract_with_model(
+                model_skeletons, rules_by_id, client_factory=PROVIDERS[provider]
+            )
+        except ModelRunStopped as exc:
+            # The budget stop (D-013) refused a call: keep every fact already
+            # paid for, let the rest fall back to the rules guess, record the
+            # stop in the output, and let `main` exit non-zero (asbuilt#15).
+            model_results, counting, stopped = exc.results, exc.client, exc.reason
         rules_by_id = {
             **rules_by_id,
             **{r["node_id"]: _rule_from_model_result(r) for r in model_results},
         }
         model_usage = _model_usage(counting, provider, len(model_skeletons), len(model_results))
+        model_usage["stopped"] = stopped
 
     facts: list[dict[str, Any]] = []
     contradiction_candidates: list[dict[str, Any]] = []
@@ -299,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     outcomes_by_step = _load_outcomes_by_step(fixture_root)
     steps = step_order if args.all_steps else [args.step or step_order[-1]]
 
+    stopped_runs = 0
     for step in steps:
         if step not in commits:
             raise SystemExit(f"unknown step {step!r}; known steps are {step_order}")
@@ -342,17 +352,26 @@ def main(argv: list[str] | None = None) -> int:
                 f"{' usage_missing' if u['usage_missing'] else ''} "
                 "(token-priced estimate; claude-code billing is subscription, not per-call)"
             )
+            if u["stopped"]:
+                print(
+                    f"  STOPPED at the budget threshold ({u['stopped']}): the facts above "
+                    f"the {u['results']} extracted keep their rules guess; see build/stop-*.json "
+                    "and comment on the driving issue before continuing"
+                )
+                stopped_runs += 1
         if args.model_dry_run:
             d = output["model_dry_run"]
             print(
                 f"  model-dry-run: provider={args.provider} prompts={d['prompts']} "
                 f"input_tokens~{d['estimated_input_tokens']} "
+                f"(of which per-call overhead~{d['estimated_overhead_tokens']}) "
                 f"output_tokens~{d['estimated_output_tokens']} "
                 f"model={d['model']} dollars~${d['estimated_dollars']:.4f} "
-                "(token-based estimate; claude-code billing is subscription, not per-call)"
+                "(token-based estimate at the cache-creation rate; claude-code billing is "
+                "subscription, not per-call)"
             )
 
-    return 0
+    return 3 if stopped_runs else 0
 
 
 if __name__ == "__main__":

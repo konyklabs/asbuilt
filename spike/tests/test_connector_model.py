@@ -24,9 +24,13 @@ import connectors.tests.__main__ as main_module
 from bench.llm import Budget, BudgetExceeded
 from connectors.tests.collect import Skeleton
 from connectors.tests.extract_model import (
+    CLAUDE_CODE_CALL_OVERHEAD_TOKENS,
     DEFAULT_MODEL,
+    DEFAULT_OUTPUT_TOKENS_PER_CALL,
+    PRICE_TABLE,
     ClaudeCodeClient,
     _claude_code_oauth_token,
+    dry_run,
     extract_with_model,
 )
 from tests._support import SPIKE_ROOT
@@ -470,6 +474,79 @@ def test_extractor_model_records_usage_in_output_and_prints_it(
     assert "  model: provider=claude-code" in printed
     assert "calls=2 input_tokens=246 output_tokens=90 cache_tokens=14" in printed
     assert "dollars~$0.0021" in printed
+
+
+def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """asbuilt#15, the first full run: the budget stop (D-013) raised bare
+    through the CLI and the 16 facts already paid for were lost with no
+    output file. Now `extract_with_model` raises `ModelRunStopped` carrying
+    the completed payloads; the CLI keeps them, lets the rest keep their
+    rules guess, writes the output with the stop recorded, prints it, and
+    exits 3. With the fake `claude` (175 tokens per call) and a 300-token
+    budget the counters pass 80% after the second call, so exactly two
+    calls happen and one payload survives (the second's response is refused
+    on the post-call check, as `CountingClient` documents)."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ASBUILT_BUDGET_TOKENS", "300")
+    monkeypatch.delenv("ASBUILT_BUDGET_DOLLARS", raising=False)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 3
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    usage = output["model_usage"]
+    assert usage["calls"] == 2
+    assert usage["results"] == 1
+    assert usage["skeletons_called"] == output["counts"]["statements"]  # the full list was asked
+    assert "300" in usage["stopped"] and "tokens" in usage["stopped"]
+    assert output["counts"]["statements"] > 2  # every other skeleton kept its rules fact
+    assert (tmp_path / "build" / "stop-stack-b-model.json").is_file()
+    printed = capsys.readouterr().out
+    assert "  model: provider=claude-code" in printed and "calls=2" in printed
+    assert "STOPPED at the budget threshold" in printed
+
+
+def test_dry_run_adds_the_measured_per_call_overhead_at_the_cache_creation_rate():
+    """asbuilt#15: the first estimate priced the prompts' own text at the
+    input rate and came out 25x under the measured run, which wrote about
+    8,200 tokens per call to the cache (the CLI's own system prompt plus the
+    prompt). The dry run now adds that per call and prices input at the
+    cache-creation rate; the numbers are the module's own constants."""
+    skeletons = [_skeleton("test_a"), _skeleton("test_b")]
+
+    result = dry_run(skeletons, {})
+
+    assert result.prompts == 2
+    assert result.estimated_overhead_tokens == 2 * CLAUDE_CODE_CALL_OVERHEAD_TOKENS
+    assert result.estimated_input_tokens > result.estimated_overhead_tokens
+    assert result.estimated_output_tokens == 2 * DEFAULT_OUTPUT_TOKENS_PER_CALL
+    prices = PRICE_TABLE[DEFAULT_MODEL]
+    expected = (
+        result.estimated_input_tokens * prices["cache_creation"]
+        + result.estimated_output_tokens * prices["output"]
+    ) / 1e6
+    assert result.estimated_dollars == pytest.approx(expected)
+    assert result.priced_input_as == "cache_creation"
 
 
 def test_extractor_dry_run_and_rules_carry_no_model_usage(
