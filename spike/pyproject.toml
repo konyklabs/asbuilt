@@ -10,12 +10,23 @@ dependencies = ["pyyaml>=6.0"]
 # imports this lazily, never at module import time; --dry-run needs neither
 # the package nor a key. `uv sync --extra model` to install it.
 model = ["anthropic>=0.40"]
+# The MCP adapter (mcp.py, asbuilt#9) over any bench.protocol.Prototype.
+# Pinned exact (verified present on PyPI, 2026-09-28) rather than a floor,
+# since this is the one dependency actual Claude Code sessions load at
+# runtime, not just this repo's own tests. `uv sync --extra serve` to install
+# it; `mcp.py`'s own tests use FastMCP's in-process client, no subprocess.
+serve = ["fastmcp==4.0.10"]
 
 [dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-json-report>=1.5",
     "ruff>=0.6",
+    # Also declared under [project.optional-dependencies].serve (same pin) as
+    # mcp.py's own runtime dependency for a plugin consumer's `uv sync --extra
+    # serve`; listed again here so a plain `uv sync` in this repo already has
+    # it for tests/test_mcp.py's in-process FastMCP client (asbuilt#9).
+    "fastmcp==4.0.10",
 ]
 
 [tool.pytest.ini_options]
@@ -41,4 +52,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["bench", "connectors"]
+packages = ["bench", "connectors", "prototypes"]

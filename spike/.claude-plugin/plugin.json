@@ -1,0 +1,11 @@
+{
+  "name": "asbuilt-spike",
+  "description": "MCP adapter over the asbuilt extraction-pipeline benchmark's prototypes (D-013): search, explain, entities, contradictions, stale and ask, over whichever arm ASBUILT_ARM selects, against the invented Gearwell system — so it can be queried from a Claude Code session during the spike.",
+  "author": {
+    "name": "Oleg Konyk",
+    "url": "https://olegkonyk.com"
+  },
+  "homepage": "https://github.com/konyklabs/asbuilt",
+  "repository": "https://github.com/konyklabs/asbuilt",
+  "license": "Apache-2.0"
+}
