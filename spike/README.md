@@ -305,12 +305,19 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over the OAuth token
   whenever both are set, which would otherwise silently switch a
   claude-code call onto API-key billing the moment the parent process
-  happens to export one. **`anthropic`** (`--provider anthropic`, opt-in)
-  needs `ANTHROPIC_API_KEY` and the optional `model` dependency group
-  (`uv sync --extra model`) instead. `--model-dry-run` builds every prompt
-  and prices it from a stated, labelled rate table without making a call,
-  under either provider; the smoke test (`--limit N` with `--extractor
-  model`) is the only mode that makes real calls, and none are made
+  happens to export one; every `CLAUDE_CODE_USE_*` backend selector
+  (`_BEDROCK`/`_VERTEX`/`_FOUNDRY`) and `AWS_BEARER_TOKEN_BEDROCK` are
+  stripped the same way, so none of them can silently route a call onto a
+  cloud account instead. This covers the process environment only — a
+  settings-file `apiKeyHelper` is a separate credential path outside it,
+  and stays the operator's own responsibility to keep unset here.
+  **`anthropic`** (`--provider anthropic`, opt-in) needs `ANTHROPIC_API_KEY`
+  and the optional `model` dependency group (`uv sync --extra model`)
+  instead. `--model-dry-run` builds every prompt and prices it from a
+  stated, labelled rate table and makes no call at all, under either
+  provider, whether or not `--extractor model` is also given — `--extractor
+  model` without `--model-dry-run` is what makes a real call, one per test
+  (or per `--limit N` tests, for the smoke test); none are ever made
   anywhere in this repo's own tests — a fake `claude` executable on `PATH`
   proves the `claude-code` subprocess wiring instead
   (`tests/test_connector_model.py`).

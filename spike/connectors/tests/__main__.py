@@ -135,12 +135,18 @@ def build_step_output(
     rules = extract_all(skeletons, _source_lookup(timeline, step))
     rules_by_id = {r.node_id: r for r in rules}
 
-    if extractor == "model":
-        # Review fix, asbuilt#8: `--limit N` caps only how many skeletons get
-        # a REAL call (the smoke test) — everything downstream (the facts
-        # loop, counts, candidates, the dry-run estimate) must still see the
-        # FULL `skeletons` list, or a smoke-tested run silently overwrites
-        # the full output with N facts. `model_skeletons` — never `skeletons`
+    if extractor == "model" and not model_dry_run_enabled:
+        # Review fix, asbuilt#8 (hazard): `--model-dry-run` promises no call
+        # under any extractor — `not model_dry_run_enabled` is what makes
+        # that true for `--extractor model` too; without it, this whole
+        # block (one real `claude -p`/Anthropic call per skeleton) ran
+        # BEFORE the dry-run estimate was ever printed.
+        #
+        # `--limit N` caps only how many skeletons get a REAL call (the
+        # smoke test) — everything downstream (the facts loop, counts,
+        # candidates, the dry-run estimate) must still see the FULL
+        # `skeletons` list, or a smoke-tested run silently overwrites the
+        # full output with N facts. `model_skeletons` — never `skeletons`
         # itself — is the capped list passed to the model; a skeleton the
         # model never saw keeps its rules-extractor guess, already in
         # `rules_by_id` from `extract_all` above.

@@ -23,25 +23,35 @@ Two providers, both behind the same `ClientFactory` shape
   reported with `result`'s own first line. `CLAUDE_CODE_OAUTH_TOKEN` is
   read from the environment or, if unset, `~/.config/konyklabs/claude-code-
   oauth-token` — placed into the subprocess's own env, which also has every
-  `ANTHROPIC_*` variable stripped first (`_anthropic_credential_env`): in
-  `-p` mode the CLI prefers `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` over
-  the OAuth token whenever both are set, which would silently switch
-  billing onto an API key the moment the parent process happens to export
-  one — a second review finding. The token itself is never printed, never
-  logged, never part of an exception message (a failure surfaces only
-  stderr's or `result`'s own first line). `_usage_namespace_from_result`
-  adapts the result JSON's `modelUsage` (per-model input/output/cache token
-  counts) into the exact `.input_tokens`/`.output_tokens`/`.cache_creation_
-  input_tokens`/`.cache_read_input_tokens` shape `bench.llm.CountingClient
-  ._call` already reads off any Anthropic-SDK-shaped response via
-  `getattr` — the "small adapter" that lets its counters, its 80% stop and
-  its stop file work completely unchanged. The exact field names
-  (`modelUsage`, `total_cost_usd`) are this module's own stated assumption,
-  from the driving task's own description, not yet confirmed against a
-  real call: **no real `claude -p` call is made anywhere in this slice** —
-  a fake `claude` executable on `PATH` proves the subprocess wiring in
+  `ANTHROPIC_*` name, every `CLAUDE_CODE_USE_*` backend selector
+  (`_BEDROCK`/`_VERTEX`/`_FOUNDRY`, or a future sibling), and
+  `AWS_BEARER_TOKEN_BEDROCK` stripped first (`_billing_isolated_env`): any
+  of these, if set in the parent process, would silently route the call off
+  Oleg's subscription (an API key, or a cloud account entirely) — two
+  review findings, fixed together since they're the same shape of bug.
+  This covers the process environment only; a settings-file
+  `apiKeyHelper` is a separate credential path outside it, and stays the
+  operator's own responsibility to keep unset here. The token itself is
+  never printed, never logged, never part of an exception message (a
+  failure surfaces only stderr's or `result`'s own first line).
+  `_usage_namespace_from_result` adapts the result JSON's `modelUsage`
+  (per-model input/output/cache token counts) into the exact `.input_
+  tokens`/`.output_tokens`/`.cache_creation_input_tokens`/`.cache_read_
+  input_tokens` shape `bench.llm.CountingClient._call` already reads off
+  any Anthropic-SDK-shaped response via `getattr` — the "small adapter"
+  that lets its counters, its 80% stop and its stop file work completely
+  unchanged; when `modelUsage` itself is absent, this returns None rather
+  than a zero-filled usage, so `_call`'s own missing-usage estimate and
+  `usage_missing` flag still fire instead of being silently bypassed (a
+  third review finding). The exact field names (`modelUsage`, `total_cost_
+  usd`) are this module's own stated assumption, from the driving task's
+  own description, not yet confirmed against a real call: **no real
+  `claude -p` call is made anywhere in this slice** — a fake `claude`
+  executable on `PATH` proves the subprocess wiring in
   `tests/test_connector_model.py`, and `python -m connectors.tests
-  --model-dry-run` never invokes either provider at all.
+  --model-dry-run` never invokes either provider at all under any
+  `--extractor` (a fourth review finding: `--extractor model
+  --model-dry-run` used to run the real block first).
 - **`anthropic`** (opt-in, `--provider anthropic`) imports the SDK lazily
   (never at module import time — `uv sync` without the optional `model`
   dependency group, and every test in this repo, must work without it
@@ -208,7 +218,19 @@ def _usage_namespace_from_result(payload: dict[str, Any]) -> Any:
     response-usage shape (module docstring: the "small adapter"). Field
     names are read defensively, camelCase (the Claude Code CLI's own
     convention) with a snake_case fallback, since this shape is a stated
-    assumption pending a real call."""
+    assumption pending a real call.
+
+    Review fix, asbuilt#8: None when `modelUsage` is ABSENT — a zero-filled
+    namespace there would look like a real ``.usage`` to `CountingClient
+    ._call`'s own `getattr(response, "usage", None)` check, silently
+    bypassing its missing-usage estimate and its `usage_missing` flag (the
+    exact guard `bench/llm.py`'s own docstring exists for: "a silently-zero
+    call would otherwise let real usage hide under a budget that looks
+    unspent"). A `modelUsage` key that IS present, even as `{}`, still sums
+    to zero-filled totals — only its outright absence means "no usage
+    reported at all"."""
+    if "modelUsage" not in payload:
+        return None
     totals = {"input": 0, "output": 0, "cache_creation": 0, "cache_read": 0}
     for usage in (payload.get("modelUsage") or {}).values():
         totals["input"] += usage.get("inputTokens", usage.get("input_tokens", 0)) or 0
@@ -235,16 +257,30 @@ def _matches_schema(obj: Any) -> bool:
     return isinstance(obj, dict) and all(key in obj for key in SCHEMA["required"])
 
 
-def _anthropic_credential_env() -> dict[str, str]:
-    """A copy of the parent environment with every `ANTHROPIC_*` variable
-    removed — in `-p` mode the CLI prefers `ANTHROPIC_API_KEY` (and
-    `ANTHROPIC_AUTH_TOKEN`) over `CLAUDE_CODE_OAUTH_TOKEN` whenever both are
-    set, which would silently switch a claude-code call onto API-key
-    billing the moment the parent process happens to have one exported
-    (review finding, asbuilt#8: verified against the installed CLI and its
-    headless docs). Only `CLAUDE_CODE_OAUTH_TOKEN` is added back, by the
-    caller, never any `ANTHROPIC_*` name."""
-    return {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_")}
+_DROPPED_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_CODE_USE_")
+_DROPPED_ENV_NAMES = {"AWS_BEARER_TOKEN_BEDROCK"}
+
+
+def _billing_isolated_env() -> dict[str, str]:
+    """A copy of the parent environment with every credential or backend
+    selector that could route a call off Oleg's Claude Code subscription
+    removed: `ANTHROPIC_*` (in `-p` mode the CLI prefers `ANTHROPIC_API_KEY`/
+    `ANTHROPIC_AUTH_TOKEN` over `CLAUDE_CODE_OAUTH_TOKEN` whenever both are
+    set — review finding, asbuilt#8), `CLAUDE_CODE_USE_*` (`_BEDROCK`/
+    `_VERTEX`/`_FOUNDRY` and any future sibling — a second review finding:
+    any of these, if set in the parent, would silently switch the call onto
+    that cloud account instead), and `AWS_BEARER_TOKEN_BEDROCK` (Bedrock's
+    own credential, not covered by either prefix). Only `CLAUDE_CODE_OAUTH_
+    TOKEN` is added back, by the caller, never any of the removed names.
+    This covers the process environment only — a settings-file
+    `apiKeyHelper` (`claude --settings`/project/user settings) is a
+    separate credential path this function has no way to see or strip, and
+    stays the operator's own responsibility to keep unset for this use."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(_DROPPED_ENV_PREFIXES) and k not in _DROPPED_ENV_NAMES
+    }
 
 
 def _invoke_claude_code(prompt: str, model: str, claude_bin: str = "claude") -> Any:
@@ -264,7 +300,7 @@ def _invoke_claude_code(prompt: str, model: str, claude_bin: str = "claude") -> 
     true or a `subtype` other than `"success"` is an error, reported with
     the first line of `result`'s own text (never stderr, since a model-
     level error is not a process-level one)."""
-    env = _anthropic_credential_env()
+    env = _billing_isolated_env()
     token = _claude_code_oauth_token()
     if token:
         env[_CLAUDE_CODE_OAUTH_TOKEN_ENV] = token

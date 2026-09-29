@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import connectors.tests.__main__ as main_module
 from bench.llm import Budget, BudgetExceeded
 from connectors.tests.collect import Skeleton
 from connectors.tests.extract_model import (
@@ -26,6 +27,7 @@ from connectors.tests.extract_model import (
     _claude_code_oauth_token,
     extract_with_model,
 )
+from tests._support import SPIKE_ROOT
 
 
 class _FakeMessages:
@@ -138,6 +140,11 @@ import sys
 
 mode = os.environ.get("FAKE_CLAUDE_MODE", "success")
 
+marker_path = os.environ.get("FAKE_CLAUDE_CALL_MARKER_PATH")
+if marker_path:
+    with open(marker_path, "a") as f:
+        f.write("called\\n")
+
 check_path = os.environ.get("FAKE_CLAUDE_TOKEN_CHECK_PATH")
 expected = os.environ.get("FAKE_CLAUDE_EXPECTED_TOKEN")
 if check_path and expected is not None:
@@ -145,10 +152,16 @@ if check_path and expected is not None:
     with open(check_path, "w") as f:
         f.write("MATCH" if seen == expected else "NOMATCH")  # never the token itself
 
-anthropic_check_path = os.environ.get("FAKE_CLAUDE_ANTHROPIC_CHECK_PATH")
-if anthropic_check_path:
-    leaked = sorted(k for k in os.environ if k.startswith("ANTHROPIC_"))
-    with open(anthropic_check_path, "w") as f:
+credential_check_path = os.environ.get("FAKE_CLAUDE_CREDENTIAL_CHECK_PATH")
+if credential_check_path:
+    leaked = sorted(
+        k
+        for k in os.environ
+        if k.startswith("ANTHROPIC_")
+        or k.startswith("CLAUDE_CODE_USE_")
+        or k == "AWS_BEARER_TOKEN_BEDROCK"
+    )
+    with open(credential_check_path, "w") as f:
         f.write(",".join(leaked))  # names only, never any value
 
 if mode == "fail":
@@ -171,6 +184,23 @@ usage = {
     },
     "total_cost_usd": 0.0042,
 }
+
+if mode == "no_usage":
+    result = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": False,
+        "result": "no usage reported this call",
+        "structured_output": {
+            "statement": "Skeleton is proven.",
+            "category": "business-logic",
+            "entities": ["farebox"],
+            "claim": None,
+        },
+        # deliberately no "modelUsage" key at all
+    }
+    sys.stdout.write(json.dumps(result))
+    sys.exit(0)
 
 if mode == "model_error":
     result = {
@@ -295,8 +325,8 @@ def test_claude_code_client_strips_anthropic_credentials_from_subprocess_env(
     _install_fake_claude(tmp_path, monkeypatch)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-leaked-if-this-test-fails")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "also-should-not-survive")
-    check_path = tmp_path / "anthropic-check.txt"
-    monkeypatch.setenv("FAKE_CLAUDE_ANTHROPIC_CHECK_PATH", str(check_path))
+    check_path = tmp_path / "credential-check.txt"
+    monkeypatch.setenv("FAKE_CLAUDE_CREDENTIAL_CHECK_PATH", str(check_path))
     skeleton = Skeleton(
         node_id="tests/x.py::test_x", file="tests/x.py", line=1, name="test_x", language="python"
     )
@@ -304,6 +334,87 @@ def test_claude_code_client_strips_anthropic_credentials_from_subprocess_env(
     extract_with_model([skeleton], {}, client_factory=ClaudeCodeClient, stop_dir=tmp_path)
 
     assert check_path.read_text() == ""  # no ANTHROPIC_* name reached the subprocess
+
+
+def test_claude_code_client_strips_backend_selectors_from_subprocess_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Review fix, asbuilt#8: `CLAUDE_CODE_USE_BEDROCK`/`_VERTEX`/`_FOUNDRY`
+    and `AWS_BEARER_TOKEN_BEDROCK`, if set in the parent, would route the
+    call onto that cloud account instead of the subscription — none may
+    reach the subprocess."""
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+    monkeypatch.setenv("CLAUDE_CODE_USE_VERTEX", "1")
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "leaked-if-this-test-fails")
+    check_path = tmp_path / "credential-check.txt"
+    monkeypatch.setenv("FAKE_CLAUDE_CREDENTIAL_CHECK_PATH", str(check_path))
+    skeleton = Skeleton(
+        node_id="tests/x.py::test_x", file="tests/x.py", line=1, name="test_x", language="python"
+    )
+
+    extract_with_model([skeleton], {}, client_factory=ClaudeCodeClient, stop_dir=tmp_path)
+
+    assert check_path.read_text() == ""
+
+
+def test_claude_code_client_missing_usage_triggers_countingclients_estimate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Review fix, asbuilt#8: when `modelUsage` is absent from the result,
+    the adapter must return None rather than a zero-filled usage — a
+    zero-filled one would look like real (zero) usage to `CountingClient
+    ._call`'s own `getattr(response, "usage", None)` check, silently
+    bypassing its own missing-usage token estimate and `usage_missing` flag
+    (`bench/llm.py`'s own guard against a silently-zero call hiding real
+    spend under a budget that looks unspent)."""
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "no_usage")
+    skeleton = Skeleton(
+        node_id="tests/x.py::test_x", file="tests/x.py", line=1, name="test_x", language="python"
+    )
+
+    results, wrapped = extract_with_model(
+        [skeleton], {}, client_factory=ClaudeCodeClient, stop_dir=tmp_path
+    )
+
+    assert results == [
+        {
+            "node_id": "tests/x.py::test_x",
+            "statement": "Skeleton is proven.",
+            "category": "business-logic",
+            "entities": ["farebox"],
+            "claim": None,
+        }
+    ]
+    assert wrapped.usage_missing is True
+    assert wrapped.input_tokens > 0  # CountingClient's own len(text)//4 estimate, not zero
+
+
+def test_extractor_model_with_dry_run_never_invokes_the_real_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Review fix, asbuilt#8 (hazard): `--extractor model --model-dry-run`
+    used to run the real model block — one `claude -p` per skeleton —
+    BEFORE ever printing the dry-run estimate, contradicting the CLI's own
+    docstring and `--help` text ("no call is made under any extractor").
+    The fake `claude` executable proves the fix end to end through
+    `main()`: it would always touch a call-marker file the moment it's
+    actually invoked, and that file must never appear."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main_module.main(
+        ["--fixture", str(fixture_root), "--step", "c6", "--extractor", "model", "--model-dry-run"]
+    )
+
+    assert exit_code == 0
+    assert not marker_path.exists()  # the fake claude was never actually run
 
 
 def test_claude_code_oauth_token_falls_back_to_config_file(
