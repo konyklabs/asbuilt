@@ -1,0 +1,1286 @@
+# Judged pairs from the test connector's first real model run (2026-09-29,
+# konyklabs/asbuilt#17): every model statement and every rules-extractor
+# statement at c6 against the truth fact its test carries, with the truth's
+# own claim and the candidate's claim where present, judged by hand (expect:
+# true = the candidate states the fact, however fully; false = it does not),
+# plus one cross pair per model statement against a different fact's truth,
+# and, after the first local lens round, targeted pairs for each rule the
+# set loosened or added (the hedge, the numberless fact, HTTP codes, the
+# flag state, claim units and vocabulary, ordinals) in both directions.
+# Invented fixture only (Gearwell). Run with
+# `uv run python bench/score.py --calibrate tests/fixtures/calibration-model-run.yaml`.
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: model
+  test: test_checkin_at_full_station_refused
+  candidate: Attempting to check in at a one-capacity station that is already occupied, with the feature
+    flag off, is refused with HTTP 409 and error code 'station_full'.
+  expect: true
+  candidate_claim:
+    entity: checkin_at_full_station
+    attribute: response
+    value: 409 station_full
+    unit: null
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: model
+  test: test_checkin_full_station_returns_409
+  candidate: 'Checking in to a station that is already full returns HTTP 409 with JSON body {''error'':
+    ''station_full''}.'
+  expect: true
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+  candidate_claim:
+    entity: checkin
+    attribute: full_station_response
+    value: &id001
+      status: 409
+      body:
+        error: station_full
+    unit: null
+- truth_id: F-018
+  truth: When the overflow_parking flag is on, a bike can be checked in at a full station.
+  source: model
+  test: test_checkin_at_full_station_allowed_with_overflow_parking
+  candidate: When the overflow-parking flag is enabled, checking in at a station that is already at capacity
+    succeeds with a 200 response returning the checked-in ride's id.
+  expect: true
+  candidate_claim:
+    entity: checkin
+    attribute: allowed_when_station_full_with_overflow_flag_enabled
+    value: true
+    unit: null
+- truth_id: F-019
+  truth: A rider can hold at most 2 bikes at once, so a third check-out is refused.
+  source: model
+  test: test_third_checkout_refused
+  candidate: A rider's first two checkouts succeed with 201, and a third checkout attempt is refused with
+    a 409 checkout_limit_reached error.
+  expect: true
+  truth_claim:
+    entity: E-rule-checkout-limit
+    attribute: max_bikes
+    value: 2
+    unit: count
+  candidate_claim:
+    entity: rider
+    attribute: checkout_limit
+    value: 2
+    unit: checkouts
+- truth_id: F-050
+  truth: farebox publishes a ride.completed event to the ride.events queue when it closes a ride.
+  source: model
+  test: test_close_ride_publishes_ride_completed
+  candidate: Closing a normally checked-in ride returns HTTP 200 and publishes exactly one event to the
+    ride.events topic, with payload type ride.completed and payload ride_id matching the ride's id.
+  expect: true
+  candidate_claim:
+    entity: close ride endpoint
+    attribute: published event topic
+    value: ride.events
+    unit: null
+- truth_id: F-004
+  truth: A rider without a membership pays a $1.00 unlock fee for every ride.
+  source: model
+  test: test_casual_ride_charges_one_dollar_unlock_fee
+  candidate: A zero-length trip from an unrecognised rider id is charged exactly the $1.00 floor amount
+    as the casual-ride unlock fee.
+  expect: true
+  truth_claim:
+    entity: E-rule-casual-unlock-fee
+    attribute: unlock_fee
+    value: 1.0
+    unit: usd
+  candidate_claim:
+    entity: casual_ride_unlock_fee
+    attribute: amount_cents
+    value: 100
+    unit: cents
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: model
+  test: test_member_first_thirty_minutes_free
+  candidate: For a seeded member account, the pricing endpoint returns amount_cents == 0 for trips within
+    the first 30 minutes and amount_cents == 15 once a trip runs slightly past that mark, proving the
+    first 30 minutes are genuinely free rather than just cheap.
+  expect: true
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
+  candidate_claim:
+    entity: member_trip_pricing
+    attribute: first_30_minutes_fee
+    value: 0
+    unit: cents
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: model
+  test: test_refund_after_14_days_rejected
+  candidate: 'The refund endpoint returns 422 with body {''error'': ''refund_window_expired''} when a
+    refund is filed more than 14 days after the eligible window, while a refund filed within the window
+    returns 201 with status ''requested''.'
+  expect: true
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+  candidate_claim:
+    entity: refund
+    attribute: eligible_window_days
+    value: 14
+    unit: days
+- truth_id: F-014
+  truth: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+  source: model
+  test: test_refund_under_five_dollars_auto_approved_when_flag_on
+  candidate: A refund request under $5 filed the next day with the auto-approval flag on returns 201 with
+    status 'approved', while the test's other two refund requests each return 201 with status 'requested',
+    still pending manual review.
+  expect: true
+  truth_claim:
+    entity: E-rule-refund-auto-approve
+    attribute: limit
+    value: 5.0
+    unit: usd
+  candidate_claim:
+    entity: refund under $5 filed next day with auto-approve flag on
+    attribute: status
+    value: approved
+    unit: null
+- truth_id: F-052
+  truth: GET /stations/{id}/status returns the station's available bikes, empty docks and fill ratio.
+  source: model
+  test: test_station_status_reports_fill_ratio
+  candidate: The station status endpoint returns HTTP 200 with a body reporting available_bikes, empty_docks,
+    and fill_ratio that correctly reflect a four-dock station with three bikes occupying docks.
+  expect: true
+  candidate_claim:
+    entity: station status endpoint
+    attribute: fill_ratio
+    value: 0.75
+    unit: null
+- truth_id: F-049
+  truth: The dynamic_pricing flag is off by default.
+  source: model
+  test: test_dynamic_pricing_off_by_default
+  candidate: The flags registry has the 'dynamic_pricing' key set to False before any override is applied.
+  expect: true
+  candidate_claim:
+    entity: dynamic_pricing
+    attribute: default_value_in_FLAGS_registry
+    value: false
+    unit: null
+- truth_id: F-010
+  truth: A ride whose bike is not docked within 24 hours of check-out is closed as lost.
+  source: model
+  test: test_ride_open_past_24_hours_closed_as_lost
+  candidate: A ride still open one minute past the 24-hour staleness cutoff is swept into the closed set
+    as lost, and none remain in the still-open set.
+  expect: true
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: lost_after
+    value: 24
+    unit: hour
+  candidate_claim:
+    entity: lost bikes sweep
+    attribute: staleness_cutoff_hours
+    value: 24
+    unit: hours
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: model
+  test: test_lost_bike_fee_150
+  candidate: The fee line for a closed stale ride adds exactly $150.00 (15000 cents) on top of the underlying
+    ride charge amount.
+  expect: true
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: surcharge_amount_cents
+    value: 15000
+    unit: usd_cents
+- truth_id: F-016
+  truth: A failed renewal gives a membership a grace period that ends 7 days after the failure.
+  source: model
+  test: test_membership_lapses_7_days_after_failed_renewal
+  candidate: A single failed renewal charge sets the membership status to GRACE and grace_ends_at to exactly
+    GRACE_DAYS (7) days after the failure timestamp.
+  expect: true
+  truth_claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 7
+    unit: day
+  candidate_claim:
+    entity: GRACE_DAYS
+    attribute: grace_days
+    value: 7
+    unit: day
+- truth_id: F-005
+  truth: A member pays $0.15 per minute for every minute after the free minutes.
+  source: model
+  test: test_member_rate_after_free_minutes
+  candidate: For a duration ten units past the configured free-minutes threshold, only the excess duration
+    is billed at MEMBER_RATE (0.15), yielding a total amount of 150 cents.
+  expect: true
+  truth_claim:
+    entity: E-rule-per-minute-rate
+    attribute: member_rate_per_minute
+    value: 0.15
+    unit: usd
+  candidate_claim:
+    entity: amount_cents
+    attribute: excess_duration_billed_at_member_rate
+    value: 150
+    unit: cents
+- truth_id: F-006
+  truth: A rider without a membership pays $0.25 per minute from the first minute of the ride.
+  source: model
+  test: test_casual_rate_from_first_minute
+  candidate: This test proves that a ten-minute casual ride, with no free-minute window subtracted first,
+    is charged exactly 350 cents in total, using a CASUAL_RATE of Decimal('0.25').
+  expect: true
+  truth_claim:
+    entity: E-rule-per-minute-rate
+    attribute: casual_rate_per_minute
+    value: 0.25
+    unit: usd
+  candidate_claim:
+    entity: casual ride (10 minutes, no free window)
+    attribute: amount_cents
+    value: 350
+    unit: cents
+- truth_id: F-007
+  truth: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  source: model
+  test: test_ebike_surcharge_when_flag_on
+  candidate: Toggling the e-bike surcharge flag on adds exactly $0.10 (EBIKE_SURCHARGE) to the price of
+    an otherwise identical e-bike ride, with no surcharge applied at the threshold and $2.50 applied past
+    the threshold.
+  expect: true
+  truth_claim:
+    entity: E-rule-ebike-surcharge
+    attribute: surcharge_per_minute
+    value: 0.1
+    unit: usd
+  candidate_claim:
+    entity: EBIKE_SURCHARGE
+    attribute: ebike_surcharge_flag_delta
+    value: '0.10'
+    unit: usd
+- truth_id: F-009
+  truth: A single ride costs at most $30.00.
+  source: model
+  test: test_single_ride_cap_30
+  candidate: A single ride priced beyond the cap is charged exactly the SINGLE_RIDE_CAP of $30.00 (3000
+    cents), confirming the cap clamps the fare instead of the per-unit rate.
+  expect: true
+  truth_claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 30.0
+    unit: usd
+  candidate_claim:
+    entity: SINGLE_RIDE_CAP
+    attribute: single_ride_cap
+    value: '30.00'
+    unit: usd
+- truth_id: F-023
+  truth: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture
+    fails.
+  source: model
+  test: test_capture_retries_three_times_then_fails
+  candidate: The tollbooth client's capture call, when every attempt receives a 503 response, retries
+    exactly MAX_RETRIES times (4 total attempts) and sleeps between attempts for the exact backoff delays
+    [0.5, 1, 2] seconds before finally failing.
+  expect: true
+  truth_claim:
+    entity: E-rule-payment-retry
+    attribute: retries
+    value: 3
+    unit: count
+  candidate_claim:
+    entity: tollbooth client capture
+    attribute: retry_backoff_seconds
+    value: &id002
+    - 0.5
+    - 1
+    - 2
+    unit: seconds
+- truth_id: F-062
+  truth: The Tollbooth Pay client retries only after a timeout or a 5xx response, never after a 4xx response.
+  source: model
+  test: test_capture_does_not_retry_a_4xx
+  candidate: This test is skipped because the fake transport cannot yet model a declined card, so it does
+    not currently verify that a capture against a transport returning 402 results in exactly one call
+    with no retry.
+  expect: false
+  why: reports that the test is skipped; states no fact
+  truth_claim:
+    entity: E-rule-payment-retry
+    attribute: retry_on
+    value: 5xx
+    unit: null
+- truth_id: F-020
+  truth: A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket.
+  source: model
+  test: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  candidate: maintenanceSweep locks only the bike that has accumulated 3 fault reports within a 7-day
+    window, opens exactly one maintenance ticket for it, and leaves bikes with just 2 reports or with
+    an older stale report unlocked.
+  expect: true
+  truth_claim:
+    entity: E-rule-fault-threshold
+    attribute: fault_reports
+    value: 3
+    unit: count
+  candidate_claim:
+    entity: maintenanceSweep
+    attribute: faultReportLockThreshold
+    value: 3
+    unit: reports per 7 days
+- truth_id: F-021
+  truth: A station that is under 20% or over 90% full gets a rebalance order.
+  source: model
+  test: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  candidate: nightlyRebalance creates rebalance orders only for stations whose fill level is below 20%
+    or above 90%, ordering exactly the out-of-bounds stations while leaving in-bounds stations untouched.
+  expect: true
+  truth_claim:
+    entity: E-rule-rebalance-trigger
+    attribute: low_fill
+    value: 20
+    unit: percent
+  candidate_claim:
+    entity: nightlyRebalance
+    attribute: fill_threshold_bounds_percent
+    value: &id003
+    - 20
+    - 90
+    unit: percent
+- truth_id: F-053
+  truth: dispatch counts each ride.completed event toward the demand of the ride's return station.
+  source: model
+  test: rideEvents > counts ride.completed toward the return station's demand
+  candidate: demandForStation("station-9") returns 2 after ride.completed events are counted toward the
+    return station's demand.
+  expect: true
+  candidate_claim:
+    entity: station-9
+    attribute: demandForStation
+    value: 2
+    unit: null
+- truth_id: F-022
+  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  source: model
+  test: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+  candidate: stormPause suppresses rebalance order creation while the latest inserted Skyglass reading's
+    severity is 3 or more, and once a subsequent reading drops severity below 3, isStormPaused returns
+    false and rebalancing resumes, producing exactly one rebalance order from the resumed plans.
+  expect: true
+  truth_claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
+  candidate_claim:
+    entity: stormPause
+    attribute: severityThresholdToPause
+    value: 3
+    unit: null
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rules
+  test: test_checkin_at_full_station_refused
+  candidate: Checkin at full station refused.
+  expect: true
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: rules
+  test: test_checkin_full_station_returns_409
+  candidate: Checkin full station returns 409.
+  expect: true
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+- truth_id: F-018
+  truth: When the overflow_parking flag is on, a bike can be checked in at a full station.
+  source: rules
+  test: test_checkin_at_full_station_allowed_with_overflow_parking
+  candidate: Checkin at full station allowed with overflow parking.
+  expect: true
+- truth_id: F-019
+  truth: A rider can hold at most 2 bikes at once, so a third check-out is refused.
+  source: rules
+  test: test_third_checkout_refused
+  candidate: 3rd checkout refused.
+  expect: true
+  truth_claim:
+    entity: E-rule-checkout-limit
+    attribute: max_bikes
+    value: 2
+    unit: count
+- truth_id: F-050
+  truth: farebox publishes a ride.completed event to the ride.events queue when it closes a ride.
+  source: rules
+  test: test_close_ride_publishes_ride_completed
+  candidate: Close ride publishes ride completed.
+  expect: true
+- truth_id: F-004
+  truth: A rider without a membership pays a $1.00 unlock fee for every ride.
+  source: rules
+  test: test_casual_ride_charges_one_dollar_unlock_fee
+  candidate: Casual ride charges $1.00 unlock fee.
+  expect: true
+  truth_claim:
+    entity: E-rule-casual-unlock-fee
+    attribute: unlock_fee
+    value: 1.0
+    unit: usd
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: rules
+  test: test_member_first_thirty_minutes_free
+  candidate: Member 1st 30 minutes free.
+  expect: true
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: rules
+  test: test_refund_after_14_days_rejected
+  candidate: Refund after 14 days rejected.
+  expect: true
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+- truth_id: F-014
+  truth: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+  source: rules
+  test: test_refund_under_five_dollars_auto_approved_when_flag_on
+  candidate: Refund under $5.00 auto approved when flag on.
+  expect: true
+  truth_claim:
+    entity: E-rule-refund-auto-approve
+    attribute: limit
+    value: 5.0
+    unit: usd
+- truth_id: F-052
+  truth: GET /stations/{id}/status returns the station's available bikes, empty docks and fill ratio.
+  source: rules
+  test: test_station_status_reports_fill_ratio
+  candidate: Station status reports fill ratio.
+  expect: true
+- truth_id: F-049
+  truth: The dynamic_pricing flag is off by default.
+  source: rules
+  test: test_dynamic_pricing_off_by_default
+  candidate: Dynamic pricing off by default.
+  expect: true
+- truth_id: F-010
+  truth: A ride whose bike is not docked within 24 hours of check-out is closed as lost.
+  source: rules
+  test: test_ride_open_past_24_hours_closed_as_lost
+  candidate: Ride open past 24 hours closed as lost.
+  expect: true
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: lost_after
+    value: 24
+    unit: hour
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rules
+  test: test_lost_bike_fee_150
+  candidate: Lost bike fee $150.00.
+  expect: true
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: lost_bike_fee
+    value: $150.00
+    unit: usd
+- truth_id: F-016
+  truth: A failed renewal gives a membership a grace period that ends 7 days after the failure.
+  source: rules
+  test: test_membership_lapses_7_days_after_failed_renewal
+  candidate: Membership lapses 7 days after failed renewal.
+  expect: true
+  truth_claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 7
+    unit: day
+  candidate_claim:
+    entity: GRACE_DAYS
+    attribute: grace_days
+    value: 7
+    unit: day
+- truth_id: F-005
+  truth: A member pays $0.15 per minute for every minute after the free minutes.
+  source: rules
+  test: test_member_rate_after_free_minutes
+  candidate: Member rate after free minutes.
+  expect: true
+  truth_claim:
+    entity: E-rule-per-minute-rate
+    attribute: member_rate_per_minute
+    value: 0.15
+    unit: usd
+  candidate_claim:
+    entity: MEMBER_RATE
+    attribute: member_rate
+    value: $0.15
+    unit: usd
+- truth_id: F-006
+  truth: A rider without a membership pays $0.25 per minute from the first minute of the ride.
+  source: rules
+  test: test_casual_rate_from_first_minute
+  candidate: Casual rate from 1st minute.
+  expect: true
+  truth_claim:
+    entity: E-rule-per-minute-rate
+    attribute: casual_rate_per_minute
+    value: 0.25
+    unit: usd
+  candidate_claim:
+    entity: CASUAL_RATE
+    attribute: casual_rate
+    value: $0.25
+    unit: usd
+- truth_id: F-007
+  truth: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  source: rules
+  test: test_ebike_surcharge_when_flag_on
+  candidate: Ebike surcharge when flag on.
+  expect: true
+  truth_claim:
+    entity: E-rule-ebike-surcharge
+    attribute: surcharge_per_minute
+    value: 0.1
+    unit: usd
+  candidate_claim:
+    entity: EBIKE_SURCHARGE
+    attribute: ebike_surcharge
+    value: $0.10
+    unit: usd
+- truth_id: F-009
+  truth: A single ride costs at most $30.00.
+  source: rules
+  test: test_single_ride_cap_30
+  candidate: Single ride cap $30.00.
+  expect: true
+  truth_claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 30.0
+    unit: usd
+  candidate_claim:
+    entity: SINGLE_RIDE_CAP
+    attribute: single_ride_cap
+    value: $30.00
+    unit: usd
+- truth_id: F-023
+  truth: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture
+    fails.
+  source: rules
+  test: test_capture_retries_three_times_then_fails
+  candidate: Capture retries 3 times then fails.
+  expect: true
+  truth_claim:
+    entity: E-rule-payment-retry
+    attribute: retries
+    value: 3
+    unit: count
+  candidate_claim:
+    entity: MAX_RETRIES
+    attribute: max_retries
+    value: 3
+    unit: count
+- truth_id: F-062
+  truth: The Tollbooth Pay client retries only after a timeout or a 5xx response, never after a 4xx response.
+  source: rules
+  test: test_capture_does_not_retry_a_4xx
+  candidate: Capture does not retry a 4xx.
+  expect: true
+  truth_claim:
+    entity: E-rule-payment-retry
+    attribute: retry_on
+    value: 5xx
+    unit: null
+- truth_id: F-020
+  truth: A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket.
+  source: rules
+  test: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  candidate: maintenanceSweep locks a bike with 3 fault reports in 7 days and opens a ticket.
+  expect: true
+  truth_claim:
+    entity: E-rule-fault-threshold
+    attribute: fault_reports
+    value: 3
+    unit: count
+- truth_id: F-021
+  truth: A station that is under 20% or over 90% full gets a rebalance order.
+  source: rules
+  test: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  candidate: nightlyRebalance orders a rebalance for a station under 20% or over 90% full.
+  expect: true
+  truth_claim:
+    entity: E-rule-rebalance-trigger
+    attribute: low_fill
+    value: 20
+    unit: percent
+- truth_id: F-053
+  truth: dispatch counts each ride.completed event toward the demand of the ride's return station.
+  source: rules
+  test: rideEvents > counts ride.completed toward the return station's demand
+  candidate: rideEvents counts ride.completed toward the return station's demand.
+  expect: true
+- truth_id: F-022
+  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  source: rules
+  test: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+  candidate: stormPause pauses rebalancing while the latest Skyglass severity is 3 or more.
+  expect: true
+  truth_claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: model-cross
+  test: test_checkin_at_full_station_refused
+  candidate: Attempting to check in at a one-capacity station that is already occupied, with the feature
+    flag off, is refused with HTTP 409 and error code 'station_full'.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: checkin_at_full_station
+    attribute: response
+    value: 409 station_full
+    unit: null
+- truth_id: F-016
+  truth: A failed renewal gives a membership a grace period that ends 7 days after the failure.
+  source: model-cross
+  test: test_checkin_full_station_returns_409
+  candidate: 'Checking in to a station that is already full returns HTTP 409 with JSON body {''error'':
+    ''station_full''}.'
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-membership-grace
+    attribute: grace
+    value: 7
+    unit: day
+  candidate_claim:
+    entity: checkin
+    attribute: full_station_response
+    value: *id001
+    unit: null
+- truth_id: F-005
+  truth: A member pays $0.15 per minute for every minute after the free minutes.
+  source: model-cross
+  test: test_checkin_at_full_station_allowed_with_overflow_parking
+  candidate: When the overflow-parking flag is enabled, checking in at a station that is already at capacity
+    succeeds with a 200 response returning the checked-in ride's id.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-per-minute-rate
+    attribute: member_rate_per_minute
+    value: 0.15
+    unit: usd
+  candidate_claim:
+    entity: checkin
+    attribute: allowed_when_station_full_with_overflow_flag_enabled
+    value: true
+    unit: null
+- truth_id: F-006
+  truth: A rider without a membership pays $0.25 per minute from the first minute of the ride.
+  source: model-cross
+  test: test_third_checkout_refused
+  candidate: A rider's first two checkouts succeed with 201, and a third checkout attempt is refused with
+    a 409 checkout_limit_reached error.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-per-minute-rate
+    attribute: casual_rate_per_minute
+    value: 0.25
+    unit: usd
+  candidate_claim:
+    entity: rider
+    attribute: checkout_limit
+    value: 2
+    unit: checkouts
+- truth_id: F-007
+  truth: When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10.
+  source: model-cross
+  test: test_close_ride_publishes_ride_completed
+  candidate: Closing a normally checked-in ride returns HTTP 200 and publishes exactly one event to the
+    ride.events topic, with payload type ride.completed and payload ride_id matching the ride's id.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-ebike-surcharge
+    attribute: surcharge_per_minute
+    value: 0.1
+    unit: usd
+  candidate_claim:
+    entity: close ride endpoint
+    attribute: published event topic
+    value: ride.events
+    unit: null
+- truth_id: F-009
+  truth: A single ride costs at most $30.00.
+  source: model-cross
+  test: test_casual_ride_charges_one_dollar_unlock_fee
+  candidate: A zero-length trip from an unrecognised rider id is charged exactly the $1.00 floor amount
+    as the casual-ride unlock fee.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-single-ride-cap
+    attribute: cap
+    value: 30.0
+    unit: usd
+  candidate_claim:
+    entity: casual_ride_unlock_fee
+    attribute: amount_cents
+    value: 100
+    unit: cents
+- truth_id: F-023
+  truth: A Tollbooth Pay capture that keeps failing is retried 3 times with backoff before the capture
+    fails.
+  source: model-cross
+  test: test_member_first_thirty_minutes_free
+  candidate: For a seeded member account, the pricing endpoint returns amount_cents == 0 for trips within
+    the first 30 minutes and amount_cents == 15 once a trip runs slightly past that mark, proving the
+    first 30 minutes are genuinely free rather than just cheap.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-payment-retry
+    attribute: retries
+    value: 3
+    unit: count
+  candidate_claim:
+    entity: member_trip_pricing
+    attribute: first_30_minutes_fee
+    value: 0
+    unit: cents
+- truth_id: F-062
+  truth: The Tollbooth Pay client retries only after a timeout or a 5xx response, never after a 4xx response.
+  source: model-cross
+  test: test_refund_after_14_days_rejected
+  candidate: 'The refund endpoint returns 422 with body {''error'': ''refund_window_expired''} when a
+    refund is filed more than 14 days after the eligible window, while a refund filed within the window
+    returns 201 with status ''requested''.'
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-payment-retry
+    attribute: retry_on
+    value: 5xx
+    unit: null
+  candidate_claim:
+    entity: refund
+    attribute: eligible_window_days
+    value: 14
+    unit: days
+- truth_id: F-020
+  truth: A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket.
+  source: model-cross
+  test: test_refund_under_five_dollars_auto_approved_when_flag_on
+  candidate: A refund request under $5 filed the next day with the auto-approval flag on returns 201 with
+    status 'approved', while the test's other two refund requests each return 201 with status 'requested',
+    still pending manual review.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-fault-threshold
+    attribute: fault_reports
+    value: 3
+    unit: count
+  candidate_claim:
+    entity: refund under $5 filed next day with auto-approve flag on
+    attribute: status
+    value: approved
+    unit: null
+- truth_id: F-021
+  truth: A station that is under 20% or over 90% full gets a rebalance order.
+  source: model-cross
+  test: test_station_status_reports_fill_ratio
+  candidate: The station status endpoint returns HTTP 200 with a body reporting available_bikes, empty_docks,
+    and fill_ratio that correctly reflect a four-dock station with three bikes occupying docks.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-rebalance-trigger
+    attribute: low_fill
+    value: 20
+    unit: percent
+  candidate_claim:
+    entity: station status endpoint
+    attribute: fill_ratio
+    value: 0.75
+    unit: null
+- truth_id: F-053
+  truth: dispatch counts each ride.completed event toward the demand of the ride's return station.
+  source: model-cross
+  test: test_dynamic_pricing_off_by_default
+  candidate: The flags registry has the 'dynamic_pricing' key set to False before any override is applied.
+  expect: false
+  why: a different fact's statement
+  candidate_claim:
+    entity: dynamic_pricing
+    attribute: default_value_in_FLAGS_registry
+    value: false
+    unit: null
+- truth_id: F-022
+  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  source: model-cross
+  test: test_ride_open_past_24_hours_closed_as_lost
+  candidate: A ride still open one minute past the 24-hour staleness cutoff is swept into the closed set
+    as lost, and none remain in the still-open set.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
+  candidate_claim:
+    entity: lost bikes sweep
+    attribute: staleness_cutoff_hours
+    value: 24
+    unit: hours
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: model-cross
+  test: test_lost_bike_fee_150
+  candidate: The fee line for a closed stale ride adds exactly $150.00 (15000 cents) on top of the underlying
+    ride charge amount.
+  expect: false
+  why: a different fact's statement
+  candidate_claim:
+    entity: lost bike fee
+    attribute: surcharge_amount_cents
+    value: 15000
+    unit: usd_cents
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: model-cross
+  test: test_membership_lapses_7_days_after_failed_renewal
+  candidate: A single failed renewal charge sets the membership status to GRACE and grace_ends_at to exactly
+    GRACE_DAYS (7) days after the failure timestamp.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+  candidate_claim:
+    entity: GRACE_DAYS
+    attribute: grace_days
+    value: 7
+    unit: day
+- truth_id: F-018
+  truth: When the overflow_parking flag is on, a bike can be checked in at a full station.
+  source: model-cross
+  test: test_member_rate_after_free_minutes
+  candidate: For a duration ten units past the configured free-minutes threshold, only the excess duration
+    is billed at MEMBER_RATE (0.15), yielding a total amount of 150 cents.
+  expect: false
+  why: a different fact's statement
+  candidate_claim:
+    entity: amount_cents
+    attribute: excess_duration_billed_at_member_rate
+    value: 150
+    unit: cents
+- truth_id: F-019
+  truth: A rider can hold at most 2 bikes at once, so a third check-out is refused.
+  source: model-cross
+  test: test_casual_rate_from_first_minute
+  candidate: This test proves that a ten-minute casual ride, with no free-minute window subtracted first,
+    is charged exactly 350 cents in total, using a CASUAL_RATE of Decimal('0.25').
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-checkout-limit
+    attribute: max_bikes
+    value: 2
+    unit: count
+  candidate_claim:
+    entity: casual ride (10 minutes, no free window)
+    attribute: amount_cents
+    value: 350
+    unit: cents
+- truth_id: F-050
+  truth: farebox publishes a ride.completed event to the ride.events queue when it closes a ride.
+  source: model-cross
+  test: test_ebike_surcharge_when_flag_on
+  candidate: Toggling the e-bike surcharge flag on adds exactly $0.10 (EBIKE_SURCHARGE) to the price of
+    an otherwise identical e-bike ride, with no surcharge applied at the threshold and $2.50 applied past
+    the threshold.
+  expect: false
+  why: a different fact's statement
+  candidate_claim:
+    entity: EBIKE_SURCHARGE
+    attribute: ebike_surcharge_flag_delta
+    value: '0.10'
+    unit: usd
+- truth_id: F-004
+  truth: A rider without a membership pays a $1.00 unlock fee for every ride.
+  source: model-cross
+  test: test_single_ride_cap_30
+  candidate: A single ride priced beyond the cap is charged exactly the SINGLE_RIDE_CAP of $30.00 (3000
+    cents), confirming the cap clamps the fare instead of the per-unit rate.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-casual-unlock-fee
+    attribute: unlock_fee
+    value: 1.0
+    unit: usd
+  candidate_claim:
+    entity: SINGLE_RIDE_CAP
+    attribute: single_ride_cap
+    value: '30.00'
+    unit: usd
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: model-cross
+  test: test_capture_retries_three_times_then_fails
+  candidate: The tollbooth client's capture call, when every attempt receives a 503 response, retries
+    exactly MAX_RETRIES times (4 total attempts) and sleeps between attempts for the exact backoff delays
+    [0.5, 1, 2] seconds before finally failing.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
+  candidate_claim:
+    entity: tollbooth client capture
+    attribute: retry_backoff_seconds
+    value: *id002
+    unit: seconds
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: model-cross
+  test: test_capture_does_not_retry_a_4xx
+  candidate: This test is skipped because the fake transport cannot yet model a declined card, so it does
+    not currently verify that a capture against a transport returning 402 results in exactly one call
+    with no retry.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+- truth_id: F-014
+  truth: When the refund_auto_approve flag is on, a refund under $5.00 is approved without review.
+  source: model-cross
+  test: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  candidate: maintenanceSweep locks only the bike that has accumulated 3 fault reports within a 7-day
+    window, opens exactly one maintenance ticket for it, and leaves bikes with just 2 reports or with
+    an older stale report unlocked.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-refund-auto-approve
+    attribute: limit
+    value: 5.0
+    unit: usd
+  candidate_claim:
+    entity: maintenanceSweep
+    attribute: faultReportLockThreshold
+    value: 3
+    unit: reports per 7 days
+- truth_id: F-052
+  truth: GET /stations/{id}/status returns the station's available bikes, empty docks and fill ratio.
+  source: model-cross
+  test: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  candidate: nightlyRebalance creates rebalance orders only for stations whose fill level is below 20%
+    or above 90%, ordering exactly the out-of-bounds stations while leaving in-bounds stations untouched.
+  expect: false
+  why: a different fact's statement
+  candidate_claim:
+    entity: nightlyRebalance
+    attribute: fill_threshold_bounds_percent
+    value: *id003
+    unit: percent
+- truth_id: F-049
+  truth: The dynamic_pricing flag is off by default.
+  source: model-cross
+  test: rideEvents > counts ride.completed toward the return station's demand
+  candidate: demandForStation("station-9") returns 2 after ride.completed events are counted toward the
+    return station's demand.
+  expect: false
+  why: a different fact's statement
+  candidate_claim:
+    entity: station-9
+    attribute: demandForStation
+    value: 2
+    unit: null
+- truth_id: F-010
+  truth: A ride whose bike is not docked within 24 hours of check-out is closed as lost.
+  source: model-cross
+  test: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+  candidate: stormPause suppresses rebalance order creation while the latest inserted Skyglass reading's
+    severity is 3 or more, and once a subsequent reading drops severity below 3, isStormPaused returns
+    false and rebalancing resumes, producing exactly one rebalance order from the resumed plans.
+  expect: false
+  why: a different fact's statement
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: lost_after
+    value: 24
+    unit: hour
+  candidate_claim:
+    entity: stormPause
+    attribute: severityThresholdToPause
+    value: 3
+    unit: null
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: rule-negative
+  candidate: Members ride free for the first 45 minutes of every ride; the code applies 30 minutes.
+  expect: false
+  why: a hedge naming both the superseded and the current value
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
+- truth_id: F-036
+  truth: Members ride free for the first 45 minutes of every ride.
+  source: rule-negative
+  candidate: Members ride free for the first 45 minutes of every ride; the code applies 30 minutes.
+  expect: false
+  why: a hedge naming both the superseded and the current value
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 45
+    unit: minute
+- truth_id: null
+  truth: The maintenance sweep job runs every hour.
+  source: rule-negative
+  candidate: The maintenance sweep job runs every 2 hours.
+  expect: false
+  why: a quantity the fact does not name
+- truth_id: null
+  truth: Refunds are approved automatically.
+  source: rule-negative
+  candidate: Refunds under $25 are approved automatically.
+  expect: false
+  why: a narrower rule than the fact states
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: rule-positive
+  candidate: A refund requested more than 14 days after the ride ended is rejected with HTTP 422.
+  expect: true
+  why: the response code beside the fact's own number
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: rule-positive
+  candidate: Checking in at a full station returns HTTP 409 with error code station_full.
+  expect: true
+  why: the fact is about the response and the code agrees
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+- truth_id: F-051
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  source: rule-negative
+  candidate: Checking in at a full station returns HTTP 404 with error code station_full.
+  expect: false
+  why: the fact is about the response and the code differs
+  truth_claim:
+    entity: E-endpoint-checkin
+    attribute: station_full_status
+    value: 409
+    unit: null
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rule-positive
+  candidate: Check-in at a full station is refused.
+  expect: true
+  why: the same fact without naming the flag state
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rule-negative
+  candidate: A check-in at a full station is refused when the overflow_parking flag is on.
+  expect: false
+  why: the opposite flag state on the same words
+- truth_id: F-017
+  truth: A check-in at a full station is refused when the overflow_parking flag is off.
+  source: rule-positive
+  candidate: With overflow parking off, a check-in at a full station is refused when the station is on
+    its full list.
+  expect: true
+  why: '''on its full list'' names no flag state'
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-positive
+  candidate: A ride closed as lost is charged a lost-bike fee of $150.00.
+  expect: true
+  why: the same claim in cents
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: fee
+    value: 15000
+    unit: usd_cents
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-negative
+  candidate: A ride closed as lost is charged a $150.00 lost-bike fee.
+  expect: false
+  why: the claim says 150 cents, a value conflict on the same attribute
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: fee
+    value: 150
+    unit: cents
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-positive
+  candidate: A ride closed as lost is charged a $150.00 lost-bike fee.
+  expect: true
+  why: a camelCase attribute with the fact's own words
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: lostBikeFeeAmount
+    value: 150
+    unit: usd
+- truth_id: F-012
+  truth: A ride closed as lost is charged a $150.00 lost-bike fee.
+  source: rule-negative
+  candidate: A ride closed as lost is charged a $150.00 lost-bike fee.
+  expect: false
+  why: an attribute about something else on the same entity and value
+  truth_claim:
+    entity: E-rule-lost-bike-fee
+    attribute: fee
+    value: 150.0
+    unit: usd
+  candidate_claim:
+    entity: lost bike fee
+    attribute: retries
+    value: 150
+    unit: usd
+- truth_id: F-022
+  truth: Rebalancing pauses while the latest Skyglass severity is 3 or more.
+  source: rule-negative
+  candidate: Rebalancing is paused while the latest Skyglass severity is 3 or higher.
+  expect: false
+  why: the claim's value contradicts the fact on the same attribute
+  truth_claim:
+    entity: E-rule-storm-pause
+    attribute: min_severity
+    value: 3
+    unit: null
+  candidate_claim:
+    entity: stormPause
+    attribute: min_severity
+    value: 4
+    unit: null
+- truth_id: F-003
+  truth: A member's first 30 minutes of every ride are free.
+  source: rule-positive
+  candidate: A member's 1st 30 minutes of every ride are free.
+  expect: true
+  why: a digit ordinal is a position, not a quantity
+  truth_claim:
+    entity: E-rule-member-free-minutes
+    attribute: free_minutes
+    value: 30
+    unit: minute
+- truth_id: F-013
+  truth: A refund requested more than 14 days after the ride ended is rejected.
+  source: rule-positive
+  candidate: A refund requested more than 14 days after the ride ended is rejected.
+  expect: true
+  why: the claim names the refunds table where the truth's claim sits on the rule; value, attribute and
+    unit agree, the statement decides
+  truth_claim:
+    entity: E-rule-refund-window
+    attribute: window
+    value: 14
+    unit: day
+  candidate_claim:
+    entity: refund
+    attribute: window
+    value: 14
+    unit: days
+- truth_id: F-103
+  truth: Database snapshots are kept for 14 days.
+  source: rule-negative
+  candidate: Database snapshots are taken every 14 days.
+  expect: false
+  why: 'the same entity and number under another attribute: a different quantity'
+  truth_claim:
+    entity: E-dockyard
+    attribute: snapshot_retention
+    value: 14
+    unit: day
+  candidate_claim:
+    entity: dockyard
+    attribute: snapshot_interval
+    value: 14
+    unit: day

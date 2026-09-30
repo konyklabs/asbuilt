@@ -23,14 +23,20 @@ from bench.score import (
     _entity_mention_conflict,
     _expected_tier_at_step,
     _first_step,
+    _flag_states,
+    _has_negation,
     _has_test_carrier_by_step,
     _mentioned_entities,
+    _normalise_unit,
+    _number_tokens,
     _resolve_step_or_sha,
     _resolve_temporal_value_to_step,
     _shares_matching_version,
+    _split_camel,
     _statement_matches,
     _step_order,
     _temporal_field_matches,
+    _without_http_codes,
     aggregate_reports,
     align_entities,
     bootstrap_compare,
@@ -1995,9 +2001,15 @@ def test_claim_value_as_number_token_renders_by_unit():
 
 def test_boundary_numbers_ok_requires_subset_and_membership():
     truth_claim = {"value": 30, "unit": "minute"}
-    # returned names extra numbers but contains everything truth's own
-    # statement names, and the claim's own value is among them.
-    assert _boundary_numbers_ok({"30", "31", "$0.15"}, {"30"}, None, truth_claim)
+    # returned names extra numbers of ANOTHER kind (the amounts), contains
+    # everything truth's own statement names, and the claim's own value is
+    # among them.
+    assert _boundary_numbers_ok({"30", "$0", "$0.15"}, {"30"}, None, truth_claim)
+    # an extra of the claim's own kind is a competing value, not a boundary:
+    # "31 minutes" beside 30 is refused (konyklabs/asbuilt#17 — the first
+    # draft allowed the immediate neighbour, which re-admitted the hedge for
+    # every contradiction whose values differ by one).
+    assert not _boundary_numbers_ok({"30", "31", "$0.15"}, {"30"}, None, truth_claim)
     # returned is missing one of truth's own numbers -> not a superset.
     assert not _boundary_numbers_ok({"31", "$0.15"}, {"30", "99"}, None, truth_claim)
     # the claim's value never appears in the other side's numbers at all.
@@ -2175,3 +2187,247 @@ def test_real_fixture_score_test_connector_smoke():
     report = score_test_connector(payload, SPIKE_ROOT / "truth", "c6", commits)
     assert report["expected"] > 0
     assert report["precision"] is None or 0.0 <= report["precision"] <= 1.0
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#17: fuller statements in the candidate's own vocabulary,
+# calibrated on the first model run's judged pairs
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.fixture
+def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
+    """The judged pairs from the first real model run (2026-09-29): every
+    model and rules statement at c6 against its truth fact, plus a cross
+    pair per model statement, plus targeted pairs in both directions for
+    each rule the matcher loosened or added (the cross pairs all sit far
+    below the similarity threshold, so they alone prove nothing about
+    those rules — a local lens round's finding). Precision must be perfect
+    (no candidate is credited with a fact it does not state) and recall is
+    pinned at the measured floor, not at 1.0: the remaining misses are
+    narratives of the test scenario, a negated side clause, a missing or
+    competing number of the fact's own kind and close paraphrases under
+    the similarity threshold, all listed on #17. Raising this floor by
+    changing the matcher needs a judged pair in each direction, never the
+    model's output alone."""
+    pairs = load_calibration(SPIKE_ROOT / "tests/fixtures/calibration-model-run.yaml")
+    assert len(pairs) == 90
+    truth = load_truth(SPIKE_ROOT / "truth")
+    report = calibrate(pairs, build_mention_index(truth), build_alias_index(truth), truth.entities)
+    assert report["fp"] == 0, report["misclassified"]
+    assert report["precision"] == 1.0
+    assert report["recall"] >= 0.63, report["misclassified"]
+    assert report["recall"] < 0.9  # an honest floor: see the docstring
+    # every targeted rule pair (both directions) must hold exactly
+    rule_pairs = [p for p in pairs if str(p.get("source", "")).startswith("rule-")]
+    assert len(rule_pairs) == 18
+    missed_rule_pairs = [
+        m for m in report["misclassified"] if str(m.get("source", "")).startswith("rule-")
+    ]
+    assert missed_rule_pairs == []
+
+
+def _wiki_truth(statement: str, claim: dict | None = None, entities=("E-x",)) -> TruthFact:
+    return TruthFact(
+        id="F-1",
+        statement=statement,
+        category="business-logic",
+        entities=tuple(entities),
+        tier="documented",
+        carriers=(Carrier(document="wiki/x"),),
+        claim=claim,
+    )
+
+
+def _wiki_fact(statement: str, claim: dict | None = None, entities=("E-x",)) -> dict:
+    fact = {
+        "statement": statement,
+        "entities": list(entities),
+        "citations": [{"document": "wiki/x"}],
+    }
+    if claim is not None:
+        fact["claim"] = claim
+    return fact
+
+
+def test_off_is_a_flag_state_not_a_negation():
+    """ "the flag is off" used to read as a negated sentence, so a candidate
+    saying the same thing without the word was vetoed as a polarity flip
+    (three facts of the first model run). The state is compared on its own:
+    a candidate naming no state matches, one naming the opposite state
+    does not (the polarity-flip test above still holds through this)."""
+    truth = _wiki_truth(
+        "A check-in at a full station is refused when the overflow_parking flag is off."
+    )
+    assert facts_match(_wiki_fact("Check-in at a full station is refused."), truth)
+    assert facts_match(
+        _wiki_fact("With the overflow parking flag off, a check-in at a full station is refused."),
+        truth,
+    )
+    assert not facts_match(
+        _wiki_fact("With the overflow parking flag on, a check-in at a full station is refused."),
+        truth,
+    )
+    assert not _has_negation("The dynamic_pricing flag is off by default.")
+    assert _flag_states("the feature flag is enabled.") == {"on"}
+    assert _flag_states("switched off") == {"off"}
+    assert _flag_states("Dynamic pricing is on in production.") == {"on"}
+    # a state word leading into a noun names no state (a lens-round finding)
+    assert _flag_states("depends on the station") == set()
+    assert _flag_states("The fee is on the invoice.") == set()
+    assert _flag_states("the station was disabled for maintenance") == set()
+
+
+def test_numbers_a_fuller_statement_may_name_more_than_the_truth_never_fewer():
+    """The number rule is containment, not equality: a candidate naming the
+    HTTP code beside the fact's own number is the same fact; one missing
+    the fact's number, or naming a different one, is not (30 against 45 is
+    still the calibration set's hard negative)."""
+    truth = _wiki_truth(
+        "A rider can hold at most 2 bikes at once, so a third check-out is refused."
+    )
+    assert facts_match(
+        _wiki_fact(
+            "A rider can hold at most 2 bikes at once; a third check-out is refused with HTTP 409."
+        ),
+        truth,
+    )
+    assert not facts_match(
+        _wiki_fact("A rider can hold at most 3 bikes at once, so a fourth check-out is refused."),
+        truth,
+    )
+    free = _wiki_truth("A member's first 30 minutes of every ride are free.")
+    assert not facts_match(_wiki_fact("A member's first 45 minutes of every ride are free."), free)
+    assert not facts_match(_wiki_fact("A member's first minutes of every ride are free."), free)
+    # a second value of the fact's own kind is a competing value, never an
+    # extra (the hedge must match neither side of a supersession); a number of
+    # another kind beside the fact's is fine; a digit ordinal is no quantity
+    assert not facts_match(
+        _wiki_fact("A member's first 45 minutes of every ride are free; the code applies 30."),
+        free,
+    )
+    assert facts_match(_wiki_fact("A member's first 30 minutes of every ride are free ($0)."), free)
+    assert facts_match(_wiki_fact("A member's 1st 30 minutes of every ride are free."), free)
+    # a fact naming no quantity admits none
+    hourly = _wiki_truth("The maintenance sweep job runs every hour.")
+    assert not facts_match(_wiki_fact("The maintenance sweep job runs every 2 hours."), hourly)
+
+
+def test_http_status_codes_are_set_aside_unless_the_fact_is_about_the_response():
+    """A code named as one ("returns HTTP 422", "with a 200 response") is
+    not a quantity of the fact, so a fuller statement naming it beside the
+    fact's number is the same fact. When the truth itself names a code the
+    fact is about the response: the code stays and must agree."""
+    refund = _wiki_truth("A refund requested more than 14 days after the ride ended is rejected.")
+    assert facts_match(
+        _wiki_fact(
+            "A refund requested more than 14 days after the ride ended is rejected with HTTP 422."
+        ),
+        refund,
+    )
+    checkin = _wiki_truth(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full."
+    )
+    assert facts_match(
+        _wiki_fact("Checking in at a full station returns HTTP 409 with error code station_full."),
+        checkin,
+    )
+    assert not facts_match(
+        _wiki_fact("Checking in at a full station returns HTTP 404 with error code station_full."),
+        checkin,
+    )
+    assert (
+        _number_tokens(_without_http_codes("retries after a 5xx response, never after a 4xx"))
+        == set()
+    )
+
+
+def test_claim_naming_the_entity_its_own_way_lets_the_statement_decide():
+    """A comparable claim decides the match when it agrees in full; a value
+    conflict, another attribute (a different quantity; `snapshot_interval`
+    against a retention fact was the second lens round's case, and no word
+    rule separates it from a camelCase paraphrase) or another unit vetoes;
+    only a claim naming the ENTITY its own way, with value, attribute and
+    unit agreeing, hands the decision to the statement."""
+    truth = load_truth(MINI_ROOT / "truth")
+    index = build_alias_index(truth)
+    truth_fact = TruthFact(
+        id="F-1",
+        statement="A member's free minutes are 15.",
+        category="business-logic",
+        entities=("E-farebox", "E-rule-member-free-minutes"),
+        tier="executed",
+        carriers=(Carrier(document="wiki/x"),),
+        claim={
+            "entity": "E-rule-member-free-minutes",
+            "attribute": "free_minutes",
+            "value": 15,
+            "unit": "minute",
+        },
+    )
+
+    def fact(entity: str, attribute: str, value, unit="minute"):
+        return resolve_fact_entities(
+            {
+                "statement": "A member's free minutes are 15.",
+                "entities": ["Farebox", "member-free-minutes"],
+                "category": "business-logic",
+                "citations": [{"document": "wiki/x"}],
+                "claim": {"entity": entity, "attribute": attribute, "value": value, "unit": unit},
+            },
+            index,
+            truth.entities,
+        )
+
+    assert facts_match(
+        fact("member-free-minutes", "memberFreeMinutes", 15), truth_fact
+    )  # camelCase
+    assert facts_match(
+        fact("member-free-minutes", "free_minutes", 15, "minutes"), truth_fact
+    )  # plural
+    assert not facts_match(fact("member-free-minutes", "retries", 15), truth_fact)  # other quantity
+    assert not facts_match(fact("member-free-minutes", "minutesBeforeBilling", 15), truth_fact)
+    assert not facts_match(fact("member-free-minutes", "free_minutes", 30), truth_fact)  # value
+    assert not facts_match(
+        fact("member-free-minutes", "free_minutes", 15, "hour"), truth_fact
+    )  # unit
+    # the entity named the candidate's way: resolves to the service, not the
+    # rule; value, attribute and unit agree, so the statement decides
+    other = fact("Farebox", "free_minutes", 15)
+    assert other["claim"]["_resolved_entities"] == ["E-farebox"]
+    assert facts_match(other, truth_fact)
+
+
+def test_claim_units_fold_cents_to_dollars_and_plurals_to_singular():
+    assert _claim_values_match(15000, 150.0, "usd_cents", "usd")
+    assert _claim_values_match(15000, 150.0, "cents", "usd")
+    assert not _claim_values_match(150, 150.0, "cents", "usd")
+    assert _normalise_unit("days") == ("day", 1.0)
+    assert _normalise_unit("USD") == ("usd", 1.0)
+    assert _normalise_unit(None) == (None, 1.0)
+    assert _claims_match(
+        {
+            "entity": "e",
+            "attribute": "fee",
+            "value": 15000,
+            "unit": "usd_cents",
+            "_resolved_entities": ["E-r"],
+        },
+        {"entity": "E-r", "attribute": "fee", "value": 150.0, "unit": "usd"},
+    )
+    assert _claims_match(
+        {
+            "entity": "e",
+            "attribute": "window",
+            "value": 14,
+            "unit": "days",
+            "_resolved_entities": ["E-r"],
+        },
+        {"entity": "E-r", "attribute": "window", "value": 14, "unit": "day"},
+    )
+
+
+def test_split_camel_lets_typescript_attributes_compare_word_by_word():
+    assert _split_camel("severityThresholdToPause") == "severity Threshold To Pause"
+    assert _split_camel("min_severity") == "min_severity"
+    assert _attributes_match("faultReportLockThreshold", "fault_report_threshold")

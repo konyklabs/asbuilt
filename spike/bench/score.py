@@ -46,13 +46,15 @@ assumed, per the task's ambiguity rule):
   search. It is not applied inside ``score_contradictions`` (a different,
   pairwise matching loop) or ``score_ask_query`` (which matches by cited
   document, not by ``facts_match``, so the ambiguity doesn't arise there).
-* ``facts_match`` requires the two statements' numbers (money, percentages,
-  times, decimals, integers — see ``_number_tokens``) to be equal, as sets,
-  whenever either statement names one; text similarity alone is not enough.
+* ``facts_match`` requires every number the truth statement names (money,
+  percentages, times, decimals, integers — see ``_number_tokens``) to
+  appear in the returned statement; text similarity alone is not enough.
   Without this, a superseded value ("45 minutes") matches its replacement
   ("30 minutes") on wording despite naming a different fact (measured: 0.959
   similarity for that pair, 0.648 for "$25.00" vs "$30.00" — both above the
-  0.6 threshold). This also governs the winner check inside
+  0.6 threshold). The returned statement may name MORE numbers (the HTTP
+  code beside the fact's own value — konyklabs/asbuilt#17, below); it was
+  equality of the two sets until the first model run. This also governs the winner check inside
   ``score_contradictions``, which reuses ``facts_match``. The number/negation
   logic itself lives in ``_statement_matches``, shared with ``ask`` scoring.
 * ``score_stale`` credits every still-unmatched expected entry a returned
@@ -132,11 +134,65 @@ New in this revision (D-013 hardening, konyklabs/asbuilt#7):
   example uses (no ordinal suffixes, no abbreviated months) — a deliberate
   scope limit given the calibration set's own needs, not a general date
   parser.
-* The negation guard (``not``/``never``/``no``/``off``, word-boundary,
-  case-insensitive) is a hard veto in ``_statement_matches``: a mismatch on
-  either side's negation blocks the match outright, before the number or
-  similarity checks even run, since "free" and "not free" can otherwise
-  still score above the similarity threshold.
+* The negation guard (``not``/``never``/``no``/``cannot`` and the ``n't``
+  contractions, word-boundary, case-insensitive) is a hard veto in
+  ``_statement_matches``: a mismatch on either side's negation blocks the
+  match outright, before the number or similarity checks even run, since
+  "free" and "not free" can otherwise still score above the similarity
+  threshold. ``off`` was on the list until konyklabs/asbuilt#17 (below).
+New in konyklabs/asbuilt#17 (calibrated on the first real model run of the
+test connector, 2026-09-29 — ``tests/fixtures/calibration-model-run.yaml``,
+89 judged pairs, precision 1.0 and recall 0.64 by design; the original 118
+keep passing at 1.0/1.0):
+
+* Numbers: HTTP status codes named as such, code classes ("4xx") and digit
+  ordinals ("1st") are set aside first (``_without_http_codes``) — unless
+  the truth fact itself names a code, in which case codes stay on both
+  sides and compare like any number; then every truth number must appear in the
+  returned statement, and the returned statement may add numbers only of a
+  kind the fact does not use (the cents beside the dollars, the count
+  beside the rate — ``_numbers_compatible``). A second value of the fact's
+  own kind still fails on the statement path, and the boundary escape
+  (`_boundary_numbers_ok`) admits extras of other kinds only: a hedge
+  naming both 45 and 30 minutes, or both 3 and 2 bikes, matches neither
+  fact, so the contradiction winner check cannot credit it (the first
+  draft let it match both, the second allowed the claim value's immediate
+  neighbour; two local lens rounds caught them). On the claim path a
+  candidate whose own claim names the truth value is decided by that
+  claim, as it always was. A fact naming no quantity admits none ("every
+  2 hours" is not "every hour"). Eight of the run's 24 facts had been vetoed on the old
+  set-equality rule; the ones vetoed on a competing count of the fact's
+  own kind stay vetoed by design.
+* Flag state: ``off`` is a state, not a negation. ``_flag_states`` reads
+  on/enabled and off/disabled where a sentence names a state at all, and
+  ``_flag_state_conflict`` vetoes when both sides name a state and share
+  none; a sentence naming no state never conflicts. Under the old list
+  "the flag is off" was a negated sentence and a candidate saying the same
+  thing without the word was vetoed as a polarity flip.
+* Claims decide the match on their own only when they AGREE in full. A
+  value conflict on the same quantity (attributes match) vetoes, as
+  before, whatever the attribute says (a claim of 45 on a statement that
+  says 30 is a candidate at odds with itself, not a paraphrase); so does a
+  different attribute (``retries``, or ``snapshot_interval`` against a
+  snapshot-retention fact — a different quantity) or a different unit
+  after folding. A claim that agrees on value, attribute (after camelCase
+  splitting, ``faultReportLockThreshold`` for ``fault_reports``) and unit
+  (``days`` for ``day``, cents for dollars) but names the ENTITY its own way
+  (the model's ``refund`` table for the truth's rule entity) hands the
+  decision to the statement rule instead of vetoing. A second local lens
+  round showed that no word rule tells ``severityThresholdToPause`` from
+  ``snapshot_interval`` against ``min_severity``/``snapshot_retention``, so
+  attribute vocabulary is not forgiven and the first is a miss by design.
+* The judged set's own numbers are pinned in ``tests/test_score.py`` at
+  precision 1.0 and a recall floor, deliberately not 1.0: the remaining
+  misses are narratives of the test scenario, a negated side clause, a
+  missing or competing number and close paraphrases, and lifting them
+  would mean tuning the matcher to one model's output. The run's own
+  cross pairs all sit far below the similarity threshold, so they prove
+  nothing about the loosened rules; the set therefore also carries
+  targeted hard negatives written for each rule (the hedge, the numberless
+  fact, the flag-state flip at high similarity, the wrong-unit claim, the
+  foreign attribute) beside the positives each rule admits.
 * Multi-run aggregation reports median/min/max for each surface's
   precision/recall/f1 and, for explain/search, the executed-tier precision;
   it does not attempt to re-run entity resolution or re-derive by-category
@@ -346,11 +402,55 @@ def _number_tokens(text: str) -> set[str]:
     return {_normalize_number(m.group(0)) for m in _NUMBER_RE.finditer(text)}
 
 
-_NEGATION_RE = re.compile(r"\b(not|never|no|off|cannot)\b|\w+n't\b", re.IGNORECASE)
+_NEGATION_RE = re.compile(r"\b(not|never|no|cannot)\b|\w+n't\b", re.IGNORECASE)
+
+# konyklabs/asbuilt#17: "off" left the negation list. It is a flag STATE, not
+# a negation — "the overflow_parking flag is off" and "off by default" read
+# as negated sentences under the old list, so a candidate that said the same
+# thing without the word ("Checkin at full station refused.") was vetoed as
+# a polarity flip, and the first model run lost three facts to it. The flag
+# state is instead compared on its own: on/enabled against off/disabled,
+# only where a sentence names a state at all.
+# A state word counts only where it ends its phrase — before punctuation,
+# the end of the sentence, "by default" or a conjunction — never where it
+# leads into a noun ("is on the invoice", "was disabled for maintenance"
+# name no flag state; a local lens round reproduced both as false vetoes).
+_STATE_END = (
+    r"(?=\s*(?:[,.;:)]|$)"
+    r"|\s+(?:by\s+default|and|or|when|while|then|unless|until|so|in|at|during|since|after|before|within)\b)"
+)
+_FLAG_STATE_RE = re.compile(
+    r"\b(?:flag|flags|toggle|setting|feature)\b[^.;]{0,40}?\b(on|off|enabled|disabled)\b"
+    + _STATE_END
+    + r"|\b(on|off)\s+by\s+default\b"
+    + r"|\b(?:is|are|was|were|switched|turned|set|toggled|left)\s+(on|off|enabled|disabled)\b"
+    + _STATE_END,
+    re.IGNORECASE,
+)
+_FLAG_STATE_WORD = {"on": "on", "enabled": "on", "off": "off", "disabled": "off"}
+
+
+def _flag_states(text: str) -> set[str]:
+    """The flag states a sentence names, each folded to "on" or "off";
+    empty when it names none (see `_FLAG_STATE_RE`)."""
+    states: set[str] = set()
+    for match in _FLAG_STATE_RE.finditer(text):
+        word = next(g for g in match.groups() if g)
+        states.add(_FLAG_STATE_WORD[word.lower()])
+    return states
+
+
+def _flag_state_conflict(a: str, b: str) -> bool:
+    """True when both sentences name a flag state and share none — "when
+    the flag is on" against "even when the flag is off". A sentence naming
+    no state never conflicts (the model's "set to False before any override"
+    against the truth's "off by default" is decided by the words)."""
+    states_a, states_b = _flag_states(a), _flag_states(b)
+    return bool(states_a) and bool(states_b) and not (states_a & states_b)
 
 
 def _has_negation(text: str) -> bool:
-    """ "not"/"never"/"no"/"off"/"cannot", plus any "...n't" contraction
+    """ "not"/"never"/"no"/"cannot", plus any "...n't" contraction
     (isn't, doesn't, won't, don't, ...) — "cannot" and the contractions are
     additions beyond the task's literal word list: `\\bnot\\b` never matches
     inside "cannot" (no word boundary before "not" there) or inside a
@@ -506,15 +606,48 @@ def _numeric_claim_value(value: Any) -> float | None:
         return None
 
 
-def _claim_values_match(returned_value: Any, truth_value: Any) -> bool:
+_UNIT_SYNONYMS = {
+    "usd": "usd",
+    "dollar": "usd",
+    "$": "usd",
+    "usd_cent": "usd",
+    "cent": "usd",
+    "percent": "percent",
+    "%": "percent",
+    "pct": "percent",
+}
+_UNIT_FACTORS = {"usd_cent": 0.01, "cent": 0.01}
+
+
+def _normalise_unit(unit: Any) -> tuple[str | None, float]:
+    """A claim unit folded to its base spelling plus the factor that takes
+    a value in it to the base unit (konyklabs/asbuilt#17: the model wrote
+    `15000 usd_cents` where the truth says `150 usd`, and `days` where the
+    truth says `day`; both are the same claim). Unknown units keep their
+    destemmed lowercase spelling with factor 1."""
+    if unit is None:
+        return None, 1.0
+    key = _destem(str(unit).strip().lower())
+    return _UNIT_SYNONYMS.get(key, key), _UNIT_FACTORS.get(key, 1.0)
+
+
+def _claim_values_match(
+    returned_value: Any,
+    truth_value: Any,
+    returned_unit: Any = None,
+    truth_unit: Any = None,
+) -> bool:
     """ "Equal after unit normalisation": both number-shaped (30 == 30.0,
-    "$150.00" == 150.0 — see `_numeric_claim_value`) -> compared as floats;
+    "$150.00" == 150.0 — see `_numeric_claim_value`) -> compared as floats
+    after each side's unit factor (cents to dollars, `_normalise_unit`);
     otherwise compared as text, case-insensitively (clock times, dates,
     codes)."""
     returned_number = _numeric_claim_value(returned_value)
     truth_number = _numeric_claim_value(truth_value)
     if returned_number is not None and truth_number is not None:
-        return returned_number == truth_number
+        _, returned_factor = _normalise_unit(returned_unit)
+        _, truth_factor = _normalise_unit(truth_unit)
+        return abs(returned_number * returned_factor - truth_number * truth_factor) < 1e-9
     return str(returned_value).strip().lower() == str(truth_value).strip().lower()
 
 
@@ -528,8 +661,19 @@ def _attributes_match(returned_attr: Any, truth_attr: Any) -> bool:
     0.0, matching all three of the task's own worked examples)."""
     if returned_attr is None or truth_attr is None:
         return False
-    a, b = str(returned_attr).strip().lower(), str(truth_attr).strip().lower()
+    a, b = _split_camel(str(returned_attr)).lower(), _split_camel(str(truth_attr)).lower()
     return a == b or _text_similarity(a, b) >= _SIMILARITY_THRESHOLD
+
+
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _split_camel(text: str) -> str:
+    """ "severityThresholdToPause" -> "severity Threshold To Pause", so a
+    TypeScript-style attribute compares word by word like a snake_case one
+    (konyklabs/asbuilt#17: the model names attributes in the code's own
+    convention, and one unsplit token scored 0.0 against `min_severity`)."""
+    return _CAMEL_BOUNDARY.sub(" ", text.strip())
 
 
 def _claims_match(returned_claim: dict[str, Any], truth_claim: dict[str, Any]) -> bool:
@@ -544,11 +688,13 @@ def _claims_match(returned_claim: dict[str, Any], truth_claim: dict[str, Any]) -
     truth_entity = truth_claim.get("entity")
     if truth_entity is None or truth_entity not in (returned_claim.get("_resolved_entities") or []):
         return False
-    if not _claim_values_match(returned_claim.get("value"), truth_claim.get("value")):
-        return False
     returned_unit, truth_unit = returned_claim.get("unit"), truth_claim.get("unit")
+    if not _claim_values_match(
+        returned_claim.get("value"), truth_claim.get("value"), returned_unit, truth_unit
+    ):
+        return False
     if returned_unit is not None and truth_unit is not None:
-        if str(returned_unit).strip().lower() != str(truth_unit).strip().lower():
+        if _normalise_unit(returned_unit)[0] != _normalise_unit(truth_unit)[0]:
             return False
     return _attributes_match(returned_claim.get("attribute"), truth_claim.get("attribute"))
 
@@ -593,6 +739,7 @@ def _boundary_numbers_ok(
             value_token is not None
             and value_token in returned_numbers
             and truth_numbers <= returned_numbers
+            and _extras_of_other_kinds(returned_numbers - truth_numbers, truth_numbers)
         )
     if returned_claim is not None and truth_claim is None:
         value_token = _claim_value_as_number_token(
@@ -604,6 +751,19 @@ def _boundary_numbers_ok(
             and returned_numbers <= truth_numbers
         )
     return False
+
+
+def _extras_of_other_kinds(extras: set[str], truth_numbers: set[str]) -> bool:
+    """konyklabs/asbuilt#17: the boundary pair a claim justifies ("a
+    30-minute ride costs $0.00 and a 31-minute ride costs $0.15" against
+    "30") may add numbers of another kind (the amounts), never a second
+    number of the claim's own kind: a first draft allowed the claim value's
+    immediate neighbour (31), and a second local lens round showed that
+    re-admits the hedge for every contradiction whose two values differ by
+    one (3 against 2 bikes). The boundary sentence's "31 minutes" is then a
+    miss by design — a token matcher cannot tell it from a competing value."""
+    truth_kinds = {_number_kind(t) for t in truth_numbers}
+    return all(_number_kind(extra) not in truth_kinds for extra in extras)
 
 
 def _claim_is_comparable(returned_claim: dict[str, Any], truth_claim: dict[str, Any]) -> bool:
@@ -650,32 +810,149 @@ def _statement_matches(
     When BOTH sides carry a claim AND the returned one is comparable (see
     `_claim_is_comparable` — reproduced bug: an unresolved returned entity
     used to reject the fact outright even when its plain entities,
-    document and statement all agreed, since `_claims_match` alone decided
-    the match with no way back), the match is decided ENTIRELY by
-    `_claims_match` — no statement-similarity check at all, since the
-    claim is the more precise signal. Otherwise (one side has no claim, or
-    the returned claim isn't usable), the number check is relaxed via
-    `_boundary_numbers_ok` (a superset, not exact equality, when justified
-    by a claim's own value — an incomparable returned claim is treated the
-    same as no claim at all here) before falling through to the ordinary
-    similarity check; with no claims involved anywhere, this is unchanged
-    from before claims existed."""
+    document and statement all agreed), a claim that agrees in full decides
+    the match on its own; a value conflict on the same quantity, or an
+    attribute about something else entirely, vetoes it; any other
+    disagreement (the candidate's own entity, attribute or unit vocabulary)
+    hands the decision to the statement path, as if the returned claim were
+    absent (konyklabs/asbuilt#17). On that path the numbers must be
+    compatible (`_numbers_compatible`: HTTP codes aside, the truth's
+    numbers all present, extras only of a kind the fact does not use), with
+    `_boundary_numbers_ok` as the one escape when a claim on exactly one
+    side justifies a boundary pair; then the word-overlap similarity
+    decides."""
     if _has_negation(returned_statement) != _has_negation(truth_statement):
+        return False
+    if _flag_state_conflict(returned_statement, truth_statement):
         return False
     if _entity_mention_conflict(returned_statement, truth_statement, mention_index):
         return False
 
     if returned_claim is not None and truth_claim is not None:
         if _claim_is_comparable(returned_claim, truth_claim):
-            return _claims_match(returned_claim, truth_claim)
-        returned_claim = None  # unusable signal -> fall back as if absent
+            # konyklabs/asbuilt#17: a claim decides the match on its own only
+            # when it AGREES in full. A value conflict on the same quantity
+            # (attributes match: the 30-vs-45 case) vetoes. A claim that
+            # agrees on the value but names the entity, attribute or unit
+            # in its own vocabulary (the model's `refund` for the truth's
+            # rule entity, `severityThresholdToPause` for `min_severity`)
+            # is no longer a veto: the statement decides, as if the
+            # returned claim were absent. Five of the first model run's
+            # facts were lost to that veto with statements at 0.42-0.91.
+            if _claims_match(returned_claim, truth_claim):
+                return True
+            values_agree = _claim_values_match(
+                returned_claim.get("value"),
+                truth_claim.get("value"),
+                returned_claim.get("unit"),
+                truth_claim.get("unit"),
+            )
+            if not values_agree:
+                # A comparable claim whose value disagrees with the fact's
+                # always vetoes (30 against 45; a claim of 45 on a statement
+                # that says 30 is a candidate at odds with itself, not a
+                # paraphrase — a second local lens round's case).
+                return False
+            if not _attributes_match(returned_claim.get("attribute"), truth_claim.get("attribute")):
+                # Same entity, same number, another attribute: a different
+                # quantity (`retries`; `snapshot_interval` against a
+                # retention fact) — still a veto, as on main. No word rule
+                # tells `severityThresholdToPause` from `snapshot_interval`
+                # against `min_severity`/`snapshot_retention` (both share one
+                # word of two), so the first is a miss by design.
+                return False
+            returned_unit, truth_unit = returned_claim.get("unit"), truth_claim.get("unit")
+            if (
+                returned_unit is not None
+                and truth_unit is not None
+                and _normalise_unit(returned_unit)[0] != _normalise_unit(truth_unit)[0]
+            ):
+                return False
+        # Value, attribute and unit agree; only the claim's ENTITY is the
+        # candidate's own (the model's `refund` for the truth's rule entity):
+        # the statement decides, as if the returned claim were absent.
+        returned_claim = None
 
-    returned_numbers = _number_tokens(returned_statement)
-    truth_numbers = _number_tokens(truth_statement)
-    if (returned_numbers or truth_numbers) and returned_numbers != truth_numbers:
+    if _names_http_code(truth_statement):
+        # The fact is about the response: its code is a value to agree on
+        # (409 against 404 is a different fact), so codes stay on both sides
+        # and compare like any other number; only ordinals are set aside.
+        returned_numbers = _number_tokens(_DIGIT_ORDINAL_RE.sub(" ", returned_statement))
+        truth_numbers = _number_tokens(_DIGIT_ORDINAL_RE.sub(" ", truth_statement))
+    else:
+        returned_numbers = _number_tokens(_without_http_codes(returned_statement))
+        truth_numbers = _number_tokens(_without_http_codes(truth_statement))
+    if not _numbers_compatible(returned_numbers, truth_numbers):
         if not _boundary_numbers_ok(returned_numbers, truth_numbers, returned_claim, truth_claim):
             return False
     return _text_similarity(returned_statement, truth_statement) >= _SIMILARITY_THRESHOLD
+
+
+# konyklabs/asbuilt#17. An HTTP status code named as one ("HTTP 409",
+# "returns 422 with", "with a 200 response", "refused with a 409
+# checkout_limit_reached error") is a code, not a quantity: it is set aside
+# before the two statements' numbers are compared, so a fuller statement
+# naming the response code beside the fact's own number is not a different
+# fact, and a truth fact about the response ("returns HTTP 409") compares
+# on its words. Everything else the regex leaves is a quantity.
+# Without "HTTP", a three-digit number after "returns"/"with a" is a code
+# only where a code reads as one: followed by punctuation, the end, or a
+# response word — never by a unit or a noun ("with a 250 limit", "with a
+# 300 second delay" are quantities; a second local lens round's case).
+_CODE_END = (
+    r"(?=\s*(?:[,.;:)]|$)"
+    r"|\s+(?:response|status|error|with|and|or|body|returning|because|when|so|then|for|to|if)\b)"
+)
+_HTTP_CODE_RE = re.compile(
+    r"\bHTTP\s+[1-5]\d\d\b"
+    r"|\b(?:returns?|returning|returned|responds?\s+with|succeeds?\s+with|refused\s+with|"
+    r"rejected\s+with|fails?\s+with|with\s+an?|an?\s+status(?:\s+code)?(?:\s+of)?|status\s+code)"
+    r"\s+[1-5]\d\d\b" + _CODE_END,
+    re.IGNORECASE,
+)
+
+
+_HTTP_CODE_CLASS_RE = re.compile(r"\b[1-5]xx\b", re.IGNORECASE)
+_DIGIT_ORDINAL_RE = re.compile(r"\b\d+(?:st|nd|rd|th)\b", re.IGNORECASE)
+
+
+def _without_http_codes(text: str) -> str:
+    """Status codes named as such, code classes ("4xx") and digit ordinals
+    ("1st", "3rd" — a position, not a quantity, exactly as the spelled-out
+    "first"/"third" already count for nothing) removed ahead of number
+    extraction."""
+    return _DIGIT_ORDINAL_RE.sub(" ", _HTTP_CODE_CLASS_RE.sub(" ", _HTTP_CODE_RE.sub(" ", text)))
+
+
+def _names_http_code(text: str) -> bool:
+    return bool(_HTTP_CODE_RE.search(text) or _HTTP_CODE_CLASS_RE.search(text))
+
+
+def _number_kind(token: str) -> str:
+    if token.startswith("$"):
+        return "money"
+    if token.endswith("%"):
+        return "percent"
+    if ":" in token:
+        return "time"
+    return "plain"
+
+
+def _numbers_compatible(returned_numbers: set[str], truth_numbers: set[str]) -> bool:
+    """Whether the returned statement's numbers are the truth's, allowing a
+    fuller statement its extra numbers of a kind the fact does not use — the
+    cents beside the dollars, the count beside the rate — but never a second
+    value of the kind the fact is about (a hedge naming both 45 and 30
+    minutes must match neither the 30 fact nor the 45 fact, or the
+    contradiction winner check would credit it), and never any quantity at
+    all against a fact that names none ("runs every 2 hours" is not "runs
+    every hour"). HTTP codes were set aside by the caller."""
+    if not truth_numbers:
+        return not returned_numbers
+    if not truth_numbers <= returned_numbers:
+        return False
+    truth_kinds = {_number_kind(t) for t in truth_numbers}
+    return all(_number_kind(t) not in truth_kinds for t in returned_numbers - truth_numbers)
 
 
 _SIMILARITY_THRESHOLD = 0.6
@@ -2200,13 +2477,18 @@ def score_test_connector(
     er_stats = _entity_resolution_stats(matches, expected)
     er_stats["precision"] = _ratio(er_stats["tp"], er_stats["returned"])
     er_stats["recall"] = _ratio(er_stats["tp"], er_stats["expected"])
-    # Claim-first matching (konyklabs/asbuilt#8): a match decided entirely
-    # by _claims_match (both sides carry a claim) vs. one that fell through
-    # to the statement rule (see _statement_matches) — post-hoc, from the
-    # same "both sides have a claim" condition _statement_matches itself
-    # branches on, not a second source of truth.
+    # Claim-first matching (konyklabs/asbuilt#8, narrowed by #17): a match
+    # the claim decided on its own (both sides carry one, comparable, and
+    # `_claims_match` agrees in full) vs. one the statement rule decided —
+    # since #17 a both-claims pair can fall through to the statement, so
+    # "both have a claim" no longer means "decided by the claim".
     matched_by_claim = sum(
-        1 for rf, fid in matches if rf.get("claim") is not None and expected[fid].claim is not None
+        1
+        for rf, fid in matches
+        if rf.get("claim") is not None
+        and expected[fid].claim is not None
+        and _claim_is_comparable(rf["claim"], expected[fid].claim)
+        and _claims_match(rf["claim"], expected[fid].claim)
     )
     matched_by_statement = len(matches) - matched_by_claim
 
