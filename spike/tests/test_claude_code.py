@@ -23,6 +23,7 @@ import pytest
 
 from bench.claude_code import (
     DEFAULT_MAX_TURNS,
+    ClaudeCodeClient,
     _failure_reason,
     _invoke_claude_code,
     structured_call,
@@ -142,10 +143,32 @@ def test_strict_mcp_config_and_no_inline_prompt_are_always_passed(
     assert "--strict-mcp-config" in argv
     assert argv[1] == "-p"
     assert "a prompt" not in argv  # the prompt is never one of the argv elements
-    # asbuilt#23: three turns, not one — the structured-output tool call may
-    # follow a sentence of prose on a second turn; nothing else can use one
-    assert argv[argv.index("--max-turns") + 1] == "3"
-    assert DEFAULT_MAX_TURNS == 3
+    # asbuilt#23: four turns, not one — the structured-output tool call may
+    # follow a sentence of prose, and a schema-invalid answer is bounced back
+    assert argv[argv.index("--max-turns") + 1] == "4"
+    assert DEFAULT_MAX_TURNS == 4
+
+
+def test_the_client_path_passes_the_same_turn_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The path that failed on the real run goes through `ClaudeCodeClient`,
+    whose own default must reach the argv (a lens-round note: the direct
+    call's default alone could regress with the suite green)."""
+    args_path = tmp_path / "args.json"
+    monkeypatch.setenv("FAKE_CLAUDE_ARGS_PATH", str(args_path))
+    _install_fake_claude(tmp_path, monkeypatch, _ECHO_STDIN_SCRIPT)
+
+    ClaudeCodeClient().messages.create(
+        model="claude-sonnet-5", messages=[{"role": "user", "content": "a prompt"}]
+    )
+    argv = json.loads(args_path.read_text())
+    assert argv[argv.index("--max-turns") + 1] == str(DEFAULT_MAX_TURNS)
+
+    args_path.unlink()
+    ClaudeCodeClient(max_turns=6).messages.create(
+        model="claude-sonnet-5", messages=[{"role": "user", "content": "a prompt"}]
+    )
+    argv = json.loads(args_path.read_text())
+    assert argv[argv.index("--max-turns") + 1] == "6"
 
 
 def test_timeout_raises_runtime_error_not_a_raw_timeout_expired(
