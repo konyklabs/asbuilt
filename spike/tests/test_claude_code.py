@@ -109,6 +109,7 @@ def _install_fake_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script
     claude_path.write_text(script)
     claude_path.chmod(claude_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")  # asbuilt#21: no 5 s pause in tests
     return claude_path
 
 
@@ -149,19 +150,33 @@ def test_timeout_raises_runtime_error_not_a_raw_timeout_expired(
         )
 
 
-def test_failure_reason_prefers_stderr_then_stdout_json_then_stdout_text():
-    """asbuilt#21: what a failed call said, one line, in that order."""
-    err = json.dumps(
+def test_failure_reason_reads_stderr_then_the_result_objects_errors_then_result_then_subtype():
+    """asbuilt#21: what a failed call said, one line, in that order. The
+    installed CLI reports a non-success subtype's message under `errors`
+    and uses `result` only on the success variant (an API error is
+    success + is_error + api_error_status + result)."""
+    execution = json.dumps(
         {
             "type": "result",
             "subtype": "error_during_execution",
             "is_error": True,
+            "errors": ["Execution failed\nmore"],
+        }
+    )
+    api = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "api_error_status": 429,
             "result": "Rate limit reached\nmore",
         }
     )
-    assert _failure_reason(1, err, "boom\nmore") == "claude -p exited 1: boom"
-    assert _failure_reason(1, err, "") == "claude -p exited 1: Rate limit reached"
-    only_subtype = json.dumps({"subtype": "error_max_turns"})
+    assert _failure_reason(1, execution, "boom\nmore") == "claude -p exited 1: boom"
+    assert _failure_reason(1, execution, "") == "claude -p exited 1: Execution failed"
+    assert _failure_reason(1, api, "") == "claude -p exited 1: Rate limit reached"
+    assert _failure_reason(0, api, "") == "claude -p returned an error: Rate limit reached"
+    only_subtype = json.dumps({"subtype": "error_max_turns", "errors": []})
     assert _failure_reason(1, only_subtype, "") == "claude -p exited 1: error_max_turns"
     assert _failure_reason(2, "not json\nmore", "  \n") == "claude -p exited 2: not json"
     assert _failure_reason(3, "", "") == "claude -p exited 3 with no output"

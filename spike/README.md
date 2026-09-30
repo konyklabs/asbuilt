@@ -310,11 +310,13 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   total the test computed, names the system's entity kinds, allows a
   status code only when the fact is about the response, and makes no call
   for a skipped test (its rules guess stays). **`claude-code`** (the default) is one
-  `claude -p` subprocess per skeleton (a process-level failure — a
-  non-zero exit or a timeout — is retried once after a pause,
-  `ASBUILT_RETRY_PAUSE`, and the reason quotes what the CLI said on stderr
-  or, in JSON mode, on stdout; a model-level error is never retried —
-  asbuilt#21), running on Oleg's Claude Code
+  `claude -p` subprocess per skeleton (a timeout, a crash — a non-zero
+  exit with no result object — or an upstream API error, the result
+  object's `api_error_status`, is retried once after a pause,
+  `ASBUILT_RETRY_PAUSE`, and counted under `retries`; a model-level error
+  such as `error_max_turns` is never retried; the reason quotes what the
+  CLI said on stderr or, in JSON mode, the result object's `errors` on
+  stdout — asbuilt#21), running on Oleg's Claude Code
   subscription — never an API key, per his own decision. It needs
   `CLAUDE_CODE_OAUTH_TOKEN` in the environment, or, if unset, a token file
   at `~/.config/konyklabs/claude-code-oauth-token` — a credential, so it
@@ -469,7 +471,10 @@ on the installed CLI) so it loads no project-scoped MCP servers — without
 it, a call made with `spike/` as its cwd would also try to load a
 `.mcp.json` there, if one existed — and has a `timeout` (default 600s,
 `ASBUILT_BASELINE_TIMEOUT` for the baseline arm) that raises `RuntimeError`
-rather than leaving a hung subprocess.
+rather than leaving a hung subprocess; a timeout, a crash or an upstream
+API error is retried once after `ASBUILT_RETRY_PAUSE` (asbuilt#21), so a
+baseline query's wall clock is bounded by two timeouts plus the pause, and
+the baseline's `stats()` counts the retries.
 
 ### The MCP adapter
 

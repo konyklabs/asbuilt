@@ -181,9 +181,20 @@ if mode == "fail":
 
 if mode == "fail_json":
     # exit 1 with the CLI's JSON-mode error object on STDOUT and nothing on
-    # stderr — the shape the second real run hit (asbuilt#21)
+    # stderr — the installed CLI (2.1.285) reports every non-success subtype
+    # under `errors`, never `result` (asbuilt#21, a lens round read the
+    # binary). Model-level: never retried.
     sys.stdout.write(json.dumps({
         "type": "result", "subtype": "error_during_execution", "is_error": True,
+        "errors": ["Execution failed: the tool loop died\\nsecond line never surfaced"],
+    }))
+    sys.exit(1)
+
+if mode == "api_error":
+    # the CLI's shape for an upstream API error: the success variant with
+    # is_error, api_error_status and the text under result. Retried once.
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "success", "is_error": True, "api_error_status": 429,
         "result": "Rate limit reached for this hour\\nsecond line never surfaced",
     }))
     sys.exit(1)
@@ -269,6 +280,7 @@ def _install_fake_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pat
     script.write_text(_FAKE_CLAUDE_SCRIPT)
     script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")  # asbuilt#21: no 5 s pause in tests
     return script
 
 
@@ -855,9 +867,10 @@ def test_extractor_model_quotes_what_a_failed_call_said_on_stdout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """asbuilt#21: the second real run ended with "exited 1: (no stderr)".
-    In JSON mode the CLI reports errors on stdout; the reason now quotes
-    that object's `result` text (first line only), the call is retried once
-    at the process level, and the failure still stands afterwards."""
+    In JSON mode the CLI reports a model-level error as a result object on
+    stdout with the text under `errors`; the reason quotes its first line
+    only, and such an error is NOT retried (deterministic; a retry would
+    only spend again) — one invocation, `retries=0`."""
     fixture_root = SPIKE_ROOT
     if not (fixture_root / "truth" / "facts.yaml").is_file():
         pytest.skip(f"real fixture not present yet: no {fixture_root}")
@@ -886,10 +899,51 @@ def test_extractor_model_quotes_what_a_failed_call_said_on_stdout(
 
     assert exit_code == 2
     usage = json.loads((out_dir / "tests-c6.json").read_text())["model_usage"]
+    assert "Execution failed: the tool loop died" in usage["failed"]
+    assert "second line" not in usage["failed"]
+    assert usage["retries"] == 0
+    assert marker_path.read_text().count("called") == 1  # never retried
+
+
+@pytest.mark.fixture
+def test_extractor_model_retries_an_upstream_api_error_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """An upstream API error (the CLI's success variant with `is_error`,
+    `api_error_status` and the text under `result`) is worth one retry; when
+    it persists the reason quotes the text and says so."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "api_error")
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--limit",
+            "1",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    usage = json.loads((out_dir / "tests-c6.json").read_text())["model_usage"]
     assert "Rate limit reached for this hour" in usage["failed"]
     assert "second line" not in usage["failed"]
+    assert "(after 1 retry)" in usage["failed"]
     assert usage["retries"] == 1
-    assert marker_path.read_text().count("called") == 2  # the call and its one retry
+    assert marker_path.read_text().count("called") == 2
 
 
 @pytest.mark.fixture
