@@ -42,15 +42,17 @@ for a person's own interactive `claude --plugin-dir spike/plugin` session,
 not for this module's own headless calls, and loading it added an
 unresolved-`${CLAUDE_PLUGIN_ROOT}` failure plus ~2s of startup to every
 timed query. `timeout` (default `DEFAULT_TIMEOUT_SECONDS`, review point 1)
-bounds the subprocess call; a `subprocess.TimeoutExpired` is turned into the
-same kind of `RuntimeError` every other failure path here raises, never a
-raw exception escaping to the caller.
+bounds each attempt; a `subprocess.TimeoutExpired` becomes a
+`ProcessFailure` (a `RuntimeError`), never a raw exception escaping to the
+caller, and the client retries it once (asbuilt#21, `ProcessFailure`).
 
 The schema-validated object comes back under `structured_output`, NOT
 `result` (`result` is the assistant's own prose text — read only as a
 fallback, and only when it happens to already be schema-shaped JSON on its
 own). `is_error: true` or a `subtype` other than `"success"` is an error,
-reported with `result`'s own first line. `CLAUDE_CODE_OAUTH_TOKEN` is read
+reported with what the CLI said (`_what_it_said`: stderr, else the result
+object's `errors`, else its `result` text, else its subtype; asbuilt#21) and
+retried once only when a retry can help (`ProcessFailure`). `CLAUDE_CODE_OAUTH_TOKEN` is read
 from the environment or, if unset, `~/.config/konyklabs/claude-code-oauth-
 token` — placed into the subprocess's own env, which also has every
 `ANTHROPIC_*`, `CLAUDE_CODE_USE_*` (`_BEDROCK`/`_VERTEX`/`_FOUNDRY`) and
@@ -89,9 +91,10 @@ from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_TIMEOUT_SECONDS = 600.0
-# asbuilt#21: a process-level failure (non-zero exit, timeout) is retried
+# asbuilt#21: what a retry can fix (see `ProcessFailure`: a timeout, a
+# crash, an API-level error that is not a deterministic 4xx) is retried
 # once by the client after this pause; `ASBUILT_RETRY_PAUSE` overrides it
-# (tests set 0). A model-level error is never retried.
+# (the fake-CLI test installers set 0). A model-level error never.
 DEFAULT_RETRY_PAUSE_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 1
 
@@ -99,12 +102,28 @@ DEFAULT_MAX_RETRIES = 1
 class ProcessFailure(RuntimeError):
     """One `claude -p` call failed in a way worth one retry (asbuilt#21): a
     timeout, a crash (a non-zero exit with no result object on stdout), or
-    an upstream API error (a result object carrying `api_error_status` —
-    the CLI's shape for a rate limit, an overloaded or 5xx answer). Every
-    other failure — a result object with a non-success `subtype` such as
-    `error_max_turns`, `error_max_budget_usd` or `error_during_execution`,
-    or `is_error` without an API status — is a plain RuntimeError and is
-    never retried: deterministic, and re-sending it only spends again."""
+    an API-level error — the CLI's success variant with `is_error`, which
+    carries `api_error_status` for a rate limit (429), an overloaded (529)
+    or a 5xx answer and null for a connection-level failure (the installed
+    CLI, 2.1.285, sets the status only when the SDK error has one; a second
+    lens round read the binary) — unless that status is a deterministic 4xx
+    other than 429 (400, 401, 403, 404: the same request fails the same
+    way). Every other failure — a result object with a non-success
+    `subtype` such as `error_max_turns`, `error_max_budget_usd` or
+    `error_during_execution` — is a plain RuntimeError and is never
+    retried: deterministic, and re-sending it only spends again."""
+
+
+def _retryable_api_error(payload: dict[str, Any]) -> bool:
+    """See `ProcessFailure`: the success variant flagged `is_error` is an
+    API-level error, retried once unless its status is a 4xx other than
+    429; a non-success subtype is a model-level error and never is."""
+    if payload.get("subtype", "success") != "success" or not payload.get("is_error"):
+        return False
+    status = payload.get("api_error_status")
+    if isinstance(status, int) and 400 <= status < 500 and status != 429:
+        return False
+    return True
 
 
 def _what_it_said(payload: Any, stdout: str, stderr: str) -> str:
@@ -128,7 +147,13 @@ def _what_it_said(payload: Any, stdout: str, stderr: str) -> str:
                 if said:
                     return said
         text = payload.get("result") if isinstance(payload.get("result"), str) else ""
-        said = _first_line(text, "") or str(payload.get("subtype") or "")
+        said = _first_line(text, "")
+        if not said and payload.get("subtype", "success") == "success" and payload.get("is_error"):
+            # the success variant flagged is_error with no text: an API
+            # error the CLI gave a placeholder for; say that, not "success"
+            status = payload.get("api_error_status")
+            said = f"API error {status}" if status is not None else "API error"
+        said = said or str(payload.get("subtype") or "")
         if said:
             return said
     return _first_line(stdout, "")
@@ -272,9 +297,9 @@ def _invoke_claude_code(
     `structured_output` is read first; `result` is only a fallback, and only
     when it happens to already be schema-shaped JSON on its own — prose in
     `result` never becomes a candidate structured value. `is_error` true or a
-    `subtype` other than `"success"` is an error, reported with the first
-    line of `result`'s own text (never stderr, since a model-level error is
-    not a process-level one). `tools`/`cwd` let a caller enable the CLI's own
+    `subtype` other than `"success"` is an error, reported with what the CLI
+    said (`_what_it_said`) and retried once only when a retry can help
+    (`ProcessFailure`, asbuilt#21). `tools`/`cwd` let a caller enable the CLI's own
     tools (e.g. `"Read,Grep,Glob"`) and set the subprocess's working
     directory — the baseline arm's `grep` variant needs both; the
     test-connector's own calls pass neither (no tools, inherited cwd).
@@ -389,9 +414,9 @@ def _run_claude_once(
     )
     if failed:
         reason = _failure_reason(result.returncode, result.stdout, result.stderr)
-        if payload.get("api_error_status") is not None:
-            raise ProcessFailure(reason)  # an upstream API error: worth one retry
-        raise RuntimeError(reason)  # model-level: deterministic, never retried
+        if _retryable_api_error(payload):
+            raise ProcessFailure(reason)  # an API-level error: worth one retry
+        raise RuntimeError(reason)  # model-level or a deterministic 4xx: never retried
     return payload
 
 

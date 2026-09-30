@@ -178,6 +178,16 @@ def test_failure_reason_reads_stderr_then_the_result_objects_errors_then_result_
     assert _failure_reason(0, api, "") == "claude -p returned an error: Rate limit reached"
     only_subtype = json.dumps({"subtype": "error_max_turns", "errors": []})
     assert _failure_reason(1, only_subtype, "") == "claude -p exited 1: error_max_turns"
+    # the success variant flagged is_error with a placeholder text: say what
+    # it is, never "success"
+    blank_api = json.dumps(
+        {"subtype": "success", "is_error": True, "api_error_status": 529, "result": ""}
+    )
+    assert _failure_reason(1, blank_api, "") == "claude -p exited 1: API error 529"
+    no_status = json.dumps(
+        {"subtype": "success", "is_error": True, "api_error_status": None, "result": ""}
+    )
+    assert _failure_reason(1, no_status, "") == "claude -p exited 1: API error"
     assert _failure_reason(2, "not json\nmore", "  \n") == "claude -p exited 2: not json"
     assert _failure_reason(3, "", "") == "claude -p exited 3 with no output"
 

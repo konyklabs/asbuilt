@@ -190,6 +190,24 @@ if mode == "fail_json":
     }))
     sys.exit(1)
 
+if mode == "api_error_no_status":
+    # a connection-level failure: the success variant flagged is_error with
+    # api_error_status null and a placeholder text (the CLI sets the status
+    # only when the SDK error has one). Retried once.
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "success", "is_error": True, "api_error_status": None,
+        "result": "",
+    }))
+    sys.exit(1)
+
+if mode == "api_error_4xx":
+    # a deterministic client error: never retried
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "success", "is_error": True, "api_error_status": 401,
+        "result": "Invalid authentication credentials",
+    }))
+    sys.exit(1)
+
 if mode == "api_error":
     # the CLI's shape for an upstream API error: the success variant with
     # is_error, api_error_status and the text under result. Retried once.
@@ -986,6 +1004,40 @@ def test_extractor_model_retries_a_process_failure_once_and_goes_on(
     assert usage["failed"] is None
     assert marker_path.read_text().count("called") == 3
     assert "retries=1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("mode", "retries", "invocations", "said"),
+    [
+        ("api_error_no_status", 1, 2, "API error"),
+        ("api_error_4xx", 0, 1, "Invalid authentication credentials"),
+    ],
+)
+def test_client_retries_a_connection_level_api_error_but_not_a_4xx(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    retries: int,
+    invocations: int,
+    said: str,
+):
+    """Second lens round on asbuilt#21: the CLI sets `api_error_status`
+    only when the SDK error has one, so a connection-level failure arrives
+    with the status null — the transient class the retry exists for — while
+    a 401 is deterministic and re-sending it only spends again."""
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", mode)
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    client = ClaudeCodeClient()
+
+    with pytest.raises(RuntimeError) as excinfo:
+        client.messages.create(model=DEFAULT_MODEL, messages=[{"role": "user", "content": "p"}])
+
+    assert said in str(excinfo.value)
+    assert ("after 1 retry" in str(excinfo.value)) == (retries == 1)
+    assert client.retries == retries
+    assert marker_path.read_text().count("called") == invocations
 
 
 def test_claude_code_client_surfaces_nonzero_exit_as_stderr_first_line(
