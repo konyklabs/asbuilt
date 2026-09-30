@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from bench.claude_code import _invoke_claude_code, structured_call
+from bench.claude_code import _failure_reason, _invoke_claude_code, structured_call
 from bench.llm import CountingClient
 
 _ECHO_STDIN_SCRIPT = r"""#!/usr/bin/env python3
@@ -109,6 +109,7 @@ def _install_fake_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script
     claude_path.write_text(script)
     claude_path.chmod(claude_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")  # asbuilt#21: no 5 s pause in tests
     return claude_path
 
 
@@ -147,6 +148,68 @@ def test_timeout_raises_runtime_error_not_a_raw_timeout_expired(
         _invoke_claude_code(
             "prompt", "claude-sonnet-5", schema=None, system_prompt="sys", timeout=0.2
         )
+
+
+def test_failure_reason_reads_stderr_then_the_result_objects_errors_then_result_then_subtype():
+    """asbuilt#21: what a failed call said, one line, in that order. The
+    installed CLI reports a non-success subtype's message under `errors`
+    and uses `result` only on the success variant (an API error is
+    success + is_error + api_error_status + result)."""
+    execution = json.dumps(
+        {
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": True,
+            "errors": ["Execution failed\nmore"],
+        }
+    )
+    api = json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "api_error_status": 429,
+            "result": "Rate limit reached\nmore",
+        }
+    )
+    assert _failure_reason(1, execution, "boom\nmore") == "claude -p exited 1: boom"
+    assert _failure_reason(1, execution, "") == "claude -p exited 1: Execution failed"
+    assert _failure_reason(1, api, "") == "claude -p exited 1: Rate limit reached"
+    assert _failure_reason(0, api, "") == "claude -p returned an error: Rate limit reached"
+    only_subtype = json.dumps({"subtype": "error_max_turns", "errors": []})
+    assert _failure_reason(1, only_subtype, "") == "claude -p exited 1: error_max_turns"
+    # the success variant flagged is_error with a placeholder text: say what
+    # it is, never "success"
+    blank_api = json.dumps(
+        {"subtype": "success", "is_error": True, "api_error_status": 529, "result": ""}
+    )
+    assert _failure_reason(1, blank_api, "") == "claude -p exited 1: API error 529"
+    no_status = json.dumps(
+        {"subtype": "success", "is_error": True, "api_error_status": None, "result": ""}
+    )
+    assert _failure_reason(1, no_status, "") == "claude -p exited 1: API error"
+    assert _failure_reason(2, "not json\nmore", "  \n") == "claude -p exited 2: not json"
+    assert _failure_reason(3, "", "") == "claude -p exited 3 with no output"
+
+
+def test_timeout_is_retried_once_when_asked_and_then_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _install_fake_claude(tmp_path, monkeypatch, _SLEEP_SCRIPT)
+    retries: list[int] = []
+
+    with pytest.raises(RuntimeError, match=r"timed out after 0.2s \(after 1 retry\)"):
+        _invoke_claude_code(
+            "prompt",
+            "claude-sonnet-5",
+            schema=None,
+            system_prompt="sys",
+            timeout=0.2,
+            max_retries=1,
+            retry_pause=0,
+            on_retry=lambda: retries.append(1),
+        )
+    assert retries == [1]
 
 
 def test_no_model_usage_yields_none_usage_not_a_zero_filled_stand_in(

@@ -179,6 +179,54 @@ if mode == "fail":
     sys.stderr.write("(a second stderr line that must never be surfaced)\\n")
     sys.exit(1)
 
+if mode == "fail_json":
+    # exit 1 with the CLI's JSON-mode error object on STDOUT and nothing on
+    # stderr — the installed CLI (2.1.285) reports every non-success subtype
+    # under `errors`, never `result` (asbuilt#21, a lens round read the
+    # binary). Model-level: never retried.
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "error_during_execution", "is_error": True,
+        "errors": ["Execution failed: the tool loop died\\nsecond line never surfaced"],
+    }))
+    sys.exit(1)
+
+if mode == "api_error_no_status":
+    # a connection-level failure: the success variant flagged is_error with
+    # api_error_status null and a placeholder text (the CLI sets the status
+    # only when the SDK error has one). Retried once.
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "success", "is_error": True, "api_error_status": None,
+        "result": "",
+    }))
+    sys.exit(1)
+
+if mode == "api_error_4xx":
+    # a deterministic client error: never retried
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "success", "is_error": True, "api_error_status": 401,
+        "result": "Invalid authentication credentials",
+    }))
+    sys.exit(1)
+
+if mode == "api_error":
+    # the CLI's shape for an upstream API error: the success variant with
+    # is_error, api_error_status and the text under result. Retried once.
+    sys.stdout.write(json.dumps({
+        "type": "result", "subtype": "success", "is_error": True, "api_error_status": 429,
+        "result": "Rate limit reached for this hour\\nsecond line never surfaced",
+    }))
+    sys.exit(1)
+
+if mode == "fail_once":
+    # the first invocation fails at the process level, every later one succeeds
+    counter = os.environ["FAKE_CLAUDE_COUNTER_PATH"]
+    n = int(open(counter).read() or 0) if os.path.exists(counter) else 0
+    with open(counter, "w") as f:
+        f.write(str(n + 1))
+    if n == 0:
+        sys.stderr.write("transient: connection reset\\n")
+        sys.exit(1)
+
 if mode == "badjson":
     sys.stdout.write("not json at all")
     sys.exit(0)
@@ -250,6 +298,7 @@ def _install_fake_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pat
     script.write_text(_FAKE_CLAUDE_SCRIPT)
     script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")  # asbuilt#21: no 5 s pause in tests
     return script
 
 
@@ -552,6 +601,7 @@ def test_extractor_model_provider_failure_keeps_output_and_exits_2(
         pytest.skip(f"real fixture not present yet: no {fixture_root}")
     _install_fake_claude(tmp_path, monkeypatch)
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "fail")
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")
     monkeypatch.chdir(tmp_path)
     out_dir = tmp_path / "out"
 
@@ -576,7 +626,8 @@ def test_extractor_model_provider_failure_keeps_output_and_exits_2(
     output = json.loads((out_dir / "tests-c6.json").read_text())
     usage = output["model_usage"]
     assert usage["calls"] == 0 and usage["results"] == 0 and usage["stopped"] is None
-    assert "rate limited" in usage["failed"]
+    assert "rate limited" in usage["failed"] and "after 1 retry" in usage["failed"]
+    assert usage["retries"] == 1  # asbuilt#21: one retry, then the failure stands
     assert "must never be surfaced" not in json.dumps(output)
     assert output["counts"]["statements"] > 3  # every skeleton kept its rules fact
     printed = capsys.readouterr().out
@@ -827,6 +878,166 @@ def test_claude_code_oauth_token_falls_back_to_config_file(
     monkeypatch.setattr("bench.claude_code._CLAUDE_CODE_TOKEN_FILE", token_file)
 
     assert _claude_code_oauth_token() == "file-token-do-not-print"
+
+
+@pytest.mark.fixture
+def test_extractor_model_quotes_what_a_failed_call_said_on_stdout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """asbuilt#21: the second real run ended with "exited 1: (no stderr)".
+    In JSON mode the CLI reports a model-level error as a result object on
+    stdout with the text under `errors`; the reason quotes its first line
+    only, and such an error is NOT retried (deterministic; a retry would
+    only spend again) — one invocation, `retries=0`."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "fail_json")
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--limit",
+            "1",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    usage = json.loads((out_dir / "tests-c6.json").read_text())["model_usage"]
+    assert "Execution failed: the tool loop died" in usage["failed"]
+    assert "second line" not in usage["failed"]
+    assert usage["retries"] == 0
+    assert marker_path.read_text().count("called") == 1  # never retried
+
+
+@pytest.mark.fixture
+def test_extractor_model_retries_an_upstream_api_error_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """An upstream API error (the CLI's success variant with `is_error`,
+    `api_error_status` and the text under `result`) is worth one retry; when
+    it persists the reason quotes the text and says so."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "api_error")
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--limit",
+            "1",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 2
+    usage = json.loads((out_dir / "tests-c6.json").read_text())["model_usage"]
+    assert "Rate limit reached for this hour" in usage["failed"]
+    assert "second line" not in usage["failed"]
+    assert "(after 1 retry)" in usage["failed"]
+    assert usage["retries"] == 1
+    assert marker_path.read_text().count("called") == 2
+
+
+@pytest.mark.fixture
+def test_extractor_model_retries_a_process_failure_once_and_goes_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """A transient process-level failure on the first invocation is retried
+    once and the run completes: two results from two skeletons, three
+    invocations, `retries=1` in the record and on the printed line."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "fail_once")
+    monkeypatch.setenv("FAKE_CLAUDE_COUNTER_PATH", str(tmp_path / "counter"))
+    monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--limit",
+            "2",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    usage = json.loads((out_dir / "tests-c6.json").read_text())["model_usage"]
+    assert (usage["calls"], usage["results"], usage["retries"]) == (2, 2, 1)
+    assert usage["failed"] is None
+    assert marker_path.read_text().count("called") == 3
+    assert "retries=1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("mode", "retries", "invocations", "said"),
+    [
+        ("api_error_no_status", 1, 2, "API error"),
+        ("api_error_4xx", 0, 1, "Invalid authentication credentials"),
+    ],
+)
+def test_client_retries_a_connection_level_api_error_but_not_a_4xx(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    retries: int,
+    invocations: int,
+    said: str,
+):
+    """Second lens round on asbuilt#21: the CLI sets `api_error_status`
+    only when the SDK error has one, so a connection-level failure arrives
+    with the status null — the transient class the retry exists for — while
+    a 401 is deterministic and re-sending it only spends again."""
+    _install_fake_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", mode)
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    client = ClaudeCodeClient()
+
+    with pytest.raises(RuntimeError) as excinfo:
+        client.messages.create(model=DEFAULT_MODEL, messages=[{"role": "user", "content": "p"}])
+
+    assert said in str(excinfo.value)
+    assert ("after 1 retry" in str(excinfo.value)) == (retries == 1)
+    assert client.retries == retries
+    assert marker_path.read_text().count("called") == invocations
 
 
 def test_claude_code_client_surfaces_nonzero_exit_as_stderr_first_line(

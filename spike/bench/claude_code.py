@@ -42,15 +42,17 @@ for a person's own interactive `claude --plugin-dir spike/plugin` session,
 not for this module's own headless calls, and loading it added an
 unresolved-`${CLAUDE_PLUGIN_ROOT}` failure plus ~2s of startup to every
 timed query. `timeout` (default `DEFAULT_TIMEOUT_SECONDS`, review point 1)
-bounds the subprocess call; a `subprocess.TimeoutExpired` is turned into the
-same kind of `RuntimeError` every other failure path here raises, never a
-raw exception escaping to the caller.
+bounds each attempt; a `subprocess.TimeoutExpired` becomes a
+`ProcessFailure` (a `RuntimeError`), never a raw exception escaping to the
+caller, and the client retries it once (asbuilt#21, `ProcessFailure`).
 
 The schema-validated object comes back under `structured_output`, NOT
 `result` (`result` is the assistant's own prose text — read only as a
 fallback, and only when it happens to already be schema-shaped JSON on its
 own). `is_error: true` or a `subtype` other than `"success"` is an error,
-reported with `result`'s own first line. `CLAUDE_CODE_OAUTH_TOKEN` is read
+reported with what the CLI said (`_what_it_said`: stderr, else the result
+object's `errors`, else its `result` text, else its subtype; asbuilt#21) and
+retried once only when a retry can help (`ProcessFailure`). `CLAUDE_CODE_OAUTH_TOKEN` is read
 from the environment or, if unset, `~/.config/konyklabs/claude-code-oauth-
 token` — placed into the subprocess's own env, which also has every
 `ANTHROPIC_*`, `CLAUDE_CODE_USE_*` (`_BEDROCK`/`_VERTEX`/`_FOUNDRY`) and
@@ -82,12 +84,94 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_TIMEOUT_SECONDS = 600.0
+# asbuilt#21: what a retry can fix (see `ProcessFailure`: a timeout, a
+# crash, an API-level error that is not a deterministic 4xx) is retried
+# once by the client after this pause; `ASBUILT_RETRY_PAUSE` overrides it
+# (the fake-CLI test installers set 0). A model-level error never.
+DEFAULT_RETRY_PAUSE_SECONDS = 5.0
+DEFAULT_MAX_RETRIES = 1
+
+
+class ProcessFailure(RuntimeError):
+    """One `claude -p` call failed in a way worth one retry (asbuilt#21): a
+    timeout, a crash (a non-zero exit with no result object on stdout), or
+    an API-level error — the CLI's success variant with `is_error`, which
+    carries `api_error_status` for a rate limit (429), an overloaded (529)
+    or a 5xx answer and null for a connection-level failure (the installed
+    CLI, 2.1.285, sets the status only when the SDK error has one; a second
+    lens round read the binary) — unless that status is a deterministic 4xx
+    other than 429 (400, 401, 403, 404: the same request fails the same
+    way). Every other failure — a result object with a non-success
+    `subtype` such as `error_max_turns`, `error_max_budget_usd` or
+    `error_during_execution` — is a plain RuntimeError and is never
+    retried: deterministic, and re-sending it only spends again."""
+
+
+def _retryable_api_error(payload: dict[str, Any]) -> bool:
+    """See `ProcessFailure`: the success variant flagged `is_error` is an
+    API-level error, retried once unless its status is a 4xx other than
+    429; a non-success subtype is a model-level error and never is."""
+    if payload.get("subtype", "success") != "success" or not payload.get("is_error"):
+        return False
+    status = payload.get("api_error_status")
+    if isinstance(status, int) and 400 <= status < 500 and status != 429:
+        return False
+    return True
+
+
+def _what_it_said(payload: Any, stdout: str, stderr: str) -> str:
+    """What a failed call said, one line, never the token (asbuilt#21: the
+    second real run ended with "exited 1: (no stderr)" and nothing more).
+    stderr's first non-blank line; else, from the result object the CLI
+    writes to stdout in `--output-format json` mode, the first of its
+    `errors` (the installed CLI, 2.1.285, reports every non-success
+    `subtype` there — a local lens round read the binary: `result` exists
+    only on the `success` variant, where an API error arrives as `is_error`
+    plus `api_error_status` plus `result` text); else that `result` text;
+    else the `subtype`; else stdout's first non-blank line; else nothing."""
+    line = _first_line(stderr, "")
+    if line:
+        return line
+    if isinstance(payload, dict):
+        errors = payload.get("errors")
+        if isinstance(errors, list):
+            for entry in errors:
+                said = _first_line(str(entry), "") if entry is not None else ""
+                if said:
+                    return said
+        text = payload.get("result") if isinstance(payload.get("result"), str) else ""
+        said = _first_line(text, "")
+        if not said and payload.get("subtype", "success") == "success" and payload.get("is_error"):
+            # the success variant flagged is_error with no text: an API
+            # error the CLI gave a placeholder for; say that, not "success"
+            status = payload.get("api_error_status")
+            said = f"API error {status}" if status is not None else "API error"
+        said = said or str(payload.get("subtype") or "")
+        if said:
+            return said
+    return _first_line(stdout, "")
+
+
+def _failure_reason(returncode: int, stdout: str, stderr: str) -> str:
+    """The one-line reason for a failed call — see `_what_it_said`."""
+    try:
+        payload = json.loads(stdout or "")
+    except json.JSONDecodeError:
+        payload = None
+    said = _what_it_said(payload, stdout, stderr)
+    if returncode != 0:
+        if said:
+            return f"claude -p exited {returncode}: {said}"
+        return f"claude -p exited {returncode} with no output"
+    return f"claude -p returned an error: {said or '(no text)'}"
+
 
 DEFAULT_SYSTEM_PROMPT = (
     "You extract exactly one structured fact from a single test's own source "
@@ -199,6 +283,9 @@ def _invoke_claude_code(
     cwd: Path | None = None,
     max_turns: int = 1,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    max_retries: int = 0,
+    retry_pause: float = DEFAULT_RETRY_PAUSE_SECONDS,
+    on_retry: Any = None,
 ) -> Any:
     """One `claude -p` subprocess call — see the module docstring for the
     flag choices, the stdin-not-argv rule and the credential rule. Returns
@@ -210,14 +297,16 @@ def _invoke_claude_code(
     `structured_output` is read first; `result` is only a fallback, and only
     when it happens to already be schema-shaped JSON on its own — prose in
     `result` never becomes a candidate structured value. `is_error` true or a
-    `subtype` other than `"success"` is an error, reported with the first
-    line of `result`'s own text (never stderr, since a model-level error is
-    not a process-level one). `tools`/`cwd` let a caller enable the CLI's own
+    `subtype` other than `"success"` is an error, reported with what the CLI
+    said (`_what_it_said`) and retried once only when a retry can help
+    (`ProcessFailure`, asbuilt#21). `tools`/`cwd` let a caller enable the CLI's own
     tools (e.g. `"Read,Grep,Glob"`) and set the subprocess's working
     directory — the baseline arm's `grep` variant needs both; the
     test-connector's own calls pass neither (no tools, inherited cwd).
-    `timeout` bounds the whole call; a `subprocess.TimeoutExpired` becomes a
-    `RuntimeError` like every other failure path here, not a raw exception."""
+    `timeout` bounds each attempt; a `subprocess.TimeoutExpired` becomes a
+    `ProcessFailure` (a `RuntimeError`) like every other failure path here,
+    not a raw exception, and with `max_retries` above zero one more attempt
+    follows after `retry_pause` (asbuilt#21; the client passes 1)."""
     env = _isolated_credential_env()
     token = _claude_code_oauth_token()
     if token:
@@ -251,34 +340,24 @@ def _invoke_claude_code(
         "--max-turns",
         str(max_turns),
     ]
-    try:
-        result = subprocess.run(
-            args,
-            input=prompt,  # stdin, not argv (review, blocking) — see module docstring
-            capture_output=True,
-            text=True,
-            env=env,
-            check=False,
-            cwd=str(cwd) if cwd is not None else None,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"claude -p timed out after {timeout}s") from exc
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"claude -p exited {result.returncode}: {_first_line(result.stderr, '(no stderr)')}"
-        )
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"claude -p produced unparsable JSON: {_first_line(result.stdout, '(empty stdout)')}"
-        ) from exc
+    # asbuilt#21: a process-level failure is retried up to `max_retries`
+    # times after `retry_pause` (the client passes 1; a direct call none);
+    # `on_retry` is told each time so the run's usage record can count it.
+    attempts = 1 + max(0, int(max_retries))
+    for attempt in range(1, attempts + 1):
+        try:
+            payload = _run_claude_once(args, prompt, env, cwd, timeout)
+            break
+        except ProcessFailure as exc:
+            if attempt >= attempts:
+                if attempts > 1:
+                    raise ProcessFailure(f"{exc} (after {attempts - 1} retry)") from exc
+                raise
+            if on_retry is not None:
+                on_retry()
+            time.sleep(retry_pause)
 
     result_text = payload.get("result") if isinstance(payload.get("result"), str) else ""
-    if payload.get("is_error") or payload.get("subtype", "success") != "success":
-        raise RuntimeError(f"claude -p returned an error: {_first_line(result_text, '(no text)')}")
-
     structured = payload.get("structured_output")
     if structured is None and result_text:
         try:
@@ -295,6 +374,52 @@ def _invoke_claude_code(
     )
 
 
+def _run_claude_once(
+    args: list[str], prompt: str, env: dict[str, str], cwd: Path | None, timeout: float
+) -> dict[str, Any]:
+    """One attempt: the subprocess, then the outcome sorted into a
+    successful result object (returned), a `ProcessFailure` (a timeout, a
+    crash with no result object, an upstream API error — worth one retry)
+    or a plain `RuntimeError` (a model-level error — never retried); see
+    `ProcessFailure`. `subprocess.run` kills the child on a timeout before
+    raising, so a retry never races a still-running first attempt."""
+    try:
+        result = subprocess.run(
+            args,
+            input=prompt,  # stdin, not argv (review, blocking) — see module docstring
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+            cwd=str(cwd) if cwd is not None else None,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ProcessFailure(f"claude -p timed out after {timeout}s") from exc
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        payload = None
+    if not isinstance(payload, dict):
+        reason = _failure_reason(result.returncode, result.stdout, result.stderr)
+        if result.returncode != 0:
+            raise ProcessFailure(reason)  # a crash: nothing parseable came back
+        raise RuntimeError(
+            f"claude -p produced unparsable JSON: {_first_line(result.stdout, '(empty stdout)')}"
+        )
+    failed = (
+        result.returncode != 0
+        or bool(payload.get("is_error"))
+        or payload.get("subtype", "success") != "success"
+    )
+    if failed:
+        reason = _failure_reason(result.returncode, result.stdout, result.stderr)
+        if _retryable_api_error(payload):
+            raise ProcessFailure(reason)  # an API-level error: worth one retry
+        raise RuntimeError(reason)  # model-level or a deterministic 4xx: never retried
+    return payload
+
+
 class _ClaudeCodeMessages:
     def __init__(
         self,
@@ -305,6 +430,8 @@ class _ClaudeCodeMessages:
         max_turns: int = 1,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         default_system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_pause: float | None = None,
     ) -> None:
         self._claude_bin = claude_bin
         self._tools = tools
@@ -312,6 +439,16 @@ class _ClaudeCodeMessages:
         self._max_turns = max_turns
         self._timeout = timeout
         self._default_system_prompt = default_system_prompt
+        self._max_retries = max_retries
+        self._retry_pause = (
+            float(os.environ.get("ASBUILT_RETRY_PAUSE", DEFAULT_RETRY_PAUSE_SECONDS))
+            if retry_pause is None
+            else retry_pause
+        )
+        self.retries = 0  # process-level retries made over this client's life (asbuilt#21)
+
+    def _count_retry(self) -> None:
+        self.retries += 1
 
     def create(self, **kwargs: Any) -> Any:
         # `max_tokens`/`tool_choice` are the `anthropic` path's own call
@@ -336,6 +473,9 @@ class _ClaudeCodeMessages:
             cwd=self._cwd,
             max_turns=self._max_turns,
             timeout=self._timeout,
+            max_retries=self._max_retries,
+            retry_pause=self._retry_pause,
+            on_retry=self._count_retry,
         )
 
 
@@ -358,6 +498,8 @@ class ClaudeCodeClient:
         max_turns: int = 1,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         system_prompt: str | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_pause: float | None = None,
     ) -> None:
         self.messages = _ClaudeCodeMessages(
             claude_bin=claude_bin,
@@ -366,7 +508,14 @@ class ClaudeCodeClient:
             max_turns=max_turns,
             timeout=timeout,
             default_system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
+            max_retries=max_retries,
+            retry_pause=retry_pause,
         )
+
+    @property
+    def retries(self) -> int:
+        """Process-level retries made over this client's life (asbuilt#21)."""
+        return self.messages.retries
 
 
 def load_claude_code_client(claude_bin: str = "claude") -> ClaudeCodeClient:

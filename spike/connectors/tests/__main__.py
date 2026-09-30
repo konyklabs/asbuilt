@@ -292,6 +292,9 @@ def _model_usage(
         "elapsed_seconds": round(counting.elapsed_seconds, 3),
         "dollars": _dollars_or_none(counting),
         "usage_missing": counting.usage_missing,
+        # process-level retries the provider made (asbuilt#21); 0 for a
+        # provider that has no such counter
+        "retries": int(getattr(getattr(counting, "client", None), "retries", 0) or 0),
     }
 
 
@@ -392,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"input_tokens={u['input_tokens']} output_tokens={u['output_tokens']} "
                 f"cache_tokens={u['cache_creation_tokens'] + u['cache_read_tokens']} "
                 f"seconds={u['elapsed_seconds']} dollars~{dollars}"
+                f"{' retries=' + str(u['retries']) if u.get('retries') else ''}"
                 f"{' usage_missing' if u['usage_missing'] else ''} "
                 "(token-priced estimate; claude-code billing is subscription, not per-call)"
             )

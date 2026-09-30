@@ -26,7 +26,12 @@ Two variants, `ASBUILT_BASELINE_VARIANT` (default `"full"`):
 Every call's subprocess timeout is `ASBUILT_BASELINE_TIMEOUT` seconds
 (default `bench.claude_code.DEFAULT_TIMEOUT_SECONDS`, 600) — passed straight
 through to `ClaudeCodeClient`, which surfaces an expired timeout as the same
-kind of `RuntimeError` every other `claude -p` failure raises.
+kind of `RuntimeError` every other `claude -p` failure raises. Since
+asbuilt#21 that client retries a timeout, a crash or an upstream API error
+once after `ASBUILT_RETRY_PAUSE` seconds (default 5), so one query's wall
+clock is bounded by twice the timeout plus the pause, never by one timeout;
+a model-level error (the grep variant's own turn cap, `error_max_turns`,
+above all) is never retried. `stats()` reports the retries made.
 
 Document ids (`bench/protocol.py`'s conventions): `code/<path>` (walking the
 ingest root's `repo/`, skipping `node_modules`/`.git`/binaries — the same
@@ -449,6 +454,9 @@ class Prototype:
             "input_tokens": self._counting.input_tokens,
             "output_tokens": self._counting.output_tokens,
             "cache_tokens": self._counting.cache_tokens,
+            # process-level retries over both providers' lives (asbuilt#21)
+            "retries": int(getattr(self._full_client, "retries", 0) or 0)
+            + int(getattr(self._grep_client, "retries", 0) or 0),
         }
 
     def _entity_kinds_note(self) -> str:
