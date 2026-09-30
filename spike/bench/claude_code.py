@@ -82,12 +82,51 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_TIMEOUT_SECONDS = 600.0
+# asbuilt#21: a process-level failure (non-zero exit, timeout) is retried
+# once by the client after this pause; `ASBUILT_RETRY_PAUSE` overrides it
+# (tests set 0). A model-level error is never retried.
+DEFAULT_RETRY_PAUSE_SECONDS = 5.0
+DEFAULT_MAX_RETRIES = 1
+
+
+class ProcessFailure(RuntimeError):
+    """One `claude -p` call failed at the process level — a non-zero exit
+    or a timeout — the kind a client may retry once (asbuilt#21); a
+    model-level error (`is_error`, a non-success `subtype`) is a plain
+    RuntimeError and is never retried."""
+
+
+def _failure_reason(returncode: int, stdout: str, stderr: str) -> str:
+    """What a failed call said, one line, never the token (asbuilt#21: the
+    second real run ended with "exited 1: (no stderr)" and nothing more —
+    in `--output-format json` mode the CLI reports errors as a result
+    object on STDOUT). stderr's first non-blank line; else a JSON result's
+    `result` text or `subtype` on stdout; else stdout's first non-blank
+    line; else the exit code alone."""
+    line = _first_line(stderr, "")
+    if line:
+        return f"claude -p exited {returncode}: {line}"
+    try:
+        payload = json.loads(stdout or "")
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        text = payload.get("result") if isinstance(payload.get("result"), str) else ""
+        said = _first_line(text, "") or str(payload.get("subtype") or "")
+        if said:
+            return f"claude -p exited {returncode}: {said}"
+    line = _first_line(stdout, "")
+    if line:
+        return f"claude -p exited {returncode}: {line}"
+    return f"claude -p exited {returncode} with no output"
+
 
 DEFAULT_SYSTEM_PROMPT = (
     "You extract exactly one structured fact from a single test's own source "
@@ -199,6 +238,9 @@ def _invoke_claude_code(
     cwd: Path | None = None,
     max_turns: int = 1,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    max_retries: int = 0,
+    retry_pause: float = DEFAULT_RETRY_PAUSE_SECONDS,
+    on_retry: Any = None,
 ) -> Any:
     """One `claude -p` subprocess call — see the module docstring for the
     flag choices, the stdin-not-argv rule and the credential rule. Returns
@@ -251,23 +293,22 @@ def _invoke_claude_code(
         "--max-turns",
         str(max_turns),
     ]
-    try:
-        result = subprocess.run(
-            args,
-            input=prompt,  # stdin, not argv (review, blocking) — see module docstring
-            capture_output=True,
-            text=True,
-            env=env,
-            check=False,
-            cwd=str(cwd) if cwd is not None else None,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"claude -p timed out after {timeout}s") from exc
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"claude -p exited {result.returncode}: {_first_line(result.stderr, '(no stderr)')}"
-        )
+    # asbuilt#21: a process-level failure is retried up to `max_retries`
+    # times after `retry_pause` (the client passes 1; a direct call none);
+    # `on_retry` is told each time so the run's usage record can count it.
+    attempts = 1 + max(0, int(max_retries))
+    for attempt in range(1, attempts + 1):
+        try:
+            result = _run_claude_once(args, prompt, env, cwd, timeout)
+            break
+        except ProcessFailure as exc:
+            if attempt >= attempts:
+                if attempts > 1:
+                    raise ProcessFailure(f"{exc} (after {attempts - 1} retry)") from exc
+                raise
+            if on_retry is not None:
+                on_retry()
+            time.sleep(retry_pause)
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
@@ -295,6 +336,27 @@ def _invoke_claude_code(
     )
 
 
+def _run_claude_once(
+    args: list[str], prompt: str, env: dict[str, str], cwd: Path | None, timeout: float
+) -> subprocess.CompletedProcess[str]:
+    try:
+        result = subprocess.run(
+            args,
+            input=prompt,  # stdin, not argv (review, blocking) — see module docstring
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+            cwd=str(cwd) if cwd is not None else None,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ProcessFailure(f"claude -p timed out after {timeout}s") from exc
+    if result.returncode != 0:
+        raise ProcessFailure(_failure_reason(result.returncode, result.stdout, result.stderr))
+    return result
+
+
 class _ClaudeCodeMessages:
     def __init__(
         self,
@@ -305,6 +367,8 @@ class _ClaudeCodeMessages:
         max_turns: int = 1,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         default_system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_pause: float | None = None,
     ) -> None:
         self._claude_bin = claude_bin
         self._tools = tools
@@ -312,6 +376,16 @@ class _ClaudeCodeMessages:
         self._max_turns = max_turns
         self._timeout = timeout
         self._default_system_prompt = default_system_prompt
+        self._max_retries = max_retries
+        self._retry_pause = (
+            float(os.environ.get("ASBUILT_RETRY_PAUSE", DEFAULT_RETRY_PAUSE_SECONDS))
+            if retry_pause is None
+            else retry_pause
+        )
+        self.retries = 0  # process-level retries made over this client's life (asbuilt#21)
+
+    def _count_retry(self) -> None:
+        self.retries += 1
 
     def create(self, **kwargs: Any) -> Any:
         # `max_tokens`/`tool_choice` are the `anthropic` path's own call
@@ -336,6 +410,9 @@ class _ClaudeCodeMessages:
             cwd=self._cwd,
             max_turns=self._max_turns,
             timeout=self._timeout,
+            max_retries=self._max_retries,
+            retry_pause=self._retry_pause,
+            on_retry=self._count_retry,
         )
 
 
@@ -358,6 +435,8 @@ class ClaudeCodeClient:
         max_turns: int = 1,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         system_prompt: str | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_pause: float | None = None,
     ) -> None:
         self.messages = _ClaudeCodeMessages(
             claude_bin=claude_bin,
@@ -366,7 +445,14 @@ class ClaudeCodeClient:
             max_turns=max_turns,
             timeout=timeout,
             default_system_prompt=system_prompt or DEFAULT_SYSTEM_PROMPT,
+            max_retries=max_retries,
+            retry_pause=retry_pause,
         )
+
+    @property
+    def retries(self) -> int:
+        """Process-level retries made over this client's life (asbuilt#21)."""
+        return self.messages.retries
 
 
 def load_claude_code_client(claude_bin: str = "claude") -> ClaudeCodeClient:

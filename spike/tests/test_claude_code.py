@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from bench.claude_code import _invoke_claude_code, structured_call
+from bench.claude_code import _failure_reason, _invoke_claude_code, structured_call
 from bench.llm import CountingClient
 
 _ECHO_STDIN_SCRIPT = r"""#!/usr/bin/env python3
@@ -147,6 +147,44 @@ def test_timeout_raises_runtime_error_not_a_raw_timeout_expired(
         _invoke_claude_code(
             "prompt", "claude-sonnet-5", schema=None, system_prompt="sys", timeout=0.2
         )
+
+
+def test_failure_reason_prefers_stderr_then_stdout_json_then_stdout_text():
+    """asbuilt#21: what a failed call said, one line, in that order."""
+    err = json.dumps(
+        {
+            "type": "result",
+            "subtype": "error_during_execution",
+            "is_error": True,
+            "result": "Rate limit reached\nmore",
+        }
+    )
+    assert _failure_reason(1, err, "boom\nmore") == "claude -p exited 1: boom"
+    assert _failure_reason(1, err, "") == "claude -p exited 1: Rate limit reached"
+    only_subtype = json.dumps({"subtype": "error_max_turns"})
+    assert _failure_reason(1, only_subtype, "") == "claude -p exited 1: error_max_turns"
+    assert _failure_reason(2, "not json\nmore", "  \n") == "claude -p exited 2: not json"
+    assert _failure_reason(3, "", "") == "claude -p exited 3 with no output"
+
+
+def test_timeout_is_retried_once_when_asked_and_then_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _install_fake_claude(tmp_path, monkeypatch, _SLEEP_SCRIPT)
+    retries: list[int] = []
+
+    with pytest.raises(RuntimeError, match=r"timed out after 0.2s \(after 1 retry\)"):
+        _invoke_claude_code(
+            "prompt",
+            "claude-sonnet-5",
+            schema=None,
+            system_prompt="sys",
+            timeout=0.2,
+            max_retries=1,
+            retry_pause=0,
+            on_retry=lambda: retries.append(1),
+        )
+    assert retries == [1]
 
 
 def test_no_model_usage_yields_none_usage_not_a_zero_filled_stand_in(

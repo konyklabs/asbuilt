@@ -310,7 +310,11 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   total the test computed, names the system's entity kinds, allows a
   status code only when the fact is about the response, and makes no call
   for a skipped test (its rules guess stays). **`claude-code`** (the default) is one
-  `claude -p` subprocess per skeleton, running on Oleg's Claude Code
+  `claude -p` subprocess per skeleton (a process-level failure — a
+  non-zero exit or a timeout — is retried once after a pause,
+  `ASBUILT_RETRY_PAUSE`, and the reason quotes what the CLI said on stderr
+  or, in JSON mode, on stdout; a model-level error is never retried —
+  asbuilt#21), running on Oleg's Claude Code
   subscription — never an API key, per his own decision. It needs
   `CLAUDE_CODE_OAUTH_TOKEN` in the environment, or, if unset, a token file
   at `~/.config/konyklabs/claude-code-oauth-token` — a credential, so it
