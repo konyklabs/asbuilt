@@ -123,8 +123,12 @@ def _rule_from_model_result(result: dict[str, Any]) -> Rule:
         entities=tuple(result.get("entities") or ()),
         claim=claim,
         claims=(claim,) if claim else (),
-        detail="",
+        detail=str(result.get("detail") or ""),
     )
+
+
+def _is_skipped(skeleton: Skeleton) -> bool:
+    return any(m == "skip" or m.startswith("skip:") for m in skeleton.markers)
 
 
 def build_step_output(
@@ -152,6 +156,7 @@ def build_step_output(
     rules_by_id = {r.node_id: r for r in rules}
 
     model_usage: dict[str, Any] | None = None
+    unskipped = [s for s in skeletons if not _is_skipped(s)]
     if extractor == "model" and not model_dry_run_enabled:
         # Review fix, asbuilt#8 (hazard): `--model-dry-run` promises no call
         # under any extractor — `not model_dry_run_enabled` is what makes
@@ -167,7 +172,12 @@ def build_step_output(
         # itself — is the capped list passed to the model; a skeleton the
         # model never saw keeps its rules-extractor guess, already in
         # `rules_by_id` from `extract_all` above.
-        model_skeletons = skeletons[:limit] if limit is not None else skeletons
+        # asbuilt#18: a skipped test gets no call — the first real run spent
+        # one to be told "this test is skipped". Its rules guess stays and it
+        # still lands under `skipped` (a deviation from the issue's "yields no
+        # fact", recorded there: the truth expects a skipped test's fact as a
+        # code-tier carrier, and its tier is lift.py's business, from the runs).
+        model_skeletons = unskipped[:limit] if limit is not None else unskipped
         stopped: str | None = None
         failed: str | None = None
         try:
@@ -204,7 +214,7 @@ def build_step_output(
         lifted = lift(skeleton, outcomes_by_step, step_order, step, repo, commits)
         if lifted.flaky:
             flaky.append(skeleton.node_id)
-        if any(m == "skip" or m.startswith("skip:") for m in skeleton.markers):
+        if _is_skipped(skeleton):
             skipped.append(skeleton.node_id)
         if lifted.contradiction_candidate:
             payload = build_contradiction_payload(
@@ -240,7 +250,8 @@ def build_step_output(
     }
 
     if model_dry_run_enabled:
-        result = model_dry_run(skeletons, rules_by_id, provider=provider)
+        # priced over the prompts a real run would send (asbuilt#18: not the skipped)
+        result = model_dry_run(unskipped, rules_by_id, provider=provider)
         output["model_dry_run"] = dataclasses.asdict(result)
     if model_usage is not None:
         output["model_usage"] = model_usage

@@ -303,7 +303,13 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   technical-implementation heuristic on the test's own name and file path.
   `extract_model.py` is the model alternative — one structured-output call
   per skeleton through `bench.llm.CountingClient`, with a provider behind
-  the same interface either way. **`claude-code`** (the default) is one
+  the same interface either way. Its prompt (asbuilt#18, after the first
+  real run returned true sentences about the test's own scenario) asks for
+  the general rule the test proves, keeps the scenario in `detail`, wants
+  the claim as the rule's own quantity in the code's unit rather than a
+  total the test computed, names the system's entity kinds, allows a
+  status code only when the fact is about the response, and makes no call
+  for a skipped test (its rules guess stays). **`claude-code`** (the default) is one
   `claude -p` subprocess per skeleton, running on Oleg's Claude Code
   subscription — never an API key, per his own decision. It needs
   `CLAUDE_CODE_OAUTH_TOKEN` in the environment, or, if unset, a token file
@@ -326,7 +332,7 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   instead. `--model-dry-run` builds every prompt and prices it from a
   stated, labelled rate table and makes no call at all, under either
   provider, whether or not `--extractor model` is also given — `--extractor
-  model` without `--model-dry-run` is what makes a real call, one per test
+  model` without `--model-dry-run` is what makes a real call, one per unskipped test
   (or per `--limit N` tests, for the smoke test); none are ever made
   anywhere in this repo's own tests — a fake `claude` executable on `PATH`
   proves the `claude-code` subprocess wiring instead

@@ -87,6 +87,7 @@ SCHEMA: dict[str, Any] = {
             "enum": ["business-logic", "technical-implementation", "operations", "history"],
         },
         "entities": {"type": "array", "items": {"type": "string"}},
+        "detail": {"type": "string"},
         "claim": {
             "type": ["object", "null"],
             "properties": {
@@ -101,13 +102,50 @@ SCHEMA: dict[str, Any] = {
 }
 
 
+# The system's own kinds of thing (bench/run.py's ENTITY_KINDS, the fixed
+# vocabulary every arm receives) — named in the prompt so the model reaches
+# for a service, an endpoint or a rule rather than a fixture or a helper.
+# Duplicated here rather than imported: bench.run pulls in the whole harness.
+PROMPT_ENTITY_KINDS: tuple[str, ...] = (
+    "service",
+    "table",
+    "rule",
+    "job",
+    "flag",
+    "integration",
+    "queue",
+    "team",
+    "endpoint",
+)
+
+PROMPT_INSTRUCTIONS: tuple[str, ...] = (
+    "State the general rule about the system that this test proves: one present-tense "
+    "sentence a reader of the system would recognise, about what the system does, not "
+    "about what the test does.",
+    "Do not describe the test's setup, its fixtures, helper names or the particular inputs "
+    "and totals it used; put any of that a reader might want in `detail`.",
+    "If the fact is about a quantity, `claim` carries the rule's own quantity (a rate, a "
+    "threshold, a limit, a count, a status code) in the unit the code states it in, never "
+    "a total the test computed from it.",
+    "`entities` are the system's own things, of these kinds: "
+    + ", ".join(PROMPT_ENTITY_KINDS)
+    + ". Never a test fixture, a sample id or a helper function.",
+    "Mention a status code or a response body only when the fact is about the response.",
+    "Never invent beyond what the test proves.",
+)
+
+
 def build_prompt(skeleton: Skeleton, rule: Rule | None) -> str:
     """The prompt: the test's own source-derived facts (never more than the
     assertion proves) plus the rules extractor's own guess, for the model
     to confirm, correct or refine — it is never asked to invent beyond
-    what's given."""
+    what's given. asbuilt#18: the instructions ask for the RULE the test
+    proves, not the scenario — the first real run returned true sentences
+    about zero-length trips from unrecognised rider ids and
+    `demandForStation("station-9")`, with computed totals as claims and
+    fixtures as entities, none of which a reader of the system wants."""
     lines = [
-        "Say exactly what this test's assertion proves, in one sentence, present tense.",
+        *PROMPT_INSTRUCTIONS,
         f"Test: {skeleton.node_id}",
         f"Docstring: {skeleton.docstring or '(none)'}",
         f"Markers: {', '.join(skeleton.markers) or '(none)'}",
@@ -271,7 +309,7 @@ def extract_with_model(
                 prompt,
                 SCHEMA,
                 model=model,
-                max_tokens=300,
+                max_tokens=1024,  # asbuilt#18: `detail` is asked for now; 300 could truncate it
                 tool_name="record_fact",
             )
         except BudgetExceeded as exc:

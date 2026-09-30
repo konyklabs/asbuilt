@@ -28,11 +28,15 @@ from connectors.tests.extract_model import (
     DEFAULT_MODEL,
     DEFAULT_OUTPUT_TOKENS_PER_CALL,
     PRICE_TABLE,
+    PROMPT_ENTITY_KINDS,
+    SCHEMA,
     ClaudeCodeClient,
     _claude_code_oauth_token,
+    build_prompt,
     dry_run,
     extract_with_model,
 )
+from connectors.tests.extract_rules import Rule
 from tests._support import SPIKE_ROOT
 
 
@@ -522,7 +526,10 @@ def test_extractor_model_budget_stop_keeps_paid_facts_writes_output_and_exits_3(
     usage = output["model_usage"]
     assert usage["calls"] == 2
     assert usage["results"] == 1
-    assert usage["skeletons_requested"] == output["counts"]["statements"]  # the full list was asked
+    # the full list was asked, minus the skipped test (asbuilt#18: no call for it)
+    assert (
+        usage["skeletons_requested"] == output["counts"]["statements"] - output["counts"]["skipped"]
+    )
     assert "300" in usage["stopped"] and "tokens" in usage["stopped"]
     assert output["counts"]["statements"] > 2  # every other skeleton kept its rules fact
     assert (tmp_path / "build" / "stop-stack-b-model.json").is_file()
@@ -680,6 +687,131 @@ def test_extractor_dry_run_and_rules_carry_no_model_usage(
             == 0
         )
         assert "model_usage" not in json.loads((out_dir / "tests-c6.json").read_text())
+
+
+def test_build_prompt_asks_for_the_rule_not_the_scenario():
+    """asbuilt#18: the instructions name the rule, `detail`, the claim's
+    quantity, the entity kinds and the response-only rule for status codes,
+    and still carry the test's own asserts and the rules guess."""
+    skeleton = Skeleton(
+        node_id="tests/x.py::test_lost_bike_fee_150",
+        file="tests/x.py",
+        line=1,
+        name="test_lost_bike_fee_150",
+        language="python",
+        asserts=(SimpleNamespace(source="assert fee == 15000"),),
+    )
+    rule = Rule(
+        node_id=skeleton.node_id,
+        statement="Lost bike fee $150.00.",
+        category="business-logic",
+        entities=("lost bike fee",),
+        claim=None,
+        claims=(),
+        detail="",
+    )
+
+    prompt = build_prompt(skeleton, rule)
+
+    assert "general rule about the system" in prompt
+    assert "not about what the test does" in prompt
+    assert "put any of that a reader might want in `detail`" in prompt
+    assert "never a total the test computed from it" in prompt
+    kinds = "service, table, rule, job, flag, integration, queue, team, endpoint"
+    assert f"of these kinds: {kinds}" in prompt
+    assert "only when the fact is about the response" in prompt
+    assert "Never invent beyond what the test proves." in prompt
+    assert "assert fee == 15000" in prompt
+    assert "Rules-extractor guess: 'Lost bike fee $150.00.'" in prompt
+    assert SCHEMA["properties"]["detail"] == {"type": "string"}
+
+
+def test_prompt_entity_kinds_are_the_harness_vocabulary():
+    """`PROMPT_ENTITY_KINDS` is a copy of bench/run.py's `ENTITY_KINDS` (not
+    imported, bench.run pulls in the whole harness); this pins the two."""
+    from bench.run import ENTITY_KINDS
+
+    assert PROMPT_ENTITY_KINDS == ENTITY_KINDS
+
+
+@pytest.mark.fixture
+def test_dry_run_prices_the_unskipped_prompts_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    """The dry run is D-013's go/no-go input: it prices the prompts a real
+    run would send, so the one skipped test at c6 is not among its 23."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        ["--fixture", str(fixture_root), "--step", "c6", "--model-dry-run", "--out", str(out_dir)]
+    )
+
+    assert exit_code == 0
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    assert output["counts"]["statements"] == 24 and output["counts"]["skipped"] == 1
+    assert output["model_dry_run"]["prompts"] == 23
+    assert "prompts=23" in capsys.readouterr().out
+
+
+def test_model_result_detail_reaches_the_fact():
+    rule = main_module._rule_from_model_result(
+        {
+            "node_id": "tests/x.py::test_a",
+            "statement": "A ride closed as lost is charged a $150.00 lost-bike fee.",
+            "category": "business-logic",
+            "entities": ["lost bike fee"],
+            "detail": "The fee line adds 15000 cents on top of the ride charge.",
+        }
+    )
+    assert rule.detail == "The fee line adds 15000 cents on top of the ride charge."
+    assert main_module._rule_from_model_result({"node_id": "n", "statement": "s"}).detail == ""
+
+
+@pytest.mark.fixture
+def test_extractor_model_never_calls_for_a_skipped_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """asbuilt#18: the real fixture at c6 has 24 test skeletons, one of them
+    skipped; a full model pass makes 23 calls, the skipped test keeps its
+    rules guess and still lands under `skipped`."""
+    fixture_root = SPIKE_ROOT
+    if not (fixture_root / "truth" / "facts.yaml").is_file():
+        pytest.skip(f"real fixture not present yet: no {fixture_root}")
+    _install_fake_claude(tmp_path, monkeypatch)
+    marker_path = tmp_path / "called.marker"
+    monkeypatch.setenv("FAKE_CLAUDE_CALL_MARKER_PATH", str(marker_path))
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = main_module.main(
+        [
+            "--fixture",
+            str(fixture_root),
+            "--step",
+            "c6",
+            "--extractor",
+            "model",
+            "--provider",
+            "claude-code",
+            "--out",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads((out_dir / "tests-c6.json").read_text())
+    assert output["counts"]["statements"] == 24
+    assert output["counts"]["skipped"] == 1
+    assert output["model_usage"]["skeletons_requested"] == 23
+    assert output["model_usage"]["calls"] == 23
+    assert marker_path.read_text().count("called") == 23
+    skipped_id = output["skipped"][0]
+    skipped_fact = next(f for f in output["facts"] if f["citations"][0]["location"] in skipped_id)
+    assert skipped_fact["statement"] != "Skeleton is proven."  # kept its rules guess
 
 
 def test_claude_code_oauth_token_falls_back_to_config_file(
