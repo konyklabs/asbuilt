@@ -21,7 +21,12 @@ from pathlib import Path
 
 import pytest
 
-from bench.claude_code import _failure_reason, _invoke_claude_code, structured_call
+from bench.claude_code import (
+    DEFAULT_MAX_TURNS,
+    _failure_reason,
+    _invoke_claude_code,
+    structured_call,
+)
 from bench.llm import CountingClient
 
 _ECHO_STDIN_SCRIPT = r"""#!/usr/bin/env python3
@@ -137,6 +142,10 @@ def test_strict_mcp_config_and_no_inline_prompt_are_always_passed(
     assert "--strict-mcp-config" in argv
     assert argv[1] == "-p"
     assert "a prompt" not in argv  # the prompt is never one of the argv elements
+    # asbuilt#23: three turns, not one — the structured-output tool call may
+    # follow a sentence of prose on a second turn; nothing else can use one
+    assert argv[argv.index("--max-turns") + 1] == "3"
+    assert DEFAULT_MAX_TURNS == 3
 
 
 def test_timeout_raises_runtime_error_not_a_raw_timeout_expired(

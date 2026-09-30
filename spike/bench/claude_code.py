@@ -14,6 +14,13 @@ caller never constructs the CLI flag directly), `--no-session-persistence`,
 `--strict-mcp-config`, and `--max-turns` (hidden from `claude --help`/
 `claude -p --help` on the installed CLI (2.1.284) but real and type-checked:
 `claude --max-turns notanumber --version` fails with "must be a number").
+The cap is `DEFAULT_MAX_TURNS`, 3, not 1 (asbuilt#23): with `--json-schema`
+the CLI delivers structured output through a tool call of its own, and a
+model that writes a sentence of prose first makes that call on a second
+turn — the third real run of the test connector died on call 2 with
+"Reached maximum number of turns (1)" after the first run's 24 calls had
+all answered in one turn by luck. With no tools enabled there is nothing
+else a turn can do, so 3 is room, not a runaway.
 `tools`/`cwd` generalise the original test-connector-only call (which always
 ran with `--tools ""` and the parent's own cwd) so a caller that needs the
 model to read the corpus itself — the baseline arm's `grep` variant
@@ -91,6 +98,10 @@ from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-5"
 DEFAULT_TIMEOUT_SECONDS = 600.0
+# asbuilt#23: room for a text turn before the structured-output tool call
+# (the CLI's own mechanism for --json-schema); with --tools "" nothing else
+# can use a turn. The baseline's grep variant passes its own cap.
+DEFAULT_MAX_TURNS = 3
 # asbuilt#21: what a retry can fix (see `ProcessFailure`: a timeout, a
 # crash, an API-level error that is not a deterministic 4xx) is retried
 # once by the client after this pause; `ASBUILT_RETRY_PAUSE` overrides it
@@ -281,7 +292,7 @@ def _invoke_claude_code(
     system_prompt: str,
     tools: str = "",
     cwd: Path | None = None,
-    max_turns: int = 1,
+    max_turns: int = DEFAULT_MAX_TURNS,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     max_retries: int = 0,
     retry_pause: float = DEFAULT_RETRY_PAUSE_SECONDS,
@@ -335,8 +346,10 @@ def _invoke_claude_code(
         "--strict-mcp-config",
         # Hidden from `claude --help`/`claude -p --help` on 2.1.284, but a
         # real, type-checked option — the closest thing to a turn cap this
-        # CLI has, on top of `--tools ""` (when no tools are given) already
-        # ruling out any tool-driven extra turn.
+        # CLI has. Not 1: the structured-output tool call may land on a
+        # second turn after a sentence of prose (asbuilt#23, "Reached
+        # maximum number of turns (1)" on a real run); with `--tools ""`
+        # nothing else can spend a turn, so DEFAULT_MAX_TURNS is room.
         "--max-turns",
         str(max_turns),
     ]
@@ -427,7 +440,7 @@ class _ClaudeCodeMessages:
         *,
         tools: str = "",
         cwd: Path | None = None,
-        max_turns: int = 1,
+        max_turns: int = DEFAULT_MAX_TURNS,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         default_system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_retries: int = DEFAULT_MAX_RETRIES,
@@ -495,7 +508,7 @@ class ClaudeCodeClient:
         *,
         tools: str = "",
         cwd: Path | None = None,
-        max_turns: int = 1,
+        max_turns: int = DEFAULT_MAX_TURNS,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         system_prompt: str | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,

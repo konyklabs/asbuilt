@@ -310,8 +310,11 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   total the test computed, names the system's entity kinds, allows a
   status code only when the fact is about the response, and makes no call
   for a skipped test (its rules guess stays). **`claude-code`** (the default) is one
-  `claude -p` subprocess per skeleton (a timeout, a crash — a non-zero
-  exit with no result object — or an upstream API error, the result
+  `claude -p` subprocess per skeleton, capped at three turns (asbuilt#23:
+  the structured-output tool call may follow a sentence of prose on a
+  second turn, and a cap of one killed a real run; with no tools enabled
+  nothing else can spend a turn) — a timeout, a crash (a non-zero
+  exit with no result object) or an upstream API error, the result
   object's `api_error_status`, is retried once after a pause,
   `ASBUILT_RETRY_PAUSE`, and counted under `retries`; a model-level error
   such as `error_max_turns` is never retried; the reason quotes what the
