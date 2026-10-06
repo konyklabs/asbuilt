@@ -229,9 +229,18 @@ Python, per D-013.
 ## Working here
 
 Read [`AGENTS.md`](AGENTS.md) before changing anything. The org's rules live
-in the workspace and apply here unchanged: a task in `roadmap` before a push,
-a conventional-commit PR title carrying the task ref, evidence pasted rather
-than claimed, and squash merges only.
+in the workspace and apply here: a task in `roadmap` before a push, a
+conventional-commit PR title carrying the task ref, evidence pasted rather
+than claimed, and squash merges only. Until the spike's ADR merges,
+`AGENTS.md` relaxes the review and merge steps on the evidence of one
+pipeline that runs on the developer's machine:
+
+```sh
+brew install just uv act actionlint   # plus a running Docker; colima works
+just setup                            # the tools and the shared git hooks are present
+just check                            # the check, natively
+just ci                               # the check natively, then in a clean container
+```
 
 ## Roadmap
 

@@ -1,0 +1,48 @@
+# The spike's pipeline. `just ci` executes it on the developer's machine, in a
+# clean container under act. It is workflow_dispatch only, so nothing here
+# runs on github.com unless someone dispatches it by hand, and the whole check
+# is scripts/check.sh: this file only puts the tools in place.
+#
+# A run dispatched on a hosted runner checks more than `just ci` does: the
+# hosted image has shellcheck, so actionlint also lints every `run:` block,
+# and a live Docker daemon, so the tests marked `postgres` run instead of
+# skipping. A hosted red after a local green is a real finding, not drift.
+name: ci
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      UV_VERSION: "0.12.5"
+      UV_PYTHON: "3.13"
+      ACTIONLINT_VERSION: "1.7.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        run: |
+          curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install actionlint
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash" -o "$RUNNER_TEMP/download-actionlint.bash"
+          bash "$RUNNER_TEMP/download-actionlint.bash" "${ACTIONLINT_VERSION}" "$HOME/.local/bin"
+
+      - name: Check
+        run: scripts/check.sh

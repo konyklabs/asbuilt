@@ -1,0 +1,7 @@
+# The runner image, pinned by digest: the act-latest tag is rebuilt regularly,
+# and merge evidence has to be reproducible. Resolved 2026-10-06 from the image
+# the pipeline was measured with (built 2026-08-15).
+-P ubuntu-latest=catthehacker/ubuntu@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43
+--container-daemon-socket=-
+--no-cache-server
+--rm
