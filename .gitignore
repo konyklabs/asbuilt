@@ -16,5 +16,9 @@ htmlcov/
 # Local working notes, never committed (see the workspace CLAUDE.md)
 .local/
 
+# Per-machine session settings. Ignored here and not only by a developer's
+# global ignore, so the container's checkout is as clean as the native one.
+.claude/settings.local.json
+
 node_modules/
 .DS_Store
