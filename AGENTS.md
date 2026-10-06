@@ -2,9 +2,8 @@
 
 For an agent working in this repository. The org's rules, the workspace
 `CLAUDE.md` and `.claude/rules/agentic-sdlc.md` in `konyklabs/workspace`,
-apply here, except where "Mode: rapid" below replaces them while the
-repository is a spike; beyond that this file adds only what is specific to
-`asbuilt`.
+apply here, except where "Mode: rapid" below replaces them until the ADR of
+#5 merges; beyond that this file adds only what is specific to `asbuilt`.
 
 ## State
 
@@ -17,37 +16,51 @@ benchmark report and the pipeline-and-schema ADR are #5 (with #7, #8 and #9
 in between: hardening, the test connector, the baseline arm). Nothing lands
 under `src/` before that ADR exists. `spike/` is its own `uv` project: `cd spike && uv run pytest`.
 
-## Mode: rapid, while the state above says spike
+## Mode: rapid, until the ADR of #5 merges
 
 The spike's pull requests waited hours for a merge behind hosted checks that
 take seconds (#25). Until the ADR of #5 is merged, this section replaces the
 workspace's local review round and its merge bar for this repository. Oleg
 approved it by merging the pull request that added it. Whatever it does not
-name stays as the workspace has it.
+name stays as the workspace has it, the Red list included.
 
 - **Green is one script.** `scripts/check.sh` lints the workflows, parses the
   shell scripts and runs `ruff` and the spike's tests. `just check` runs it
   natively. `just ci` runs it natively and then again as
   `.github/workflows/ci.yml` in a clean container under
   [act](https://github.com/nektos/act), where the tests that need Docker or a
-  built `spike/build/` skip. That workflow is `workflow_dispatch` only, so
-  nothing in it runs on github.com.
+  built `spike/build/` skip and say so. The first line of each run names the
+  commit, whether the tree was clean and whether `spike/build/` was present.
+  That workflow is `workflow_dispatch` only: nothing in it runs on github.com
+  unless someone dispatches it by hand.
 - **One task.** A change confined to `spike/` needs no issue of its own. Its
   pull request title carries `konyklabs/roadmap#154`, and what it found goes
   in a comment there.
-- **A session merges its own pull request**, by squash, when three things
-  hold: `just ci` ended green on the pushed commit with a clean tree (the
-  first line of each run says both); that output is in the pull request body;
-  and the two hosted checks, the title lint and the proprietary-terms scan,
-  are green. No review round is needed.
-- **What decides the benchmark's numbers keeps its review.** A change to
-  `spike/bench/score.py`, to the calibration sets under
-  `spike/tests/fixtures/` or to `spike/truth/` gets the workspace's one local
-  round first: a wrong scorer moves every arm's number and fails no test.
+- **A session merges its own pull request**, by squash, when four things
+  hold: `just ci` ended green on the commit being merged, with a clean tree;
+  that output is in the pull request body; the two hosted checks, the title
+  lint and the proprietary-terms scan, are green on that commit; and nothing
+  is open on the pull request: every comment is answered, and if the `gate`
+  label was added its verdict is an approval of that commit. The merge names
+  the commit the evidence names:
+  `gh pr merge --squash --match-head-commit <sha>`. No review round is needed.
+- **The exam and the marking keep their review.** A change to the fixture
+  (`spike/system/`, `spike/sources/`, `spike/truth/`, `spike/queries/`), to
+  the scorer and what it loads (`spike/bench/score.py`, `spike/bench/truth.py`,
+  `spike/bench/build.py`) or to the calibration sets under
+  `spike/tests/fixtures/` gets the workspace's one local round first, with
+  its findings and their disposition in the pull request body, and then
+  merges under the four conditions above. A wrong scorer moves every arm's
+  number and fails no test.
 - **Two kinds of change wait for Oleg:** what green means (`scripts/`,
-  `justfile`, `.actrc`, `.github/`) and the rules (this file, `CLAUDE.md`).
-- **It ends** when the ADR of #5 merges. Nothing under `src/` is merged in
-  this mode.
+  `justfile`, `.actrc`, `.github/`, the pytest and ruff tables of
+  `spike/pyproject.toml`, any `conftest.py`) and the rules and guard rails
+  (this file, `CLAUDE.md`, anything under `.claude/`, the hooks, and whatever
+  the workspace's Red list names). A pull request that touches one of these
+  waits whatever else it touches.
+- **It ends** when the ADR of #5 merges, whatever the State section still
+  says; the pull request that records the merge removes this section.
+  Nothing under `src/` is merged in this mode.
 
 ## What this repository must never contain
 

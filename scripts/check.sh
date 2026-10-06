@@ -12,13 +12,15 @@ bad() { printf 'FAIL  %s\n' "$*"; fail=1; }
 g()   { git -c safe.directory="$PWD" "$@"; }
 
 # What was checked. Output pasted into a pull request has to name its commit,
-# and a tree with uncommitted paths is not the commit it names.
+# and a tree with uncommitted paths is not the commit it names. spike/build/
+# is gitignored and a few tests read it when present, so say whether it was.
+if [ -d spike/build ]; then built="spike/build present"; else built="spike/build absent"; fi
 if sha=$(g rev-parse --short=12 HEAD 2>/dev/null); then
-  dirty=$(g status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+  dirty=$(g status --porcelain --untracked-files=normal 2>/dev/null | wc -l | tr -d ' ')
   if [ "$dirty" -eq 0 ]; then tree="tree clean"; else tree="tree has $dirty uncommitted path(s)"; fi
-  printf 'check %s, %s, %s %s\n' "$sha" "$tree" "$(uname -s)" "$(uname -m)"
+  printf 'check %s, %s, %s, %s %s\n' "$sha" "$tree" "$built" "$(uname -s)" "$(uname -m)"
 else
-  printf 'check: commit unknown (not a git checkout), %s %s\n' "$(uname -s)" "$(uname -m)"
+  printf 'check: commit unknown (not a git checkout), %s, %s %s\n' "$built" "$(uname -s)" "$(uname -m)"
 fi
 
 # 1. The workflows are valid Actions syntax.
@@ -35,14 +37,15 @@ else
   bad "actionlint is not installed (brew install actionlint)"
 fi
 
-# 2. Every tracked shell script parses.
+# 2. Every tracked shell script parses. -z, so a path git would otherwise
+# quote (non-ASCII, a quote mark) is still checked.
 n=0
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   [ -f "$f" ] || continue
   head -1 "$f" | grep -q -E '^#!.*\b(ba)?sh\b' || continue
   n=$((n + 1))
   bash -n "$f" || bad "shell syntax: $f"
-done < <(g ls-files 2>/dev/null)
+done < <(g ls-files -z 2>/dev/null)
 if [ "$n" -gt 0 ]; then ok "shell syntax ($n scripts)"; else bad "shell syntax: found no scripts to check, not even this one"; fi
 
 # 3 and 4. The spike: lint, format, tests. --locked fails on a stale uv.lock

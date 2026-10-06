@@ -2,6 +2,11 @@
 # clean container under act. It is workflow_dispatch only, so nothing here
 # runs on github.com unless someone dispatches it by hand, and the whole check
 # is scripts/check.sh: this file only puts the tools in place.
+#
+# A run dispatched on a hosted runner checks more than `just ci` does: the
+# hosted image has shellcheck, so actionlint also lints every `run:` block,
+# and a live Docker daemon, so the tests marked `postgres` run instead of
+# skipping. A hosted red after a local green is a real finding, not drift.
 name: ci
 
 on:
