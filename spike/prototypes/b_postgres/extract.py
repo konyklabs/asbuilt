@@ -77,7 +77,14 @@ def build_schema(entity_kinds: tuple[str, ...]) -> dict[str, Any]:
                             "properties": {
                                 "entity": {"type": "string"},
                                 "attribute": {"type": "string"},
-                                "value": {"type": ["number", "string"]},
+                                # anyOf, not ["number", "string"]: the CLI validates
+                                # the schema with Ajv in strict mode, which prohibits
+                                # a type array of two non-null types ("strict mode:
+                                # use allowUnionTypes ...", the stack-B run of
+                                # 2026-10-02) while a [T, "null"] array, as on the
+                                # fields around it, is allowed. bench.claude_code
+                                # refuses the prohibited form before spawning.
+                                "value": {"anyOf": [{"type": "number"}, {"type": "string"}]},
                                 "unit": {"type": ["string", "null"]},
                             },
                             "required": ["entity", "attribute", "value"],

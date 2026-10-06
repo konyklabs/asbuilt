@@ -26,6 +26,7 @@ from bench.claude_code import (
     ClaudeCodeClient,
     _failure_reason,
     _invoke_claude_code,
+    schema_union_types,
     structured_call,
 )
 from bench.llm import CountingClient
@@ -292,3 +293,63 @@ def test_bedrock_vertex_foundry_env_vars_are_stripped_from_the_subprocess(
     _invoke_claude_code("prompt", "claude-sonnet-5", schema=None, system_prompt="sys")
 
     assert check_path.read_text() == ""  # no stripped name survived into the child
+
+
+def test_a_union_of_non_null_types_is_refused_before_any_process_is_spawned(tmp_path: Path):
+    """konyklabs/roadmap#154, 2026-10-02: stack B's first model run died
+    inside the CLI on `strict mode: use allowUnionTypes ...`, after one paid
+    retry. The guard turns that into a ValueError at the call site, before a
+    process exists: `claude_bin` here does not exist, so a spawn would fail
+    differently (and later). Ajv's strict mode allows the nullable form, so
+    `[T, "null"]` arrays pass the guard unchanged and anyOf passes too."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "claim": {
+                "type": ["object", "null"],  # allowed: a union with null only
+                "properties": {"v": {"type": ["number", "string"]}},  # prohibited
+            }
+        },
+    }
+    expected = r"anyOf.*#/properties/claim/properties/v/type"
+    with pytest.raises(ValueError, match=expected):
+        _invoke_claude_code(
+            "p",
+            "claude-sonnet-5",
+            claude_bin=str(tmp_path / "no-such-claude"),
+            schema=schema,
+            system_prompt="sys",
+        )
+    assert schema_union_types(schema) == ["#/properties/claim/properties/v/type"]
+    assert schema_union_types({"type": ["number", "string", "null"]}) == ["#/type"]
+    assert schema_union_types({"type": ["string", "null"]}) == []
+    assert schema_union_types({"anyOf": [{"type": "number"}, {"type": "string"}]}) == []
+
+
+def test_every_schema_the_spike_hands_the_cli_passes_ajv_strict_mode():
+    """Each arm and connector builds its own schema; one of them (stack B)
+    had a `["number", "string"]` value while the others only had nullable
+    unions, which is why the extractor and baseline runs worked and the
+    stack-B run did not. Every schema that reaches `--json-schema` is checked
+    here, and the stack-B claim keeps its shape: an object or null, with a
+    number-or-string value."""
+    from connectors.tests.extract_model import SCHEMA as connector_schema
+    from pipeline.llm import VERDICT_SCHEMA
+    from prototypes.b_postgres.extract import build_schema
+    from prototypes.baseline import FACTS_SCHEMA
+
+    b_schema = build_schema(("table", "endpoint", "rule"))
+    schemas = {
+        "connectors.tests.extract_model.SCHEMA": connector_schema,
+        "pipeline.llm.VERDICT_SCHEMA": VERDICT_SCHEMA,
+        "prototypes.baseline.FACTS_SCHEMA": FACTS_SCHEMA,
+        "prototypes.b_postgres.extract.build_schema": b_schema,
+    }
+    assert {name: schema_union_types(s) for name, s in schemas.items()} == {
+        name: [] for name in schemas
+    }
+
+    claim = b_schema["properties"]["facts"]["items"]["properties"]["claim"]
+    assert claim["type"] == ["object", "null"]
+    assert claim["required"] == ["entity", "attribute", "value"]
+    assert claim["properties"]["value"] == {"anyOf": [{"type": "number"}, {"type": "string"}]}
