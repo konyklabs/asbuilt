@@ -481,6 +481,41 @@ def run(
     return result
 
 
+# The arms that run pipeline/ and therefore its embedder and NLI cross-encoder.
+_PIPELINE_PROTOTYPES = frozenset({"b_postgres"})
+
+
+def pipeline_models_missing(prototype: str, environ: dict[str, str] | None = None) -> str | None:
+    """The reason an arm run must not start, or None. `pipeline.embed` and
+    `pipeline.contradict` fall back to a hash embedder and to no NLI
+    pre-filter when sentence-transformers is not importable, by design for
+    the tests. An arm run must never take that fallback unasked: the first
+    stack-B model run (konyklabs/roadmap#154, 2026-10-06, 198 calls) ingested
+    with `hash-384 (fake: sentence-transformers not installed)` and skipped
+    the NLI pass because the `pipeline` extra was not in the environment,
+    and only the results file said so afterwards. Here the run refuses
+    before any call unless the operator asked for both fallbacks explicitly
+    (`ASBUILT_EMBED=fake` and `ASBUILT_NLI=off`), which the results then
+    record as such."""
+    if prototype not in _PIPELINE_PROTOTYPES:
+        return None
+    env = os.environ if environ is None else environ
+    asked_fake = env.get("ASBUILT_EMBED", "").lower() == "fake"
+    asked_no_nli = env.get("ASBUILT_NLI", "").lower() == "off"
+    if asked_fake and asked_no_nli:
+        return None
+    try:
+        import sentence_transformers  # noqa: F401, PLC0415 - availability probe only
+    except ImportError:
+        return (
+            f"{prototype} needs the real embedder and the NLI cross-encoder, and "
+            "sentence-transformers is not importable: run with `uv run --extra pipeline` "
+            "(or `uv sync --extra pipeline` first), or set ASBUILT_EMBED=fake and "
+            "ASBUILT_NLI=off to accept both fallbacks on purpose"
+        )
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prototype", required=True, help='"null" or a name under prototypes/')
@@ -521,6 +556,11 @@ def main(argv: list[str] | None = None) -> int:
         help="write a cited markdown transcript (question, answer, citations) per query",
     )
     args = parser.parse_args(argv)
+
+    missing = pipeline_models_missing(args.prototype)
+    if missing is not None:
+        print(f"bench/run.py: {missing}", file=sys.stderr)
+        return 2
 
     fixture_root = Path(args.fixture).resolve()
     out_path = Path(args.out) if args.out else Path("build") / f"results-{args.prototype}.json"

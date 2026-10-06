@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from bench.run import RunError, assemble_ingest_root, main
+from bench.run import RunError, assemble_ingest_root, main, pipeline_models_missing
 from tests._support import MINI_ROOT
 
 
@@ -264,3 +264,30 @@ def test_run_full_phase_is_recorded_as_full(tmp_path: Path, monkeypatch):
     data = json.loads(out_path.read_text())
     assert data["phase"] == "full"
     assert "ingest_incremental" not in data
+
+
+def test_a_pipeline_arm_refuses_the_fallback_models_unless_asked(monkeypatch, capsys):
+    """konyklabs/roadmap#154, 2026-10-06: a 198-call stack-B run ingested with
+    the hash embedder and no NLI because the `pipeline` extra was absent, and
+    nothing said so until the results file. With sentence-transformers made
+    unimportable here, the run exits 2 before any call; asking for both
+    fallbacks explicitly lets it through; the null arm never needs them."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", None)  # import -> ImportError
+    monkeypatch.delenv("ASBUILT_EMBED", raising=False)
+    monkeypatch.delenv("ASBUILT_NLI", raising=False)
+
+    reason = pipeline_models_missing("b_postgres")
+    assert reason is not None and "uv run --extra pipeline" in reason
+    assert pipeline_models_missing("null") is None
+    assert pipeline_models_missing("baseline") is None
+
+    assert main(["--prototype", "b_postgres", "--fixture", str(MINI_ROOT)]) == 2
+    assert "sentence-transformers is not importable" in capsys.readouterr().err
+
+    assert pipeline_models_missing("b_postgres", {"ASBUILT_EMBED": "fake"}) is not None
+    assert (
+        pipeline_models_missing("b_postgres", {"ASBUILT_EMBED": "fake", "ASBUILT_NLI": "off"})
+        is None
+    )
