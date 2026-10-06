@@ -466,10 +466,55 @@ def _run_claude_once(
     )
     if failed:
         reason = _failure_reason(result.returncode, result.stdout, result.stderr)
+        kept = _keep_failure(payload, result.stderr, reason, prompt_chars=len(prompt))
+        if kept is not None:
+            reason = f"{reason} (the CLI's result object is in {kept})"
         if _retryable_api_error(payload):
             raise ProcessFailure(reason)  # an API-level error: worth one retry
         raise RuntimeError(reason)  # model-level or a deterministic 4xx: never retried
     return payload
+
+
+# Where a failed call's result object is kept: the directory ASBUILT_FAILURE_DIR
+# names, and nowhere when it is unset (a library caller, a test). bench/run.py
+# sets it beside its results file for an arm run.
+_FAILURE_DIR_ENV = "ASBUILT_FAILURE_DIR"
+
+
+def _keep_failure(
+    payload: dict[str, Any], stderr: str, reason: str, *, prompt_chars: int
+) -> Path | None:
+    """Writes the CLI's whole result object for a failed call (plus stderr,
+    the one-line reason and the prompt's size, never the prompt) to a
+    timestamped JSON file and returns its path, or None when no directory
+    is configured or it could not be written. The reason the caller sees is
+    one line; what the model was
+    doing when it hit `error_max_turns`, say, is only in the object (its
+    `result` text and `num_turns`), and the first baseline model run
+    (konyklabs/roadmap#154, 2026-10-06) could not be diagnosed without it."""
+    configured = os.environ.get(_FAILURE_DIR_ENV)
+    if not configured:
+        return None
+    directory = Path(configured)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+        path = directory / f"claude-{stamp}-{os.getpid()}-{time.monotonic_ns() % 1_000_000}.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "reason": reason,
+                    "prompt_chars": prompt_chars,
+                    "stderr": stderr,
+                    "result": payload,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        return path
+    except OSError:
+        return None
 
 
 class _ClaudeCodeMessages:
