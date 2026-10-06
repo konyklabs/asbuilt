@@ -117,6 +117,7 @@ def _install_fake_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script
     claude_path.chmod(claude_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("ASBUILT_RETRY_PAUSE", "0")  # asbuilt#21: no 5 s pause in tests
+    monkeypatch.setenv("ASBUILT_FAILURE_DIR", str(tmp_path / "failures"))  # never spike/build/
     return claude_path
 
 
@@ -353,3 +354,50 @@ def test_every_schema_the_spike_hands_the_cli_passes_ajv_strict_mode():
     assert claim["type"] == ["object", "null"]
     assert claim["required"] == ["entity", "attribute", "value"]
     assert claim["properties"]["value"] == {"anyOf": [{"type": "number"}, {"type": "string"}]}
+
+
+_MAX_TURNS_SCRIPT = r"""#!/usr/bin/env python3
+import json
+import sys
+
+sys.stdin.read()
+# The installed CLI's shape for a turn-capped call: exit 1, the reason under
+# `errors`, the last assistant text under `result` (asbuilt#21 read the binary).
+result = {
+    "type": "result",
+    "subtype": "error_max_turns",
+    "is_error": True,
+    "num_turns": 4,
+    "errors": ["Reached maximum number of turns (4)"],
+    "result": "I will now extract the facts for this entity. Here is what the documents say:",
+    "modelUsage": {"claude-sonnet-5": {"inputTokens": 9, "outputTokens": 2}},
+}
+sys.stdout.write(json.dumps(result))
+sys.exit(1)
+"""
+
+
+def test_a_failed_call_keeps_the_clis_result_object_on_disk_and_names_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """konyklabs/roadmap#154, 2026-10-06: the first baseline model run ended
+    on `Reached maximum number of turns (4)` and nothing recorded what the
+    model had been doing across those turns. Now the whole result object
+    (its `result` text, `num_turns`, usage) is written under
+    ASBUILT_FAILURE_DIR, the error names the file, and the prompt itself is
+    not in it (only its size)."""
+    _install_fake_claude(tmp_path, monkeypatch, _MAX_TURNS_SCRIPT)
+    secret_prompt = "the corpus, which must not be copied into a failure file: xyzzy-7"
+
+    expected = r"maximum number of turns.*result object is in "
+    with pytest.raises(RuntimeError, match=expected) as info:
+        _invoke_claude_code(secret_prompt, "claude-sonnet-5", schema=None, system_prompt="sys")
+
+    path = Path(str(info.value).rsplit(" is in ", 1)[1].rstrip(")"))
+    assert path.parent == tmp_path / "failures" and path.is_file()
+    kept = json.loads(path.read_text())
+    assert kept["result"]["subtype"] == "error_max_turns"
+    assert kept["result"]["num_turns"] == 4
+    assert kept["result"]["result"].startswith("I will now extract")
+    assert kept["prompt_chars"] == len(secret_prompt)
+    assert "xyzzy-7" not in path.read_text()

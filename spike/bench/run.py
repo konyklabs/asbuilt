@@ -285,23 +285,50 @@ def _call_surface(prototype: Any, query: dict[str, Any]) -> Any:
     raise RunError(f"unknown query surface {surface!r} in query {query.get('id')!r}")
 
 
+def _empty_result(surface: str) -> Any:
+    """What a failed query reports in place of its result: the surface's
+    empty shape, so the scorer counts it as a miss and nothing else."""
+    return {"sentences": []} if surface == "ask" else []
+
+
 def run_query(
     prototype: Any, query: dict[str, Any], repeats: int = DEFAULT_REPEATS
 ) -> dict[str, Any]:
     """Times the query's first (cold) call, kept as the canonical result,
-    then `repeats` further warm calls, timed and discarded, for p50/p95."""
+    then `repeats` further warm calls, timed and discarded, for p50/p95.
+
+    A query whose call raises is recorded, not propagated: its `result` is
+    the surface's empty shape, `error` carries the exception, and the run
+    goes on to the next query. The first baseline model run
+    (konyklabs/roadmap#154, 2026-10-06) died on one explain call after 33
+    minutes of paid queries and wrote nothing, because one failure aborted
+    the arm. A `BudgetExceeded` still aborts: that is the stop condition."""
     started = time.perf_counter()
-    result = _call_surface(prototype, query)
+    error: str | None = None
+    try:
+        result = _call_surface(prototype, query)
+    except BudgetExceeded:
+        raise
+    except Exception as exc:  # noqa: BLE001 - one failed query must not lose the others
+        error = f"{type(exc).__name__}: {exc}"
+        result = None
     cold_ms = (time.perf_counter() - started) * 1000
 
     warm_ms: list[float] = []
-    for _ in range(repeats):
-        t0 = time.perf_counter()
-        _call_surface(prototype, query)
-        warm_ms.append((time.perf_counter() - t0) * 1000)
+    if error is None:
+        for _ in range(repeats):
+            t0 = time.perf_counter()
+            try:
+                _call_surface(prototype, query)
+            except BudgetExceeded:
+                raise
+            except Exception as exc:  # noqa: BLE001 - the cold result stands; say what failed
+                error = f"warm repeat {len(warm_ms) + 1}: {type(exc).__name__}: {exc}"
+                break
+            warm_ms.append((time.perf_counter() - t0) * 1000)
     warm_sorted = sorted(warm_ms)
 
-    return {
+    out = {
         "id": query.get("id"),
         "surface": query["surface"],
         "latency_ms": cold_ms,  # kept for compatibility; equal to cold_ms
@@ -310,8 +337,12 @@ def run_query(
         "p95_ms": _percentile(warm_sorted, 95) if warm_sorted else None,
         "warm_repeats": len(warm_ms),
         "params": {k: v for k, v in query.items() if k not in ("id", "surface")},
-        "result": _to_jsonable(result),
+        "result": _to_jsonable(result) if result is not None else _empty_result(query["surface"]),
     }
+    if error is not None:
+        out["error"] = error
+        print(f"query {query.get('id')} ({query['surface']}) failed: {error}", file=sys.stderr)
+    return out
 
 
 def _format_citations(citations: list[dict[str, Any]] | None) -> str:
@@ -353,6 +384,8 @@ def _query_question(query_out: dict[str, Any]) -> str:
 
 def _render_transcript_entry(query_out: dict[str, Any]) -> str:
     lines = [f"## {query_out.get('id')} — {_query_question(query_out)}", ""]
+    if query_out.get("error"):
+        lines.append(f"(failed: {query_out['error']})")
     surface = query_out["surface"]
     result = query_out.get("result")
     if surface == "ask":
@@ -409,7 +442,12 @@ def run(
     incremental: bool = False,
     only_surfaces: frozenset[str] | None = None,
     transcript_path: Path | None = None,
+    flush_path: Path | None = None,
 ) -> dict[str, Any]:
+    """Runs one arm: ingest, then the query mix. With `flush_path`, the
+    results so far are written there after every query, marked
+    `"complete": false`, so a crash or a budget stop keeps what was paid
+    for; `main` writes the complete file at the end."""
     prototype = load_prototype(prototype_name)
     timeline = Timeline(fixture_root)
     ingest_root = ingest_root or (Path.cwd() / "build" / "ingest")
@@ -460,25 +498,33 @@ def run(
         if only_surfaces is None
         else [q for q in mix["queries"] if q["surface"] in only_surfaces]
     )
-    queries_out = [run_query(prototype, query, repeats) for query in selected_queries]
-
     prototype_display_name = getattr(prototype, "name", prototype_name)
+
+    def assemble(queries_out: list[dict[str, Any]], complete: bool) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "prototype": prototype_display_name,
+            "fixture": str(fixture_root),
+            "through_step": step,
+            "phase": "incremental" if incremental else "full",
+            "weights": mix["weights"],
+            "ingest": _to_jsonable(ingest_report),
+            "queries": queries_out,
+            "complete": complete,
+        }
+        if ingest_incremental is not None:
+            result["ingest_incremental"] = ingest_incremental
+        return result
+
+    queries_out: list[dict[str, Any]] = []
+    for query in selected_queries:
+        queries_out.append(run_query(prototype, query, repeats))
+        if flush_path is not None:
+            flush_path.write_text(json.dumps(assemble(queries_out, False), indent=2) + "\n")
 
     if transcript_path is not None:
         write_transcript(transcript_path, prototype_display_name, step, queries_out)
 
-    result: dict[str, Any] = {
-        "prototype": prototype_display_name,
-        "fixture": str(fixture_root),
-        "through_step": step,
-        "phase": "incremental" if incremental else "full",
-        "weights": mix["weights"],
-        "ingest": _to_jsonable(ingest_report),
-        "queries": queries_out,
-    }
-    if ingest_incremental is not None:
-        result["ingest_incremental"] = ingest_incremental
-    return result
+    return assemble(queries_out, True)
 
 
 # The arms that run pipeline/ and therefore its embedder and NLI cross-encoder.
@@ -567,6 +613,9 @@ def main(argv: list[str] | None = None) -> int:
     if not out_path.is_absolute():
         out_path = Path.cwd() / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # A failed CLI call keeps its whole result object beside the results
+    # (bench.claude_code._keep_failure); the error names the file.
+    os.environ.setdefault("ASBUILT_FAILURE_DIR", str(out_path.parent / "failures"))
 
     only_surfaces = (
         frozenset(s.strip() for s in args.only_surfaces.split(",") if s.strip())
@@ -596,14 +645,18 @@ def main(argv: list[str] | None = None) -> int:
             incremental=args.incremental,
             only_surfaces=only_surfaces,
             transcript_path=transcript_path,
+            flush_path=out_path,
         )
     except BudgetExceeded as exc:
         print(f"STOPPED: {exc}")
         print(f"comment on the driving issue before continuing; see build/stop-{exc.arm}.json")
+        print(f"the queries finished before the stop are in {out_path} (complete: false)")
         return 1
 
     out_path.write_text(json.dumps(results, indent=2) + "\n")
-    print(f"wrote {out_path} ({len(results['queries'])} queries)")
+    failed = [q["id"] for q in results["queries"] if "error" in q]
+    suffix = f", {len(failed)} failed: {', '.join(str(f) for f in failed)}" if failed else ""
+    print(f"wrote {out_path} ({len(results['queries'])} queries{suffix})")
     return 0
 
 

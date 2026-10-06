@@ -170,7 +170,11 @@ def test_run_query_latency_fields_use_repeats(tmp_path: Path, monkeypatch):
 
 def test_run_budget_tokens_sets_env(tmp_path: Path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ASBUILT_BUDGET_TOKENS", raising=False)
+    # setenv, not delenv: `run` writes the variable into os.environ itself,
+    # and monkeypatch only restores a key it saw a value for. With delenv on
+    # an absent key, "1000" outlived this test and tripped the budget stop
+    # in any test file that ran after it.
+    monkeypatch.setenv("ASBUILT_BUDGET_TOKENS", "999999")
     out_path = tmp_path / "results.json"
 
     exit_code = main(
@@ -291,3 +295,61 @@ def test_a_pipeline_arm_refuses_the_fallback_models_unless_asked(monkeypatch, ca
         pipeline_models_missing("b_postgres", {"ASBUILT_EMBED": "fake", "ASBUILT_NLI": "off"})
         is None
     )
+
+
+def test_a_failed_query_is_recorded_and_the_run_goes_on(tmp_path: Path, monkeypatch, capsys):
+    """konyklabs/roadmap#154, 2026-10-06: the first baseline model run died
+    on one explain call after 33 minutes of paid queries and wrote nothing.
+    Now the failed query carries its error and the surface's empty result,
+    every other query is run and scored as usual, the results file is
+    flushed after each query (`complete: false` until the end), and the
+    transcript says which query failed. A budget stop still aborts."""
+    import bench.run as run_module
+
+    out_path = tmp_path / "results-null.json"
+    transcript = tmp_path / "transcript.md"
+    monkeypatch.chdir(tmp_path)
+    real_call = run_module._call_surface
+    seen_flushes: list[tuple[int, bool]] = []
+
+    def failing_call(prototype, query):
+        if query["surface"] == "ask":
+            raise RuntimeError("claude -p exited 1: Reached maximum number of turns (4)")
+        if out_path.is_file():  # what the previous query left on disk
+            data = json.loads(out_path.read_text())
+            seen_flushes.append((len(data["queries"]), data["complete"]))
+        return real_call(prototype, query)
+
+    monkeypatch.setattr(run_module, "_call_surface", failing_call)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--transcript",
+            str(transcript),
+            "--repeats",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    data = json.loads(out_path.read_text())
+    assert data["complete"] is True
+    asks = [q for q in data["queries"] if q["surface"] == "ask"]
+    others = [q for q in data["queries"] if q["surface"] != "ask"]
+    assert asks and all(q["result"] == {"sentences": []} for q in asks)
+    assert all("maximum number of turns" in q["error"] for q in asks)
+    assert all(q["warm_repeats"] == 0 for q in asks)
+    assert others and all("error" not in q and q["warm_repeats"] == 1 for q in others)
+    # the file on disk grew by one query at a time and was not complete until the end
+    assert seen_flushes and all(not complete for _, complete in seen_flushes)
+    assert [n for n, _ in seen_flushes] == sorted(n for n, _ in seen_flushes)
+    captured = capsys.readouterr()
+    assert f"{len(asks)} failed" in captured.out
+    assert "(ask) failed: RuntimeError" in captured.err
+    assert "(failed: RuntimeError: claude -p exited 1" in transcript.read_text()
