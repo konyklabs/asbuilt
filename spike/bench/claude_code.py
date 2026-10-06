@@ -115,6 +115,31 @@ DEFAULT_RETRY_PAUSE_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 1
 
 
+def schema_union_types(schema: Any, path: str = "#") -> list[str]:
+    """JSON-pointer paths of every `"type": [...]` in `schema` that names
+    two or more non-null types. The CLI validates `--json-schema` with Ajv
+    in strict mode, which prohibits exactly those ("strict mode: use
+    allowUnionTypes to allow union type keyword at ...") and allows the
+    nullable form `[T, "null"]` (ajv.js.org/strict-mode.html, fetched
+    2026-10-06; a probe on CLI 2.1.292 confirmed `["string", "null"]` passes).
+    Stack B's first model run died on `["number", "string"]` inside the
+    process, after one paid retry (konyklabs/roadmap#154, 2026-10-02).
+    `anyOf` says the same thing and passes; `_invoke_claude_code` refuses a
+    schema with any such path before it spawns anything, so the defect is a
+    `ValueError` at the call site."""
+    found: list[str] = []
+    if isinstance(schema, dict):
+        kinds = schema.get("type")
+        if isinstance(kinds, list) and len([k for k in kinds if k != "null"]) > 1:
+            found.append(f"{path}/type")
+        for key, value in schema.items():
+            found.extend(schema_union_types(value, f"{path}/{key}"))
+    elif isinstance(schema, list):
+        for i, value in enumerate(schema):
+            found.extend(schema_union_types(value, f"{path}/{i}"))
+    return found
+
+
 class ProcessFailure(RuntimeError):
     """One `claude -p` call failed in a way worth one retry (asbuilt#21): a
     timeout, a crash (a non-zero exit with no result object on stdout), or
@@ -323,6 +348,14 @@ def _invoke_claude_code(
     `ProcessFailure` (a `RuntimeError`) like every other failure path here,
     not a raw exception, and with `max_retries` above zero one more attempt
     follows after `retry_pause` (asbuilt#21; the client passes 1)."""
+    if schema is not None:
+        unions = schema_union_types(schema)
+        if unions:
+            raise ValueError(
+                "the claude-code CLI's --json-schema validator (Ajv, strict mode) rejects "
+                "a type array of two or more non-null types; write anyOf instead. Found at: "
+                + ", ".join(unions)
+            )
     env = _isolated_credential_env()
     token = _claude_code_oauth_token()
     if token:
