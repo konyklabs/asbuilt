@@ -94,8 +94,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -113,6 +116,169 @@ DEFAULT_MAX_TURNS = 4
 # (the fake-CLI test installers set 0). A model-level error never.
 DEFAULT_RETRY_PAUSE_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 1
+
+# konyklabs/roadmap#154, 2026-10-07: both detached arm runs died on the
+# subscription's session limit. The installed CLI reports it as the success
+# variant flagged `is_error`, `api_error_status` 429 and
+# `api_error: "usage_limit_reached"`, with the `result` text "You've hit
+# your session limit · resets 9:10pm (America/New_York)" (the kept failure
+# objects of that night, under build/failures/). A retry five seconds later
+# meets the same limit, and the runner's record-and-continue then ran the
+# baseline's 62 queries into it in nine minutes. So a call that meets the
+# limit now waits for the reset the message names, plus
+# `WAIT_FOR_RESET_MARGIN_SECONDS`, and tries again — on by default (Oleg,
+# 2026-10-19: expensive runs go overnight, one arm per window);
+# `ASBUILT_WAIT_FOR_RESET=0` disables it. A reset further away than
+# `ASBUILT_WAIT_FOR_RESET_MAX_SECONDS` (default eight hours), a message
+# whose reset time cannot be read, waiting disabled, or the limit holding
+# after one wait is `UsageLimitReached`: never retried, and `bench.run`
+# halts the arm on it at once. The wait is announced on stderr before it
+# starts (the only trace a detached run leaves) and summed in
+# `waited_for_reset_seconds()`, so the runner can keep it out of the
+# latency and ingest timings it reports. `_now` and `_sleep` are module
+# indirections so the tests can freeze the clock and record the sleep.
+USAGE_LIMIT_API_ERROR = "usage_limit_reached"
+DEFAULT_WAIT_FOR_RESET_MAX_SECONDS = 8 * 3600.0
+WAIT_FOR_RESET_MARGIN_SECONDS = 60.0
+_WAIT_FOR_RESET_ENV = "ASBUILT_WAIT_FOR_RESET"
+_WAIT_FOR_RESET_MAX_ENV = "ASBUILT_WAIT_FOR_RESET_MAX_SECONDS"
+
+_waited_for_reset_seconds = 0.0
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def waited_for_reset_seconds() -> float:
+    """Seconds this process has spent waiting for usage-limit resets, in
+    all, so a caller can snapshot it around a timed call."""
+    return _waited_for_reset_seconds
+
+
+_RESETS_RE = re.compile(
+    r"resets\s+(?:(?P<month>[A-Z][a-z]{2})\s+(?P<day>\d{1,2}),?\s+)?"
+    r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>[ap]m)?"
+    r"(?:\s*\((?P<zone>[A-Za-z_]+(?:/[A-Za-z_+-]+)+)\))?",
+    re.IGNORECASE,
+)
+_MONTHS = {m: i for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split(), 1)}
+
+
+def parse_reset_time(text: str, now: datetime) -> datetime | None:
+    """The reset time a usage-limit message names, as an aware datetime, or
+    None when none can be read. The form is read from the kept failure
+    objects of 2026-10-07: "resets 9:10pm (America/New_York)". A leading
+    date ("resets Oct 23, 9am (America/New_York)") is accepted for the
+    weekly limit, whose exact wording is not verified. A time with no
+    date is the next such time after `now` in the named zone (today, or
+    tomorrow once it has passed); no zone means `now`'s own; an unknown
+    zone or month is None, never a guess."""
+    match = _RESETS_RE.search(text)
+    if match is None:
+        return None
+    zone: Any = now.tzinfo
+    if match.group("zone"):
+        try:
+            from zoneinfo import ZoneInfo
+
+            zone = ZoneInfo(match.group("zone"))
+        except Exception:  # noqa: BLE001 - an unknown zone name is "no reset time", not a crash
+            return None
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute") or 0)
+    ampm = (match.group("ampm") or "").lower()
+    if ampm == "pm" and hour < 12:
+        hour += 12
+    elif ampm == "am" and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return None
+    local_now = now.astimezone(zone)
+    if match.group("month"):
+        month = _MONTHS.get(match.group("month").lower())
+        if month is None:
+            return None
+        try:
+            candidate = local_now.replace(
+                month=month,
+                day=int(match.group("day")),
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0,
+            )
+        except ValueError:
+            return None
+        if candidate < local_now - timedelta(days=1):
+            candidate = candidate.replace(year=candidate.year + 1)
+        return candidate
+    candidate = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= local_now:
+        candidate += timedelta(days=1)
+    return candidate
+
+
+class UsageLimitReached(RuntimeError):
+    """The subscription's usage limit, met and not waited out: waiting is
+    disabled, the message names no readable reset time, the reset is
+    further away than the cap, or the limit held after one wait. Never
+    retried; `bench.run` halts the arm on it. `resets_at` is the time the
+    message named, when it could be read."""
+
+    def __init__(self, reason: str, resets_at: datetime | None = None) -> None:
+        super().__init__(reason)
+        self.resets_at = resets_at
+
+
+def _is_usage_limit(payload: dict[str, Any]) -> bool:
+    """The CLI's shape for a usage limit (see the comment above
+    `USAGE_LIMIT_API_ERROR`): `api_error` names it; failing that, a
+    `result` text that names a limit and a reset."""
+    if payload.get("subtype", "success") != "success" or not payload.get("is_error"):
+        return False
+    if payload.get("api_error") == USAGE_LIMIT_API_ERROR:
+        return True
+    text = payload.get("result") if isinstance(payload.get("result"), str) else ""
+    return "limit" in text.lower() and _RESETS_RE.search(text) is not None
+
+
+def _wait_for_reset(reason: str, on_wait: Any = None) -> datetime:
+    """Waits out the usage limit `reason` names and returns the reset time
+    waited for; raises `UsageLimitReached` instead when the wait is
+    disabled, unreadable or over the cap. Announces the wait on stderr."""
+    global _waited_for_reset_seconds
+    if os.environ.get(_WAIT_FOR_RESET_ENV, "1").strip().lower() in ("0", "false", "no", "off"):
+        raise UsageLimitReached(
+            f"{reason} (waiting for the reset is disabled: {_WAIT_FOR_RESET_ENV}=0)"
+        )
+    now = _now()
+    resets_at = parse_reset_time(reason, now)
+    if resets_at is None:
+        raise UsageLimitReached(f"{reason} (no reset time could be read from the message)")
+    seconds = max(0.0, (resets_at - now).total_seconds()) + WAIT_FOR_RESET_MARGIN_SECONDS
+    cap = float(os.environ.get(_WAIT_FOR_RESET_MAX_ENV, DEFAULT_WAIT_FOR_RESET_MAX_SECONDS))
+    if seconds > cap:
+        raise UsageLimitReached(
+            f"{reason} (the reset at {resets_at.isoformat()} is {seconds:.0f} s away, "
+            f"over the {cap:.0f} s cap {_WAIT_FOR_RESET_MAX_ENV})",
+            resets_at,
+        )
+    print(
+        f"usage limit reached; waiting {seconds:.0f} s for the reset at {resets_at.isoformat()} "
+        f"(margin {WAIT_FOR_RESET_MARGIN_SECONDS:.0f} s): {reason}",
+        file=sys.stderr,
+        flush=True,
+    )
+    if on_wait is not None:
+        on_wait()
+    _sleep(seconds)
+    _waited_for_reset_seconds += seconds
+    return resets_at
 
 
 def schema_union_types(schema: Any, path: str = "#") -> list[str]:
@@ -153,6 +319,12 @@ class ProcessFailure(RuntimeError):
     `subtype` such as `error_max_turns`, `error_max_budget_usd` or
     `error_during_execution` — is a plain RuntimeError and is never
     retried: deterministic, and re-sending it only spends again."""
+
+
+class _UsageLimitHit(ProcessFailure):
+    """One attempt met the usage limit (`_is_usage_limit`). Sorted out of
+    the retry loop in `_invoke_claude_code` into a wait for the reset, or
+    into `UsageLimitReached`; never retried as a `ProcessFailure`."""
 
 
 def _retryable_api_error(payload: dict[str, Any]) -> bool:
@@ -327,6 +499,7 @@ def _invoke_claude_code(
     max_retries: int = 0,
     retry_pause: float = DEFAULT_RETRY_PAUSE_SECONDS,
     on_retry: Any = None,
+    on_wait: Any = None,
 ) -> Any:
     """One `claude -p` subprocess call — see the module docstring for the
     flag choices, the stdin-not-argv rule and the credential rule. Returns
@@ -396,10 +569,22 @@ def _invoke_claude_code(
     # times after `retry_pause` (the client passes 1; a direct call none);
     # `on_retry` is told each time so the run's usage record can count it.
     attempts = 1 + max(0, int(max_retries))
-    for attempt in range(1, attempts + 1):
+    attempt = 0
+    waited_for: datetime | None = None
+    while True:
+        attempt += 1
         try:
             payload = _run_claude_once(args, prompt, env, cwd, timeout)
             break
+        except _UsageLimitHit as exc:
+            # The usage limit is not a retry's business (see the comment
+            # above USAGE_LIMIT_API_ERROR): wait for the reset once, then
+            # try again without spending the retry; a second hit halts.
+            if waited_for is not None:
+                held = f"the limit held after waiting for the reset at {waited_for.isoformat()}"
+                raise UsageLimitReached(f"{exc} ({held})", waited_for) from exc
+            waited_for = _wait_for_reset(str(exc), on_wait)
+            attempt -= 1
         except ProcessFailure as exc:
             if attempt >= attempts:
                 if attempts > 1:
@@ -469,6 +654,8 @@ def _run_claude_once(
         kept = _keep_failure(payload, result.stderr, reason, prompt_chars=len(prompt))
         if kept is not None:
             reason = f"{reason} (the CLI's result object is in {kept})"
+        if _is_usage_limit(payload):
+            raise _UsageLimitHit(reason)  # the subscription's limit: wait for the reset, no retry
         if _retryable_api_error(payload):
             raise ProcessFailure(reason)  # an API-level error: worth one retry
         raise RuntimeError(reason)  # model-level or a deterministic 4xx: never retried
@@ -543,9 +730,13 @@ class _ClaudeCodeMessages:
             else retry_pause
         )
         self.retries = 0  # process-level retries made over this client's life (asbuilt#21)
+        self.waits = 0  # usage-limit resets waited for over this client's life (roadmap#154)
 
     def _count_retry(self) -> None:
         self.retries += 1
+
+    def _count_wait(self) -> None:
+        self.waits += 1
 
     def create(self, **kwargs: Any) -> Any:
         # `max_tokens`/`tool_choice` are the `anthropic` path's own call
@@ -573,6 +764,7 @@ class _ClaudeCodeMessages:
             max_retries=self._max_retries,
             retry_pause=self._retry_pause,
             on_retry=self._count_retry,
+            on_wait=self._count_wait,
         )
 
 
@@ -613,6 +805,11 @@ class ClaudeCodeClient:
     def retries(self) -> int:
         """Process-level retries made over this client's life (asbuilt#21)."""
         return self.messages.retries
+
+    @property
+    def waits(self) -> int:
+        """Usage-limit resets waited for over this client's life (roadmap#154)."""
+        return self.messages.waits
 
 
 def load_claude_code_client(claude_bin: str = "claude") -> ClaudeCodeClient:

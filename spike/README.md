@@ -157,7 +157,18 @@ uv sync
    except for `p50_ms`/`p95_ms`. `--budget-tokens N` sets
    `ASBUILT_BUDGET_TOKENS` for a prototype's own `bench.llm.CountingClient`
    to read; `bench.llm.BudgetExceeded` from `ingest` prints the stop message
-   and exits non-zero rather than writing a partial results file.
+   and exits non-zero rather than writing a partial results file. A query
+   whose call raises is recorded with the surface's empty result and its
+   `error`, and the run goes on; the results file is flushed after every
+   query under `complete: false` (asbuilt#29). Two things halt the arm
+   instead, exit 1 with what was finished left on disk under
+   `complete: false` (konyklabs/roadmap#154, 2026-10-07, when the baseline
+   ran 62 queries into the session limit and reported complete): the same
+   failure on three queries in a row (`ASBUILT_HALT_AFTER_REPEATED_FAILURES`
+   overrides the three), and a usage limit the provider could not wait out
+   (`bench.claude_code.UsageLimitReached`, below). A wait for a usage-limit
+   reset inside a call is taken out of `cold_ms`, the warm timings and the
+   ingest's `seconds`, and recorded beside them as `waited_for_reset_s`.
    `--reset` calls `bench/reset.py`'s `reset_arm` first. `--prototype null`
    uses the always-empty baseline (`bench/null.py`); see "Prototype
    contract" below for adding a real one.
@@ -478,7 +489,21 @@ it, a call made with `spike/` as its cwd would also try to load a
 rather than leaving a hung subprocess; a timeout, a crash or an upstream
 API error is retried once after `ASBUILT_RETRY_PAUSE` (asbuilt#21), so a
 baseline query's wall clock is bounded by two timeouts plus the pause, and
-the baseline's `stats()` counts the retries.
+the baseline's `stats()` counts the retries. The subscription's usage limit
+is not retried (konyklabs/roadmap#154, 2026-10-07: both detached arm runs
+died on it, a retry five seconds later meeting the same limit): the CLI
+reports it as `api_error: usage_limit_reached` with the reset in the result
+text ("resets 9:10pm (America/New_York)"), and the call reads that time,
+announces the wait on stderr, sleeps until it plus a minute and tries
+again, once; the wait is summed in `waited_for_reset_seconds()` so the
+runner can keep it out of the timings. On by default (Oleg, 2026-10-19:
+expensive runs go overnight, one arm per window); `ASBUILT_WAIT_FOR_RESET=0`
+disables it, and a reset further away than
+`ASBUILT_WAIT_FOR_RESET_MAX_SECONDS` (default eight hours), an unreadable
+reset time or a limit that holds after the wait is `UsageLimitReached`,
+on which the runner halts the arm at once. The dated form a weekly limit
+presumably uses ("resets Oct 23, 9am (...)") is parsed but its wording is
+not verified against the CLI.
 
 ### The MCP adapter
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -353,3 +354,183 @@ def test_a_failed_query_is_recorded_and_the_run_goes_on(tmp_path: Path, monkeypa
     assert f"{len(asks)} failed" in captured.out
     assert "(ask) failed: RuntimeError" in captured.err
     assert "(failed: RuntimeError: claude -p exited 1" in transcript.read_text()
+
+
+def test_the_same_failure_three_queries_in_a_row_halts_the_arm(tmp_path: Path, monkeypatch, capsys):
+    """konyklabs/roadmap#154, 2026-10-07: the baseline ran all 62 queries
+    into the session limit, each failing in seven seconds, and reported
+    `complete: true` with no data. Now three identical failures in a row
+    halt the arm: exit 1, the file on disk holds the three under
+    `complete: false`, and the reason is printed. The kept-result-object
+    path differs per failure and must not break the streak."""
+    import bench.run as run_module
+
+    out_path = tmp_path / "results-null.json"
+    monkeypatch.chdir(tmp_path)
+    calls: list[str] = []
+
+    def limited_call(prototype, query):
+        calls.append(query["id"])
+        raise RuntimeError(
+            "claude -p exited 1: You've hit your session limit · resets 9:10pm (America/New_York) "
+            f"(the CLI's result object is in /failures/claude-{len(calls)}.json)"
+        )
+
+    monkeypatch.setattr(run_module, "_call_surface", limited_call)
+
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--repeats",
+            "0",
+        ]
+    )
+
+    assert exit_code == 1
+    data = json.loads(out_path.read_text())
+    assert data["complete"] is False
+    assert len(data["queries"]) == 3 == len(calls)
+    assert all("session limit" in q["error"] for q in data["queries"])
+    out = capsys.readouterr().out
+    assert "HALTED: 3 queries in a row failed the same way" in out
+    assert f"the last {calls[-1]}: RuntimeError: claude -p exited 1: You've hit" in out
+    assert "result object is in" not in out.split("HALTED")[1]
+    assert "(complete: false)" in out
+
+
+def test_different_failures_do_not_make_a_streak_and_the_threshold_is_configurable(
+    tmp_path: Path, monkeypatch
+):
+    import bench.run as run_module
+
+    out_path = tmp_path / "results-null.json"
+    monkeypatch.chdir(tmp_path)
+    real_call = run_module._call_surface
+    n = [0]
+
+    def alternating_call(prototype, query):
+        n[0] += 1
+        if n[0] % 2:
+            raise RuntimeError(f"failure number {n[0]}")  # never the same twice in a row
+        return real_call(prototype, query)
+
+    monkeypatch.setattr(run_module, "_call_surface", alternating_call)
+    assert main(["--prototype", "null", "--fixture", str(MINI_ROOT), "--out", str(out_path)]) == 0
+    assert json.loads(out_path.read_text())["complete"] is True
+
+    monkeypatch.setattr(
+        run_module, "_call_surface", lambda p, q: (_ for _ in ()).throw(RuntimeError("same"))
+    )
+    monkeypatch.setenv("ASBUILT_HALT_AFTER_REPEATED_FAILURES", "2")
+    assert main(["--prototype", "null", "--fixture", str(MINI_ROOT), "--out", str(out_path)]) == 1
+    assert len(json.loads(out_path.read_text())["queries"]) == 2
+
+
+def test_a_usage_limit_that_could_not_be_waited_out_halts_at_once(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """The wrapper raises `UsageLimitReached` when the reset is unreadable,
+    over the cap or held after a wait; the runner does not record it as a
+    failed query and try the next one into the same limit, it halts."""
+    import bench.run as run_module
+    from bench.claude_code import UsageLimitReached
+
+    out_path = tmp_path / "results-null.json"
+    monkeypatch.chdir(tmp_path)
+    real_call = run_module._call_surface
+    calls: list[str] = []
+
+    def limited_on_second(prototype, query):
+        calls.append(query["id"])
+        if len(calls) == 2:
+            raise UsageLimitReached(
+                "claude -p exited 1: You've hit your session limit (no reset time)"
+            )
+        return real_call(prototype, query)
+
+    monkeypatch.setattr(run_module, "_call_surface", limited_on_second)
+    exit_code = main(
+        [
+            "--prototype",
+            "null",
+            "--fixture",
+            str(MINI_ROOT),
+            "--out",
+            str(out_path),
+            "--repeats",
+            "0",
+        ]
+    )
+
+    assert exit_code == 1 and len(calls) == 2
+    data = json.loads(out_path.read_text())
+    assert data["complete"] is False and len(data["queries"]) == 1
+    assert "error" not in data["queries"][0]
+    assert f"HALTED: usage limit on query {calls[1]}: " in capsys.readouterr().out
+
+
+def test_a_wait_for_a_reset_is_kept_out_of_the_latency_and_ingest_timings(
+    tmp_path: Path, monkeypatch
+):
+    """A wait for the subscription's reset can last hours; it happens inside
+    the timed call. The runner subtracts it from `cold_ms`, the warm
+    timings and the ingest's `seconds`, and records it beside them."""
+    import bench.run as run_module
+
+    out_path = tmp_path / "results-null.json"
+    monkeypatch.chdir(tmp_path)
+    waited = [0.0]
+    monkeypatch.setattr(run_module, "waited_for_reset_seconds", lambda: waited[0])
+    real_call = run_module._call_surface
+    real_load = run_module.load_prototype
+    raw_ingest_seconds: list[float] = []
+    waited_query: list[str] = []
+
+    def loading(name):
+        prototype = real_load(name)
+        real_ingest = prototype.ingest
+
+        def ingest(root, kinds, incremental):
+            time.sleep(0.05)  # as if the first extraction call had waited for a reset
+            waited[0] += 0.05
+            report = real_ingest(root, kinds, incremental)
+            raw_ingest_seconds.append(report.seconds)
+            return report
+
+        monkeypatch.setattr(prototype, "ingest", ingest)
+        return prototype
+
+    def waiting_call(prototype, query):
+        if query["surface"] == "search" and not waited_query:
+            waited_query.append(query["id"])
+            time.sleep(0.2)
+            waited[0] += 0.2
+        return real_call(prototype, query)
+
+    monkeypatch.setattr(run_module, "load_prototype", loading)
+    monkeypatch.setattr(run_module, "_call_surface", waiting_call)
+    assert main(["--prototype", "null", "--fixture", str(MINI_ROOT), "--out", str(out_path)]) == 0
+
+    data = json.loads(out_path.read_text())
+    assert data["ingest"]["waited_for_reset_s"] == pytest.approx(0.05)
+    assert data["ingest"]["seconds"] == pytest.approx(raw_ingest_seconds[0] - 0.05)
+    by_id = {q["id"]: q for q in data["queries"]}
+    waited_q = by_id[waited_query[0]]
+    assert waited_q["waited_for_reset_s"] == pytest.approx(0.2)
+    assert 0 <= waited_q["cold_ms"] < 150  # the 200 ms wait is not in it
+    assert all("waited_for_reset_s" not in q for i, q in by_id.items() if i != waited_query[0])
+
+
+def test_normalised_failure_strips_the_per_occurrence_noise():
+    from bench.run import normalised_failure
+
+    same = "RuntimeError: claude -p exited 1: limit"
+    assert normalised_failure(f"{same} (the CLI's result object is in /x/claude-1.json)") == same
+    assert normalised_failure(f"warm repeat 3: {same}") == same
+    assert normalised_failure(same) == same
+    assert normalised_failure(None) is None
