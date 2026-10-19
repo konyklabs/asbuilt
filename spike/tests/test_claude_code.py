@@ -17,10 +17,12 @@ from __future__ import annotations
 import json
 import os
 import stat
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+import bench.claude_code as claude_code
 from bench.claude_code import (
     DEFAULT_MAX_TURNS,
     ClaudeCodeClient,
@@ -401,3 +403,164 @@ def test_a_failed_call_keeps_the_clis_result_object_on_disk_and_names_the_file(
     assert kept["result"]["result"].startswith("I will now extract")
     assert kept["prompt_chars"] == len(secret_prompt)
     assert "xyzzy-7" not in path.read_text()
+
+
+# konyklabs/roadmap#154, 2026-10-07: the installed CLI's shape for the
+# subscription's session limit, copied from a kept failure object of that
+# night (build/failures/claude-20261007T003619-*.json): exit 1, the success
+# variant flagged is_error, api_error_status 429, api_error
+# usage_limit_reached, the reset in the result text. The script counts its
+# calls in FAKE_CLAUDE_COUNTER_PATH and, after FAKE_CLAUDE_LIMITED_CALLS
+# limited calls, answers like the plain success script.
+_USAGE_LIMIT_SCRIPT = r"""#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.stdin.read()
+counter = Path(os.environ["FAKE_CLAUDE_COUNTER_PATH"])
+calls = int(counter.read_text()) + 1 if counter.is_file() else 1
+counter.write_text(str(calls))
+if calls <= int(os.environ.get("FAKE_CLAUDE_LIMITED_CALLS", "1")):
+    result = {
+        "type": "result",
+        "subtype": "success",
+        "is_error": True,
+        "api_error_status": 429,
+        "api_error": "usage_limit_reached",
+        "terminal_reason": "api_error",
+        "num_turns": 1,
+        "total_cost_usd": 0,
+        "result": "You've hit your session limit · resets 9:10pm (America/New_York)",
+        "usage": {"input_tokens": 0, "output_tokens": 0},
+        "modelUsage": {},
+    }
+    sys.stdout.write(json.dumps(result))
+    sys.exit(1)
+result = {
+    "type": "result",
+    "subtype": "success",
+    "is_error": False,
+    "result": "",
+    "structured_output": {"ok": True},
+    "modelUsage": {"claude-sonnet-5": {"inputTokens": 1, "outputTokens": 1}},
+}
+sys.stdout.write(json.dumps(result))
+"""
+
+# 00:36:17Z on 2026-10-07 is 20:36:17 in New York: the moment the real run
+# died. "resets 9:10pm (America/New_York)" is 01:10:00Z, 2023 s later.
+_LIMIT_HIT_AT = datetime(2026, 10, 7, 0, 36, 17, tzinfo=UTC)
+_RESETS_AT_UTC = datetime(2026, 10, 7, 1, 10, 0, tzinfo=UTC)
+
+
+def _freeze_wait(monkeypatch: pytest.MonkeyPatch, now: datetime) -> list[float]:
+    """Freezes the wrapper's clock at `now` and records every sleep instead
+    of sleeping; the module counter starts from zero for the test."""
+    slept: list[float] = []
+    monkeypatch.setattr(claude_code, "_now", lambda: now)
+    monkeypatch.setattr(claude_code, "_sleep", lambda seconds: slept.append(seconds))
+    monkeypatch.setattr(claude_code, "_waited_for_reset_seconds", 0.0)
+    return slept
+
+
+@pytest.mark.parametrize(
+    ("text", "now", "expected"),
+    [
+        (
+            "claude -p exited 1: You've hit your session limit · resets 9:10pm (America/New_York)",
+            _LIMIT_HIT_AT,
+            _RESETS_AT_UTC,
+        ),
+        # already past today in that zone: tomorrow
+        (
+            "resets 9:10pm (America/New_York)",
+            datetime(2026, 10, 7, 1, 30, tzinfo=UTC),
+            datetime(2026, 10, 8, 1, 10, tzinfo=UTC),
+        ),
+        # a dated form for the weekly limit (wording unverified); 12am and a bare hour
+        (
+            "You've hit your weekly limit · resets Oct 23, 12am (America/New_York)",
+            _LIMIT_HIT_AT,
+            datetime(2026, 10, 23, 4, 0, tzinfo=UTC),
+        ),
+        ("resets 3pm (America/New_York)", _LIMIT_HIT_AT, datetime(2026, 10, 7, 19, 0, tzinfo=UTC)),
+        # no zone: the caller's own clock's zone (UTC here)
+        ("resets 02:00", _LIMIT_HIT_AT, datetime(2026, 10, 7, 2, 0, tzinfo=UTC)),
+        ("Reached maximum number of turns (4)", _LIMIT_HIT_AT, None),
+        ("resets 9:10pm (Mars/Olympus_Mons)", _LIMIT_HIT_AT, None),
+        ("resets Foo 3, 9am (America/New_York)", _LIMIT_HIT_AT, None),
+    ],
+)
+def test_the_reset_time_is_read_from_the_message_in_its_own_zone(text, now, expected):
+    got = claude_code.parse_reset_time(text, now)
+    assert got == expected if expected is not None else got is None, got
+
+
+def test_a_usage_limit_waits_for_the_reset_then_succeeds_without_spending_the_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+):
+    """konyklabs/roadmap#154, 2026-10-07: a session-limit hit was retried
+    five seconds later into the same limit and killed the arm. Now the
+    call reads the reset time, announces the wait on stderr, sleeps until
+    it plus the margin, and the next attempt is not a retry."""
+    _install_fake_claude(tmp_path, monkeypatch, _USAGE_LIMIT_SCRIPT)
+    monkeypatch.setenv("FAKE_CLAUDE_COUNTER_PATH", str(tmp_path / "calls"))
+    monkeypatch.delenv("ASBUILT_WAIT_FOR_RESET", raising=False)
+    slept = _freeze_wait(monkeypatch, _LIMIT_HIT_AT)
+
+    client = ClaudeCodeClient()
+    out = claude_code.structured_call(client, "sys", "prompt", {"type": "object"})
+
+    assert out == {"ok": True}
+    assert (tmp_path / "calls").read_text() == "2"
+    expected_wait = (_RESETS_AT_UTC - _LIMIT_HIT_AT).total_seconds() + 60.0
+    assert slept == [expected_wait]
+    assert claude_code.waited_for_reset_seconds() == expected_wait
+    assert client.waits == 1 and client.retries == 0
+    err = capsys.readouterr().err
+    # announced in the message's own zone, the form a person reading the log expects
+    assert f"waiting {expected_wait:.0f} s for the reset at 2026-10-06T21:10:00-04:00" in err
+    assert "session limit" in err
+
+
+def test_a_limit_that_holds_after_the_wait_is_usage_limit_reached_not_a_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _install_fake_claude(tmp_path, monkeypatch, _USAGE_LIMIT_SCRIPT)
+    monkeypatch.setenv("FAKE_CLAUDE_COUNTER_PATH", str(tmp_path / "calls"))
+    monkeypatch.setenv("FAKE_CLAUDE_LIMITED_CALLS", "5")
+    monkeypatch.delenv("ASBUILT_WAIT_FOR_RESET", raising=False)
+    slept = _freeze_wait(monkeypatch, _LIMIT_HIT_AT)
+
+    client = ClaudeCodeClient()
+    with pytest.raises(claude_code.UsageLimitReached, match="the limit held after waiting") as info:
+        claude_code.structured_call(client, "sys", "prompt", {"type": "object"})
+
+    assert info.value.resets_at == _RESETS_AT_UTC
+    assert (tmp_path / "calls").read_text() == "2"  # one wait, one more try, no retry
+    assert len(slept) == 1 and client.waits == 1 and client.retries == 0
+    assert not isinstance(info.value, claude_code.ProcessFailure)
+
+
+def test_waiting_disabled_or_over_the_cap_raises_at_once_and_sleeps_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _install_fake_claude(tmp_path, monkeypatch, _USAGE_LIMIT_SCRIPT)
+    monkeypatch.setenv("FAKE_CLAUDE_COUNTER_PATH", str(tmp_path / "calls"))
+    monkeypatch.setenv("FAKE_CLAUDE_LIMITED_CALLS", "5")
+    slept = _freeze_wait(monkeypatch, _LIMIT_HIT_AT)
+    client = ClaudeCodeClient()
+
+    monkeypatch.setenv("ASBUILT_WAIT_FOR_RESET", "0")
+    with pytest.raises(claude_code.UsageLimitReached, match="waiting for the reset is disabled"):
+        claude_code.structured_call(client, "sys", "prompt", {"type": "object"})
+
+    monkeypatch.delenv("ASBUILT_WAIT_FOR_RESET")
+    monkeypatch.setenv("ASBUILT_WAIT_FOR_RESET_MAX_SECONDS", "600")
+    with pytest.raises(claude_code.UsageLimitReached, match=r"2083 s away, over the 600 s cap"):
+        claude_code.structured_call(client, "sys", "prompt", {"type": "object"})
+
+    assert slept == [] and client.waits == 0 and client.retries == 0
+    assert (tmp_path / "calls").read_text() == "2"  # one call each, neither retried

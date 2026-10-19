@@ -119,6 +119,7 @@ import dataclasses
 import importlib
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -134,6 +135,7 @@ if str(SPIKE_ROOT) not in sys.path:
 import yaml  # noqa: E402
 
 from bench.build import Timeline  # noqa: E402
+from bench.claude_code import UsageLimitReached, waited_for_reset_seconds  # noqa: E402
 from bench.llm import BudgetExceeded  # noqa: E402
 from bench.protocol import Category  # noqa: E402
 from bench.reset import reset_arm  # noqa: E402
@@ -153,6 +155,40 @@ ENTITY_KINDS: tuple[str, ...] = (
 )
 
 DEFAULT_REPEATS = 20
+# konyklabs/roadmap#154, 2026-10-07: with asbuilt#29's record-and-continue,
+# the baseline ran all 62 queries into the subscription's session limit in
+# nine minutes and reported `complete: true` with no data. Now the same
+# failure on this many queries in a row halts the arm (`ArmHalted`, the
+# results file flushed with `complete: false`); `ASBUILT_HALT_AFTER_REPEATED_
+# FAILURES` overrides it. A `UsageLimitReached` (the limit that could not be
+# waited out, `bench.claude_code`) halts at once, like a budget stop.
+DEFAULT_HALT_AFTER_REPEATED_FAILURES = 3
+_HALT_AFTER_ENV = "ASBUILT_HALT_AFTER_REPEATED_FAILURES"
+
+
+class ArmHalted(RuntimeError):
+    """The arm stopped itself before the query mix was done: the same
+    failure `count` queries in a row, or a usage limit that could not be
+    waited out. What was finished is on disk under `complete: false`."""
+
+    def __init__(self, reason: str, count: int = 0) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.count = count
+
+
+# What differs between two occurrences of the same failure and must not
+# keep them from counting as the same: the kept result object's path, and
+# the warm-repeat ordinal.
+_FAILURE_NOISE_RE = re.compile(r" \(the CLI's result object is in [^)]*\)|^warm repeat \d+: ")
+
+
+def normalised_failure(error: str | None) -> str | None:
+    """A failed query's `error` with the per-occurrence noise removed, so
+    that a streak of the same failure can be recognised."""
+    if error is None:
+        return None
+    return _FAILURE_NOISE_RE.sub("", error).strip()
 
 
 class RunError(RuntimeError):
@@ -304,28 +340,36 @@ def run_query(
     minutes of paid queries and wrote nothing, because one failure aborted
     the arm. A `BudgetExceeded` still aborts: that is the stop condition."""
     started = time.perf_counter()
+    waited_before = waited_for_reset_seconds()
     error: str | None = None
     try:
         result = _call_surface(prototype, query)
-    except BudgetExceeded:
-        raise
+    except (BudgetExceeded, UsageLimitReached):
+        raise  # the stop conditions: the arm halts, nothing is recorded as a query
     except Exception as exc:  # noqa: BLE001 - one failed query must not lose the others
         error = f"{type(exc).__name__}: {exc}"
         result = None
-    cold_ms = (time.perf_counter() - started) * 1000
+    # A wait for a usage-limit reset inside the call is not the query's
+    # latency (roadmap#154): it is taken out here and reported beside it.
+    waited_cold = waited_for_reset_seconds() - waited_before
+    cold_ms = (time.perf_counter() - started) * 1000 - waited_cold * 1000
 
     warm_ms: list[float] = []
+    waited_warm = 0.0
     if error is None:
         for _ in range(repeats):
             t0 = time.perf_counter()
+            w0 = waited_for_reset_seconds()
             try:
                 _call_surface(prototype, query)
-            except BudgetExceeded:
+            except (BudgetExceeded, UsageLimitReached):
                 raise
             except Exception as exc:  # noqa: BLE001 - the cold result stands; say what failed
                 error = f"warm repeat {len(warm_ms) + 1}: {type(exc).__name__}: {exc}"
                 break
-            warm_ms.append((time.perf_counter() - t0) * 1000)
+            waited = waited_for_reset_seconds() - w0
+            waited_warm += waited
+            warm_ms.append((time.perf_counter() - t0) * 1000 - waited * 1000)
     warm_sorted = sorted(warm_ms)
 
     out = {
@@ -339,6 +383,8 @@ def run_query(
         "params": {k: v for k, v in query.items() if k not in ("id", "surface")},
         "result": _to_jsonable(result) if result is not None else _empty_result(query["surface"]),
     }
+    if waited_cold or waited_warm:
+        out["waited_for_reset_s"] = waited_cold + waited_warm
     if error is not None:
         out["error"] = error
         print(f"query {query.get('id')} ({query['surface']}) failed: {error}", file=sys.stderr)
@@ -430,6 +476,25 @@ def write_transcript(
     path.write_text(header + body)
 
 
+def _ingest_timed(prototype: Any, root: Path, incremental: bool) -> tuple[Any, float]:
+    """`prototype.ingest(...)` and the seconds it spent waiting for a
+    usage-limit reset (roadmap#154), which are not ingest time."""
+    before = waited_for_reset_seconds()
+    report = prototype.ingest(root, ENTITY_KINDS, incremental)
+    return report, waited_for_reset_seconds() - before
+
+
+def _with_wait(report: Any, waited: float) -> Any:
+    """The ingest report as written, with any reset wait taken out of its
+    `seconds` and recorded beside it as `waited_for_reset_s`."""
+    if waited and isinstance(report, dict):
+        report = dict(report)
+        if isinstance(report.get("seconds"), int | float):
+            report["seconds"] = report["seconds"] - waited
+        report["waited_for_reset_s"] = waited
+    return report
+
+
 def run(
     fixture_root: Path,
     prototype_name: str,
@@ -465,18 +530,19 @@ def run(
         first_step, second_step = timeline.steps[-2].id, timeline.steps[-1].id
 
         first_root = assemble_ingest_root(fixture_root, first_step, ingest_root / "phase-1")
-        first_report = prototype.ingest(first_root, ENTITY_KINDS, False)
+        first_report, first_waited = _ingest_timed(prototype, first_root, False)
 
         second_root = assemble_ingest_root(fixture_root, second_step, ingest_root / "phase-2")
-        second_report = prototype.ingest(second_root, ENTITY_KINDS, True)
+        second_report, second_waited = _ingest_timed(prototype, second_root, True)
+        ingest_waited = first_waited + second_waited
 
         ingest_report = second_report
         step = second_step
         ingest_incremental = {
             "through_step_1": first_step,
             "through_step_2": second_step,
-            "report_1": _to_jsonable(first_report),
-            "report_2": _to_jsonable(second_report),
+            "report_1": _with_wait(_to_jsonable(first_report), first_waited),
+            "report_2": _with_wait(_to_jsonable(second_report), second_waited),
             # The second call's own numbers: each ingest() call reports only
             # the work it did, so this *is* the added cost of the second step.
             "delta": {
@@ -490,7 +556,7 @@ def run(
     else:
         step = through_step or timeline.steps[-1].id
         assembled = assemble_ingest_root(fixture_root, step, ingest_root)
-        ingest_report = prototype.ingest(assembled, ENTITY_KINDS, False)
+        ingest_report, ingest_waited = _ingest_timed(prototype, assembled, False)
 
     mix = load_mix(fixture_root / "queries" / "mix.yaml")
     selected_queries = (
@@ -507,7 +573,7 @@ def run(
             "through_step": step,
             "phase": "incremental" if incremental else "full",
             "weights": mix["weights"],
-            "ingest": _to_jsonable(ingest_report),
+            "ingest": _with_wait(_to_jsonable(ingest_report), ingest_waited),
             "queries": queries_out,
             "complete": complete,
         }
@@ -516,10 +582,33 @@ def run(
         return result
 
     queries_out: list[dict[str, Any]] = []
-    for query in selected_queries:
-        queries_out.append(run_query(prototype, query, repeats))
+    halt_after = int(os.environ.get(_HALT_AFTER_ENV, DEFAULT_HALT_AFTER_REPEATED_FAILURES))
+    streak: tuple[str, int] | None = None
+
+    def flush() -> None:
         if flush_path is not None:
             flush_path.write_text(json.dumps(assemble(queries_out, False), indent=2) + "\n")
+
+    for query in selected_queries:
+        try:
+            query_out = run_query(prototype, query, repeats)
+        except UsageLimitReached as exc:
+            flush()
+            raise ArmHalted(
+                f"usage limit on query {query.get('id')}: {exc}", len(queries_out)
+            ) from exc
+        queries_out.append(query_out)
+        flush()
+        reason = normalised_failure(query_out.get("error"))
+        if reason is None:
+            streak = None
+            continue
+        streak = (
+            (reason, streak[1] + 1) if streak is not None and streak[0] == reason else (reason, 1)
+        )
+        if halt_after > 0 and streak[1] >= halt_after:
+            same_way = f"{streak[1]} queries in a row failed the same way"
+            raise ArmHalted(f"{same_way}, the last {query.get('id')}: {reason}", streak[1])
 
     if transcript_path is not None:
         write_transcript(transcript_path, prototype_display_name, step, queries_out)
@@ -651,6 +740,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"STOPPED: {exc}")
         print(f"comment on the driving issue before continuing; see build/stop-{exc.arm}.json")
         print(f"the queries finished before the stop are in {out_path} (complete: false)")
+        return 1
+    except ArmHalted as exc:
+        print(f"HALTED: {exc}")
+        print(f"the queries finished before the halt are in {out_path} (complete: false)")
+        return 1
+    except UsageLimitReached as exc:
+        # raised from inside ingest: no query was run, nothing is on disk
+        print(f"HALTED during ingest: {exc}")
         return 1
 
     out_path.write_text(json.dumps(results, indent=2) + "\n")
