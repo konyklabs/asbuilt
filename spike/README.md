@@ -504,6 +504,12 @@ reset time or a limit that holds after the wait is `UsageLimitReached`,
 on which the runner halts the arm at once. The dated form a weekly limit
 presumably uses ("resets Oct 23, 9am (...)") is parsed but its wording is
 not verified against the CLI.
+Every call also names its effort, `--effort medium` unless
+`ASBUILT_EFFORT` says otherwise, and the results record it (roadmap#154,
+2026-10-19): with no flag the CLI takes the effort the user's own settings
+give the model, and the first overnight run inherited `xhigh`, where the
+same extraction call took 172 s and 5,395 thinking tokens against 20 s and
+255 at `medium`, with the same 15 facts.
 
 ### The MCP adapter
 

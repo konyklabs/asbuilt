@@ -117,6 +117,20 @@ DEFAULT_MAX_TURNS = 4
 DEFAULT_RETRY_PAUSE_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 1
 
+# konyklabs/roadmap#154, 2026-10-19: a call that names no `--effort` runs at
+# whatever effort the user's own Claude Code settings give the model
+# (`effortLevel`, per model under `modelSettings`), so an arm's speed, spend
+# and possibly its answers depended on a file outside this repository. The
+# same stack-B extraction call (wiki/checkout-rules, same prompt and schema)
+# took 172 s and 5,395 thinking tokens at the inherited `xhigh`, 20 s and 255
+# at `medium`, both with 15 facts. Every call now names its effort:
+# `medium` unless `ASBUILT_EFFORT` says otherwise, refused before the CLI is
+# spawned if the CLI would not accept it; the runner records the level in
+# the results.
+DEFAULT_EFFORT = "medium"
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+_EFFORT_ENV = "ASBUILT_EFFORT"
+
 # konyklabs/roadmap#154, 2026-10-07: both detached arm runs died on the
 # subscription's session limit. The installed CLI reports it as the success
 # variant flagged `is_error`, `api_error_status` 429 and
@@ -158,6 +172,17 @@ def waited_for_reset_seconds() -> float:
     """Seconds this process has spent waiting for usage-limit resets, in
     all, so a caller can snapshot it around a timed call."""
     return _waited_for_reset_seconds
+
+
+def effort_level() -> str:
+    """The effort every call names (`DEFAULT_EFFORT`, or `ASBUILT_EFFORT`)."""
+    level = os.environ.get(_EFFORT_ENV, "").strip() or DEFAULT_EFFORT
+    if level not in EFFORT_LEVELS:
+        raise ValueError(
+            f"{_EFFORT_ENV}={level!r} is not an effort the CLI accepts: "
+            + ", ".join(EFFORT_LEVELS)
+        )
+    return level
 
 
 _RESETS_RE = re.compile(
@@ -541,6 +566,8 @@ def _invoke_claude_code(
         "json",
         "--model",
         model,
+        "--effort",
+        effort_level(),
     ]
     if schema is not None:
         args += ["--json-schema", json.dumps(schema)]

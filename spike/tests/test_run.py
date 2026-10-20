@@ -115,6 +115,17 @@ def test_assemble_ingest_root_only_includes_runs_through_step(tmp_path: Path):
     assert steps_present == {"c1", "c2"}
 
 
+def test_run_records_the_effort_its_calls_named(tmp_path: Path, monkeypatch):
+    """roadmap#154: the results say which effort the run's `claude -p` calls
+    named, so a run inheriting a different one cannot pass for the same."""
+    out_path = tmp_path / "results.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ASBUILT_EFFORT", "low")
+
+    assert main(["--prototype", "null", "--fixture", str(MINI_ROOT), "--out", str(out_path)]) == 0
+    assert json.loads(out_path.read_text())["effort"] == "low"
+
+
 def test_run_through_step_is_recorded_and_limits_ingest(tmp_path: Path, monkeypatch):
     out_path = tmp_path / "results.json"
     monkeypatch.chdir(tmp_path)
