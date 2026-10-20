@@ -278,40 +278,47 @@ def test_extract_rules_avoids_capture_cap_false_positive(tmp_path: Path):
 
 
 def test_extract_all_skips_nothing_with_asserts_or_docstring(tmp_path: Path):
-    """Sentence 1 always comes from the test's own name (module docstring
-    point 1), so even a test with no asserts and no docstring still gets a
-    (thin but honest) statement — the "nothing to extract" case from the
-    first pass no longer exists."""
+    """A test with no asserts and no docstring still gets a (thin but
+    honest) statement: with nothing asserted, it says the test ran without
+    raising, which is all its pass proves (fifth pass, asbuilt#36)."""
     _write(tmp_path / "tests" / "test_empty.py", "def test_nothing():\n    pass\n")
     skeletons = collect_python(tmp_path)
     rules = extract_all(skeletons)
     assert len(rules) == 1
-    assert rules[0].statement == "Nothing."
+    assert rules[0].statement == "Nothing runs without raising."
     assert rules[0].claim is None
 
 
 def test_extract_rules_name_sentence_normalises_numbers_and_ordinals(tmp_path: Path):
-    """Module docstring point 1: number words and ordinals in the test's own
-    name become digits, a `<number> dollar(s)` pair folds to `$x.00`, and a
-    bare trailing numeric token is KEPT as a plain digit (fourth pass:
-    `assert 1 == 1` here isn't a money/cents comparison, so nothing
-    upgrades it — see `test_extract_rules_name_sentence_upgrades_trailing_
-    number_to_money` for the money case)."""
+    """Module docstring, fifth pass: number words in a supported name
+    become digits (a closed compound too, "fortyfive" is 45), a `<number>
+    dollar(s)` pair folds to `$x.00`, and ordinals stay words, a position
+    rather than a quantity. Each body supports its name: the variables it
+    uses, the 409 a refusal, the asserted 100 cents the words beside
+    "$1.00"."""
     _write(
         tmp_path / "tests" / "test_words.py",
-        "def test_member_first_thirty_minutes_free_100():\n    assert 1 == 1\n\n"
-        "def test_third_checkout_refused():\n    assert 1 == 1\n\n"
-        "def test_casual_ride_charges_one_dollar_unlock_fee():\n    assert 1 == 1\n",
+        "def test_member_first_thirty_minutes_free():\n"
+        "    free_minutes = member_free_minutes()\n"
+        "    assert free_minutes == 30\n\n"
+        "def test_member_first_fortyfive_minutes_free():\n"
+        "    free_minutes = member_free_minutes()\n"
+        "    assert free_minutes == 45\n\n"
+        "def test_third_checkout_refused():\n"
+        "    third = checkout()\n"
+        "    assert third == (409, {'error': 'checkout_limit_reached'})\n\n"
+        "def test_casual_ride_charges_one_dollar_unlock_fee():\n"
+        "    amount_cents = close_casual_ride()\n"
+        "    assert amount_cents == 100\n",
     )
     skeletons = {s.name: s for s in collect_python(tmp_path)}
 
     def _statement(name: str) -> str:
         return extract(skeletons[name]).statement
 
-    assert (
-        _statement("test_member_first_thirty_minutes_free_100") == "Member 1st 30 minutes free 100."
-    )
-    assert _statement("test_third_checkout_refused") == "3rd checkout refused."
+    assert _statement("test_member_first_thirty_minutes_free") == "Member first 30 minutes free."
+    assert _statement("test_member_first_fortyfive_minutes_free") == "Member first 45 minutes free."
+    assert _statement("test_third_checkout_refused") == "Third checkout refused."
     assert (
         _statement("test_casual_ride_charges_one_dollar_unlock_fee")
         == "Casual ride charges $1.00 unlock fee."
@@ -507,6 +514,228 @@ def test_extract_rules_typescript_filters_to_imported_calls(tmp_path: Path):
     assert rule.statement == "widget is ready after 3 retries."
     assert "isReady" in rule.entities
     assert "toBe" not in rule.entities  # a vitest matcher, not an import
+
+
+# ------------------------------- statements from assertions (asbuilt#36)
+#
+# D-013: a passing test proves exactly what it asserts. One test per
+# assertion shape, each named for a behaviour its assertions do not check;
+# the statement must not name it.
+
+
+@pytest.mark.parametrize(
+    ("step", "name", "days"),
+    [
+        ("c1", "test_membership_lapses_3_days_after_failed_renewal", 3),
+        ("c6", "test_membership_lapses_7_days_after_failed_renewal", 7),
+    ],
+)
+def test_statement_lapse_tests_narrow_to_the_grace_period(step: str, name: str, days: int):
+    """The two lapse tests assert `GRACE_DAYS`, a `GRACE` status and a
+    `grace_ends_at`; nothing lapses (F-015, F-016)."""
+    if not (SPIKE_ROOT / "system" / "tests").is_dir():
+        pytest.skip("real fixture not present")
+    timeline = Timeline(SPIKE_ROOT)
+    skeleton = next(s for s in collect_from_timeline(timeline, step) if s.name == name)
+    statement = extract(skeleton, main_module._source_lookup(timeline, step)).statement
+    assert statement == (
+        f"After handle failed renewal, the grace is {days} days, the membership status is "
+        f"grace and the membership grace ends {days} days after failed at."
+    )
+    assert "laps" not in statement.lower()
+
+
+def test_statement_constant_names_its_own_quantity(tmp_path: Path):
+    """A constant: `GRACE_DAYS == 7` names the 7, so the name's "lapses"
+    beside the same 7 is not a label for it."""
+    _write(
+        tmp_path / "tests" / "test_memberships.py",
+        "from pkg.memberships import GRACE_DAYS\n\n"
+        "def test_membership_lapses_7_days_after_failed_renewal():\n"
+        "    assert GRACE_DAYS == 7\n",
+    )
+    skeleton = collect_python(tmp_path)[0]
+    rule = extract(skeleton, _lookup_for({"pkg/memberships.py": "GRACE_DAYS = 7\n"}))
+    assert rule.statement == "The grace is 7 days."
+
+
+def test_statement_states_an_asserted_constant_value(tmp_path: Path):
+    """A constant the name does not number: its value goes into the
+    statement, which then stands on its own without the claim."""
+    _write(
+        tmp_path / "tests" / "test_pricing.py",
+        "from decimal import Decimal\n"
+        "from pkg.pricing import MEMBER_FREE_MINUTES, MEMBER_RATE\n\n"
+        "def test_member_rate_after_free_minutes():\n"
+        "    assert MEMBER_RATE == Decimal('0.15')\n"
+        "    assert price(MEMBER_FREE_MINUTES + 10) == 150\n",
+    )
+    source = 'MEMBER_RATE = Decimal("0.15")\nMEMBER_FREE_MINUTES = 30\n'
+    skeleton = collect_python(tmp_path)[0]
+    rule = extract(skeleton, _lookup_for({"pkg/pricing.py": source}))
+    assert rule.statement == "The member rate after free minutes is $0.15."
+
+
+def test_statement_bare_status_says_exactly_that(tmp_path: Path):
+    """A status: a 422 checks a rejection, never that anything was logged;
+    a bare status yields a statement about exactly the status."""
+    _write(
+        tmp_path / "tests" / "test_refunds.py",
+        "def test_refund_rejected_and_logged():\n"
+        "    status, body = create_refund()\n"
+        "    assert status == 422\n\n"
+        "def test_refund_rejected():\n"
+        "    status, body = create_refund()\n"
+        "    assert status == 422\n",
+    )
+    lookup = _lookup_for(
+        {"tests/test_refunds.py": (tmp_path / "tests/test_refunds.py").read_text()}
+    )
+    skeletons = {s.name: s for s in collect_python(tmp_path)}
+    logged = extract(skeletons["test_refund_rejected_and_logged"], lookup).statement
+    assert logged == "After create refund, the status is 422."
+    assert extract(skeletons["test_refund_rejected"], lookup).statement == "Refund rejected."
+
+
+def test_statement_computed_date(tmp_path: Path):
+    """A computed date: `X == FAILED_AT + timedelta(days=7)` is "7 days
+    after failed at"; the name's week and email are not checked."""
+    _write(
+        tmp_path / "tests" / "test_grace.py",
+        "from datetime import timedelta\n\n"
+        "def test_grace_ends_a_week_after_failure_and_emails_rider():\n"
+        "    membership = fail_renewal(FAILED_AT)\n"
+        "    assert membership.grace_ends_at == FAILED_AT + timedelta(days=7)\n",
+    )
+    lookup = _lookup_for({"tests/test_grace.py": (tmp_path / "tests/test_grace.py").read_text()})
+    statement = extract(collect_python(tmp_path)[0], lookup).statement
+    assert statement == "After fail renewal, the membership grace ends 7 days after failed at."
+
+
+def test_statement_boundary(tmp_path: Path):
+    """A boundary: closed one minute past 24 hours, open one minute short;
+    no fine is asserted."""
+    _write(
+        tmp_path / "tests" / "test_lost.py",
+        "from datetime import timedelta\n\n"
+        "def test_ride_closed_as_lost_and_fined_after_24_hours():\n"
+        "    closed = close_lost_rides(START + timedelta(hours=24, minutes=1))\n"
+        "    assert closed == ['ride-1']\n"
+        "    still_open = close_lost_rides(START + timedelta(hours=24) - timedelta(minutes=1))\n"
+        "    assert still_open == []\n",
+    )
+    lookup = _lookup_for({"tests/test_lost.py": (tmp_path / "tests/test_lost.py").read_text()})
+    statement = extract(collect_python(tmp_path)[0], lookup).statement
+    assert statement == (
+        "After close lost rides, the closed is ['ride-1'] and the still open is []."
+    )
+    assert "fine" not in statement
+
+
+def test_statement_parametrised_case_states_its_values(tmp_path: Path):
+    """A parametrised case: each case states its own value, and the name's
+    points are never asserted."""
+    _write(
+        tmp_path / "tests" / "test_member.py",
+        "import pytest\n\n"
+        "@pytest.mark.parametrize('minutes', [10, 20])\n"
+        "def test_member_rides_free_and_earn_points(minutes):\n"
+        "    assert member_price(minutes) == 0\n",
+    )
+    test_source = (tmp_path / "tests" / "test_member.py").read_text()
+    lookup = _lookup_for({"tests/test_member.py": test_source})
+    statements = [extract(s, lookup).statement for s in collect_python(tmp_path)]
+    assert statements == [
+        "The member price is 0 for minutes 10.",
+        "The member price is 0 for minutes 20.",
+    ]
+
+
+def test_statement_states_the_flag_condition_its_assertions_depend_on(tmp_path: Path):
+    """The module's tests set `overflow_parking` both ways, so each
+    statement carries its own setting; `dynamic_pricing`, off in every
+    test, is background and is not stated."""
+    source = (
+        "def test_checkin_at_full_station_refused():\n"
+        "    station = full_station()\n"
+        "    status, body = checkin_endpoint(station, overflow_parking_enabled=False,"
+        " dynamic_pricing_enabled=False)\n"
+        "    assert status == 409\n\n"
+        "def test_checkin_at_full_station_allowed_with_overflow_parking():\n"
+        "    station = full_station()\n"
+        "    status, body = checkin_endpoint(station, overflow_parking_enabled=True,"
+        " dynamic_pricing_enabled=False)\n"
+        "    assert status == 200\n"
+    )
+    _write(tmp_path / "tests" / "test_checkin.py", source)
+    lookup = _lookup_for({"tests/test_checkin.py": source})
+    statements = {s.name: extract(s, lookup).statement for s in collect_python(tmp_path)}
+    assert statements == {
+        "test_checkin_at_full_station_refused": (
+            "Checkin at full station refused with overflow_parking off."
+        ),
+        "test_checkin_at_full_station_allowed_with_overflow_parking": (
+            "Checkin at full station allowed with overflow parking on."
+        ),
+    }
+
+
+def test_statement_states_the_calls_the_refused_one_depends_on(tmp_path: Path):
+    """A setup condition: two check-outs succeed (201), the third is refused
+    (409). The two earlier successes are what the refusal depends on,
+    counted and named by the argument that differs between the calls
+    (`bike_id`), so the statement says so."""
+    source = (
+        "from pkg.api import checkout_endpoint\n\n"
+        "def test_third_checkout_refused():\n"
+        "    first = checkout_endpoint(session, rider_id, 'bike-1')\n"
+        "    second = checkout_endpoint(session, rider_id, 'bike-2')\n"
+        "    third = checkout_endpoint(session, rider_id, 'bike-3')\n"
+        "    assert first[0] == 201\n"
+        "    assert second[0] == 201\n"
+        "    assert third == (409, {'error': 'checkout_limit_reached'})\n"
+    )
+    _write(tmp_path / "tests" / "test_checkout.py", source)
+    lookup = _lookup_for(
+        {
+            "tests/test_checkout.py": source,
+            "pkg/api.py": "def checkout_endpoint(session, rider_id, bike_id):\n    pass\n",
+        }
+    )
+    rule = extract(collect_python(tmp_path)[0], lookup)
+    assert rule.statement == "Third checkout refused with 2 bikes checked out."
+
+
+def test_claim_never_names_a_flag_for_a_value_constant(tmp_path: Path):
+    """A claim entity: `EBIKE_SURCHARGE` is a dollar value, but its name is
+    the flag the test's own call sets (`ebike_surcharge_enabled`), so a
+    claim on it would give the flag a value of $0.10. It gets no claim and
+    no fallback claim; the statement still states the value, and a constant
+    named for no flag keeps its claim."""
+    source = (
+        "from decimal import Decimal\n"
+        "from pkg.pricing import EBIKE_SURCHARGE, MEMBER_RATE, price_ride\n\n"
+        "def test_ebike_surcharge_when_flag_on():\n"
+        "    assert EBIKE_SURCHARGE == Decimal('0.10')\n"
+        "    with_flag = price_ride(10, True)\n"
+        "    without_flag = price_ride(10, False)\n"
+        "    assert with_flag - without_flag == 100\n\n"
+        "def test_member_rate():\n"
+        "    assert MEMBER_RATE == Decimal('0.15')\n"
+    )
+    pricing = (
+        'EBIKE_SURCHARGE = Decimal("0.10")\n'
+        'MEMBER_RATE = Decimal("0.15")\n\n'
+        "def price_ride(minutes, ebike_surcharge_enabled):\n    pass\n"
+    )
+    _write(tmp_path / "tests" / "test_pricing.py", source)
+    lookup = _lookup_for({"tests/test_pricing.py": source, "pkg/pricing.py": pricing})
+    rules = {s.name: extract(s, lookup) for s in collect_python(tmp_path)}
+    ebike = rules["test_ebike_surcharge_when_flag_on"]
+    assert ebike.claim is None
+    assert ebike.claims == ()
+    assert ebike.statement == "The ebike surcharge is $0.10 when flag on."
+    assert rules["test_member_rate"].claim["entity"] == "MEMBER_RATE"
 
 
 # ----------------------------------------------------------- extract_model

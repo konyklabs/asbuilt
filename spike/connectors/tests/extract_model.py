@@ -131,6 +131,11 @@ PROMPT_INSTRUCTIONS: tuple[str, ...] = (
     + ", ".join(PROMPT_ENTITY_KINDS)
     + ". Never a test fixture, a sample id or a helper function.",
     "Mention a status code or a response body only when the fact is about the response.",
+    "A passing test proves exactly what its assertions assert (D-013): never state a "
+    "behaviour no assertion checks, even when the test's name says it. For example, "
+    "`test_order_cancelled_after_30_minutes_unpaid` asserting only "
+    "`PAYMENT_WINDOW_MINUTES == 30` and a `PENDING` status proves a 30-minute payment "
+    "window, not that the order is cancelled.",
     "Never invent beyond what the test proves.",
 )
 

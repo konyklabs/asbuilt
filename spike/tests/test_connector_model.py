@@ -743,7 +743,9 @@ def test_extractor_dry_run_and_rules_carry_no_model_usage(
 def test_build_prompt_asks_for_the_rule_not_the_scenario():
     """asbuilt#18: the instructions name the rule, `detail`, the claim's
     quantity, the entity kinds and the response-only rule for status codes,
-    and still carry the test's own asserts and the rules guess."""
+    and still carry the test's own asserts and the rules guess; asbuilt#36
+    adds D-013's rule with an over-claiming test name as its negative
+    example."""
     skeleton = Skeleton(
         node_id="tests/x.py::test_lost_bike_fee_150",
         file="tests/x.py",
@@ -772,6 +774,10 @@ def test_build_prompt_asks_for_the_rule_not_the_scenario():
     assert f"of these kinds: {kinds}" in prompt
     assert "only when the fact is about the response" in prompt
     assert "Never invent beyond what the test proves." in prompt
+    # asbuilt#36: D-013's rule, with an over-claiming name as the negative example.
+    assert "proves exactly what its assertions assert (D-013)" in prompt
+    assert "even when the test's name says it" in prompt
+    assert "not that the order is cancelled" in prompt
     assert "assert fee == 15000" in prompt
     assert "Rules-extractor guess: 'Lost bike fee $150.00.'" in prompt
     assert SCHEMA["properties"]["detail"] == {"type": "string"}
