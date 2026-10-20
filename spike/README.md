@@ -264,9 +264,9 @@ uv sync
    across a surface's queries — micro-averaged — before computing ratios,
    and per-category breakdowns bucket by the *truth* fact's category only).
    The matcher itself is calibrated: `bench/score.py --calibrate` runs the
-   168 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
-   (1.0/1.0 in both readings; asbuilt#66 added 11 for bound directions and
-   17 of the 22 written for #63), and `--calibrate
+   166 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
+   (1.0/1.0 in both readings; asbuilt#66 added 13 for bound directions and
+   13 of the 22 written for #63), and `--calibrate
    tests/fixtures/calibration-model-run.yaml` the 91 pairs judged from the
    test connector's first real model run plus targeted pairs per rule
    (asbuilt#17, #35 and #63: precision 1.0, recall 0.56 strict and 0.62
@@ -295,13 +295,13 @@ uv sync
    Since asbuilt#66, where both statements state a duration bound on the
    same number and unit ("within 14 days", "more than 14 days"), the
    directions must agree, negated or not, so a flipped bound is refused
-   even when the claim agrees; and a word one statement negates that the
-   other states unnegated refuses the pair ("A ride is not closed as lost
-   within 24 hours." against F-010), where the negation veto used to ask
-   only whether each side was negated. Both only refuse; their known costs
-   are in the module docstring, and "not docked within 24 minutes" against
-   F-010's 24 hours stays a recorded false positive (units are not
-   compared).
+   even when the claim agrees. Negation scope is not read: the negation
+   veto asks only whether each side is negated, so one negation for
+   another ("A ride is not closed as lost within 24 hours." against F-010)
+   stays a recorded false positive, as does "not docked within 24 minutes"
+   against F-010's 24 hours (units are not compared); two designs that
+   read negation scope each refused correct statements. The bound rule's
+   known costs are in the module docstring.
 
    Explain and search print a line per provenance tier (asbuilt#34):
    `tier executed`, `tier code` and `tier documented`, each with precision

@@ -293,14 +293,17 @@ New in konyklabs/asbuilt#66 (found while building #63):
   not read) must be the same. "A refund
   requested within 14 days is rejected." no longer matches F-013. A
   duration with no direction word states no direction and never vetoes.
-* The negation veto also reads what each negation governs, as a refusal
-  only (`_negation_scope_conflict`): a word one statement negates that the
-  other states unnegated refuses the pair, so "A ride is not closed as lost
-  within 24 hours." no longer matches F-010 on one negation for another.
-  Of the 22 pairs written for #63, the 15 hard negatives now refused and
-  the 2 positives still credited joined the calibration set (168 pairs);
-  "not docked within 24 minutes" is a known false positive (units are not
-  compared), and the complement paraphrases stay refused.
+* Negation scope is not read: the plain negation veto still asks only
+  whether each side is negated, so one negation for another is credited
+  ("A ride is not closed as lost within 24 hours." against F-010). Two
+  designs that read what a negation governs, one-way and two-way, each
+  refused correct statements main credits ("A flag with no feature_flags
+  row is treated as off.", F-064), so neither landed (#66's lens round).
+  Of the 22 pairs written for #63, the hard negatives the bound rule or
+  main refuses and the 2 positives still credited are in the calibration
+  set; the three moved negations and "not docked within 24 minutes" (units
+  are not compared) are known false positives, and the five complement
+  paraphrases stay refused, all pinned in tests/test_score.py.
 """
 
 from __future__ import annotations
@@ -799,74 +802,6 @@ def _has_negation(text: str) -> bool:
     return bool(_NEGATION_RE.search(text))
 
 
-# konyklabs/asbuilt#66: the words that stand between a negation and the word
-# it negates without being negated themselves, by grammatical category:
-# articles, auxiliaries and modals ("does not", "will not be"), the
-# get-passive ("does not get docked") and adverbs ("not yet", "never even";
-# any word over five letters ending in -ly, "not automatically approved").
-_NEGATION_SKIP = frozenset(
-    "a an the be been being is are was were am do does did have has had get gets got "
-    "will would can could shall should may might must yet ever always even also just".split()
-)
-_NEGATION_WORDS = frozenset(("not", "never", "no", "cannot"))
-
-
-def _negated_words(text: str) -> Counter[str]:
-    """The word each negation in `text` governs: the first word after it
-    that is not in `_NEGATION_SKIP`, an -ly adverb or another negation,
-    spelled as `_words` spells it (lowercased, plural "s" dropped), with
-    how many negations govern it."""
-    governed: Counter[str] = Counter()
-    for m in _NEGATION_RE.finditer(text):
-        for word in _words(text[m.end() :]):
-            if (
-                word in _NEGATION_SKIP
-                or word in _NEGATION_WORDS
-                or (len(word) > 5 and word.endswith("ly"))
-            ):
-                continue
-            governed[word] += 1
-            break
-    return governed
-
-
-def _negation_scope_conflict(a: str, b: str) -> bool:
-    """konyklabs/asbuilt#66: True when a word one sentence negates appears
-    in the other sentence and is not negated there: the negation moved onto
-    a word the other side asserts. The plain veto (`_has_negation`) asks
-    only whether each side is negated, so against F-010 ("A ride whose bike
-    is not docked within 24 hours of check-out is closed as lost.") it
-    credited "A ride is not closed as lost within 24 hours." and "A ride
-    whose bike is docked within 24 hours of check-out is not closed as
-    lost.", one negation for another. This rule only refuses. It is weaker
-    than requiring both sides to negate the same words: "does not get
-    automatic approval" against "is not approved automatically" negates
-    different words and is a correct paraphrase (a calibration positive
-    since asbuilt#7), so a negated word the other side does not use at all
-    is no evidence. Nor is a word the negating sentence also states
-    unnegated: F-091's "the storm pause does not pause rebalancing" uses
-    "pause" as the rule's name and as the negated verb, so "storm-pause
-    stops trusting it" elsewhere shows no negation moved, and "outside
-    the refund policy, not a refund" does not move a negation onto
-    "refund" (a first draft refused a restated F-091 statement and an
-    F-028 match in the 2026-10-20 results files that way). Known cost,
-    credited before: determiner against verb negation of one claim ("No
-    refund is approved automatically ..." against "A refund is not
-    approved automatically ...": "no" governs "refund") is refused, and
-    so is a negation the reader does not know ("without the bike being
-    docked" states "docked" against "not docked"). Negation is read on the
-    words only; what it governs past the next word is not."""
-    for x, y in ((a, b), (b, a)):
-        negated_x, negated_y = _negated_words(x), _negated_words(y)
-        words_x, words_y = Counter(_words(x)), set(_words(y))
-        for word, count in negated_x.items():
-            if words_x[word] > count:
-                continue  # x states it unnegated too: no evidence either way
-            if word in words_y and not negated_y[word]:
-                return True
-    return False
-
-
 _MENTION_KINDS = {"team", "service", "integration", "queue", "job", "flag"}
 
 # konyklabs/asbuilt#7 review: a bare single-word team name/alias ("fleet")
@@ -1213,9 +1148,8 @@ def _statement_matches(
     claim, so it always takes the plain-statement path). A negation
     mismatch or an entity-mention conflict vetoes the match outright,
     before anything claim- or number-related is even considered; so, since
-    konyklabs/asbuilt#66, do a negation moved onto a word the other side
-    states (`_negation_scope_conflict`) and a duration bound stated in the
-    other direction (`_bound_direction_conflict`), unless
+    konyklabs/asbuilt#66, does a duration bound stated in the other
+    direction (`_bound_direction_conflict`), unless
     `direction_vetoes=False`. A refusal is a refusal only where a match
     credits: a caller that credits on a NON-match (the contradiction
     side's opposing guard, `_side_matches`) passes `direction_vetoes=False`,
@@ -1249,8 +1183,6 @@ def _statement_matches(
     minute. `strict=False` is the lenient reading, kept for the distinct
     executed precision's comparison line only."""
     if _has_negation(returned_statement) != _has_negation(truth_statement):
-        return False
-    if direction_vetoes and _negation_scope_conflict(returned_statement, truth_statement):
         return False
     if _flag_state_conflict(returned_statement, truth_statement, mention_index):
         return False
@@ -1764,9 +1696,9 @@ def _side_matches(
     bikes; the code's limit of 2 is a regression" states both sides and
     picks neither (lens round). That guard credits on a NON-match, so it
     uses the loosest matcher, `direction_vetoes=False` (konyklabs/asbuilt#66):
-    a check whose negative result credits must never gain a refusal, or a
-    new veto that refuses the opposing clause would turn "states both,
-    picks neither" into a credit (X-020's hedge, "times out after 5
+    a check whose negative result credits must never gain a refusal, or the
+    bound direction veto, refusing the opposing clause, would turn "states
+    both, picks neither" into a credit (X-020's hedge, "times out after 5
     seconds; ... waits up to 10 seconds before it times out", found by
     #66's lens round). It still runs the strict reading, `facts_match`'s
     default, as it has since #35."""

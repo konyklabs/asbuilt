@@ -566,18 +566,17 @@
   candidate: "A Tollbooth Pay call times out past 5 seconds."
   truth_claim: {entity: E-int-tollbooth-pay, attribute: timeout, value: 5, unit: second}
   expect: true
-# -- the plain negation veto's hole (konyklabs/asbuilt#66 item 3) ------------
+# -- the plain negation veto's hole (konyklabs/asbuilt#66) -----------------
 # The 22 pairs written for asbuilt#63 against F-010, F-060 and an invented fact,
-# labelled by meaning: 15 of the 16 hard negatives and the two positives
-# the scorer credits. Each hard negative the plain veto credited (one
-# negation for another) is refused by a bound direction (item 1) or by
-# the negation-scope rule: a word one statement negates appears in the
-# other and is not negated there. "not docked within 24 minutes" stays
-# credited (units are not compared), and the five complement paraphrases
-# the veto refuses ("Ride open past 24 hours closed as lost.", "A ride open
-# for 24 hours is closed as lost.") stay refused; both are pinned in
-# tests/test_score.py. Labels follow the rule above; the same labels hold
-# in both readings.
+# labelled by meaning: the 11 hard negatives the scorer refuses (7 by a bound
+# direction, 4 already by main) and the two positives it credits. Not here,
+# all pinned in tests/test_score.py: the five complement paraphrases, true
+# and refused ("Ride open past 24 hours closed as lost.", "A ride open for 24
+# hours is closed as lost."); and four hard negatives still credited, known
+# false positives: three that move F-010's negation onto another word
+# (negation scope is not read; #66 tried two rules and both refused correct
+# statements) and "not docked within 24 minutes" (units are not compared).
+# Labels follow the rule above; the same labels hold in both readings.
 - truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
   candidate: "A ride whose bike isn't docked within 24 hours is closed as lost."
   truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
@@ -611,21 +610,6 @@
   truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
   expect: false
   why: "the complement with the outcome negated"
-- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
-  candidate: "A ride is not closed as lost within 24 hours."
-  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
-  expect: false
-  why: "the bound moved onto the closing: it never says a ride is closed, so it does not state the fact"
-- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
-  candidate: "A ride whose bike is not docked within 24 hours is not closed as lost."
-  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
-  expect: false
-  why: "the outcome negated"
-- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
-  candidate: "A ride whose bike is docked within 24 hours of check-out is not closed as lost."
-  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
-  expect: false
-  why: "the inverse: what happens when the bike is docked, not that an undocked ride is closed"
 - truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
   candidate: "A ride whose bike is not docked past 24 hours is closed as lost."
   truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
