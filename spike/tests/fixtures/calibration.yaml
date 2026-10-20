@@ -503,9 +503,10 @@
 # the directions must agree, negated or not. Each hard negative keeps the
 # truth fact's words and flips only the direction word, and was credited
 # before the rule. The positives state the same direction in another word
-# from the same list, or a direction word outside it ("older than"), which
-# reads as no direction and never vetoes; "the past 7 days" is a window,
-# not a bound beyond it. The same labels hold in both readings.
+# from the same list ("past"), or a word outside the lists ("over", "older
+# than"), which reads as no direction and never vetoes; "the past 7 days"
+# and "over 10 minutes" are windows, not bounds beyond them. The same
+# labels hold in both readings.
 - truth: "A refund requested more than 14 days after the ride ended is rejected."
   candidate: "A refund requested within 14 days after the ride ended is rejected."
   truth_claim: {entity: E-rule-refund-window, attribute: window, value: 14, unit: day}
@@ -627,3 +628,13 @@
 - truth: "Each Tollbooth Pay call times out after 5 seconds."
   candidate: "Each Tollbooth Pay call does not time out within 5 seconds."
   expect: false
+# "over N" is a window, not a bound beyond N (#66's lens round): F-099's own
+# truth reads that way, and "over 7 days" restates F-020's "within 7 days".
+- truth: "A payment failure rate above 5% over 10 minutes pages the fares on-call engineer."
+  candidate: "A payment failure rate above 5% within 10 minutes pages the fares on-call engineer."
+  truth_claim: {entity: E-table-payments, attribute: failure_rate_alert, value: 5, unit: percent}
+  expect: true
+- truth: "A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket."
+  candidate: "A bike with 3 fault reports over 7 days is locked and gets a maintenance ticket."
+  truth_claim: {entity: E-rule-fault-threshold, attribute: fault_reports, value: 3, unit: count}
+  expect: true

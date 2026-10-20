@@ -289,7 +289,8 @@ New in konyklabs/asbuilt#66 (found while building #63):
   veto before the claim path): where both statements state a duration
   bound on the same number and unit, the directions they state there
   (inside: within, less than, under, up to, at most; beyond: past, after,
-  more than, over, beyond, longer than) must be the same. "A refund
+  more than, beyond, longer than; "over N" and "the past N" are windows,
+  not read) must be the same. "A refund
   requested within 14 days is rejected." no longer matches F-013. A
   duration with no direction word states no direction and never vetoes.
 * The negation veto also reads what each negation governs, as a refusal
@@ -655,13 +656,17 @@ def _outcome_conflict(a: str, b: str) -> bool:
 
 # konyklabs/asbuilt#66: a duration bound is a number and a time unit after a
 # direction word, inside (`within`, `less than`, `under`, `up to`, `at most`)
-# or beyond (`past`, `after`, `more than`, `over`, `beyond`, `longer than`):
-# the reader of #63's withdrawn design, on the raw words, with no negation
-# read into the direction. "the past 7 days" names a window, the last seven
-# days, not a bound beyond them, so `past` after "the" is not read.
+# or beyond (`past`, `after`, `more than`, `beyond`, `longer than`): the
+# reader of #63's withdrawn design, on the raw words, with no negation read
+# into the direction. "the past 7 days" names a window, the last seven days,
+# not a bound beyond them, so `past` after "the" is not read; "over" is not
+# read at all, because "over N" names a window in this fixture as often as a
+# bound beyond it (F-099's own truth, "above 5% over 10 minutes"; "3 fault
+# reports over 7 days" for F-020's "within 7 days"), found by #66's lens
+# round.
 _DURATION = r"(?P<n>\d+(?:\.\d+)?)\s+(?P<unit>second|minute|hour|day|week|month|year)s?\b"
 _INSIDE_WORDS = ("within", "less than", "under", "up to", "at most")
-_BEYOND_WORDS = ("past", "after", "more than", "over", "beyond", "longer than")
+_BEYOND_WORDS = ("past", "after", "more than", "beyond", "longer than")
 _BOUND_RE = re.compile(
     r"(?<!\bthe\s)\b(?P<dir>" + "|".join(_INSIDE_WORDS + _BEYOND_WORDS) + r")\s+" + _DURATION,
     re.IGNORECASE,

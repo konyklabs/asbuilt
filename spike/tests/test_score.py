@@ -3845,7 +3845,8 @@ def test_a_flipped_duration_bound_is_refused_negated_or_not():
     before the rule, so the polarity and negation rules alone let a wrong
     statement through. Refused in both readings, with the fact's own claim.
     The same direction in another word, and a duration with no direction
-    word ("older than"), are still credited."""
+    word ("older than"; "over" and "the past", read as windows since the
+    lens round), are still credited."""
     truth = load_truth(SPIKE_ROOT / "truth")
     mention_index = build_mention_index(truth)
 
