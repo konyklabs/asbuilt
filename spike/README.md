@@ -310,7 +310,7 @@ uv sync
    read negation scope each refused correct statements. The bound rule's
    known costs (an inside-phrased complement of a beyond fact, and a
    correct statement naming both sides of one boundary, each a hard false
-   positive; asbuilt#69) are in the module docstring.
+   positive; asbuilt#69) are in `_bound_direction_conflict`'s docstring.
 
    Explain and search print a line per provenance tier (asbuilt#34):
    `tier executed`, `tier code` and `tier documented`, each with precision
