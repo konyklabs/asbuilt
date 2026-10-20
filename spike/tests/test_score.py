@@ -3676,15 +3676,32 @@ def test_a_complement_bound_against_a_negated_bound_is_refused_as_the_vetos_know
     an unknown direction for it, credited "Every ride is closed as lost
     after 24 hours." This scorer keeps precision at 1.0 and reports
     recall; the two designs' 22 calibration pairs are asbuilt#66's
-    evidence."""
+    evidence. asbuilt#66 only refuses, so the four complement paraphrases
+    among them stay refused, here rather than in the calibration set, and
+    its bound rule now refuses them on their direction too ("past" against
+    the raw "within")."""
     truth = load_truth(SPIKE_ROOT / "truth")
     mention_index = build_mention_index(truth)
     f010 = truth.facts["F-010"]
-    complement = "Ride open past 24 hours closed as lost."
-    for strict in (True, False):
-        assert not _statement_matches(
-            complement, f010.statement, mention_index, None, f010.claim, strict
-        )
+    for complement in (
+        "Ride open past 24 hours closed as lost.",
+        "A ride whose bike is still undocked more than 24 hours after check-out is closed as lost.",
+    ):
+        for strict in (True, False):
+            assert not _statement_matches(
+                complement, f010.statement, mention_index, None, f010.claim, strict
+            )
+    invented = {
+        "A bike still out past 24 hours costs the rider a $100.00 lost-bike fee.": (
+            "A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee."
+        ),
+        "Each Tollbooth Pay call times out when it does not answer within 5 seconds.": (
+            "Each Tollbooth Pay call times out after 5 seconds."
+        ),
+    }
+    for candidate, statement in invented.items():
+        for strict in (True, False):
+            assert not _statement_matches(candidate, statement, mention_index, strict=strict)
 
 
 @pytest.mark.fixture
@@ -3855,3 +3872,83 @@ def test_a_flipped_duration_bound_is_refused_negated_or_not():
     assert not _bound_direction_conflict("open for 24 hours", "past 24 hours")
     assert not _bound_direction_conflict("within 24 minutes", "past 24 hours")
     assert not _bound_direction_conflict("in the past 7 days", "within 7 days")
+
+
+@pytest.mark.fixture
+def test_a_negation_moved_onto_a_word_the_truth_asserts_is_refused():
+    """Item 3: the plain veto asks only whether each side is negated, so it
+    credited one negation for another against F-010. A word one statement
+    negates that the other asserts unnegated refuses the pair, in both
+    readings ("closed" here; "docked" in the last). Statements negating the
+    same word, or words the other side does not use ("does not get
+    automatic approval" against "is not approved automatically", a
+    calibration positive), are still credited, and so is a negated word
+    its own sentence also states unnegated (F-091's "storm pause does not
+    pause"; an elliptical "never after"). The rule's known cost, credited
+    before: "No refund" against "A refund is not"."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f010 = truth.facts["F-010"]
+
+    def matches(candidate: str, statement: str, claim=None, strict: bool = True) -> bool:
+        return _statement_matches(candidate, statement, mention_index, None, claim, strict)
+
+    moved = (
+        "A ride is not closed as lost within 24 hours.",
+        "A ride whose bike is not docked within 24 hours is not closed as lost.",
+        "A ride whose bike is docked within 24 hours of check-out is not closed as lost.",
+    )
+    kept = (
+        "A ride whose bike isn't docked within 24 hours is closed as lost.",
+        "A ride is closed as lost when it is not docked within 24 hours.",
+    )
+    for strict in (True, False):
+        for candidate in moved:
+            assert not matches(candidate, f010.statement, f010.claim, strict), candidate
+        for candidate in kept:
+            assert matches(candidate, f010.statement, f010.claim, strict), candidate
+        assert matches(
+            "Unless the flag is on, a refund does not get automatic approval.",
+            "A refund is not approved automatically unless the flag is on.",
+            strict=strict,
+        )
+        assert not matches(
+            "No refund is approved automatically unless the flag is on.",
+            "A refund is not approved automatically unless the flag is on.",
+            strict=strict,
+        )
+        assert matches(
+            "The Tollbooth Pay client retries after a timeout or a 5xx response and never "
+            "retries after a 4xx response.",
+            "The Tollbooth Pay client retries only after a timeout or a 5xx response, never "
+            "after a 4xx response.",
+            strict=strict,
+        )
+        f091 = truth.facts["F-091"]
+        assert matches(
+            "When the latest Skyglass reading is more than 60 minutes old, the storm pause is "
+            "not applied to rebalancing.",
+            f091.statement,
+            f091.claim,
+            strict,
+        )
+
+
+@pytest.mark.fixture
+def test_a_bound_in_another_unit_is_credited_as_a_known_false_positive():
+    """The one hard negative of asbuilt#66's 22 that neither new rule
+    refuses: "A ride not docked within 24 minutes is closed as lost."
+    against F-010's 24 hours. Both negate "docked" and both bounds are
+    `within`; the bound rule compares directions on the same number AND
+    unit, and the statement path compares numbers, not their time units. A
+    unit rule is a separate change (#63's withdrawn reader had one), so the
+    pair is credited, a known false positive, and kept out of the
+    calibration set, which holds 1.0/1.0."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f010 = truth.facts["F-010"]
+    candidate = "A ride not docked within 24 minutes is closed as lost."
+    for strict in (True, False):
+        assert _statement_matches(
+            candidate, f010.statement, mention_index, None, f010.claim, strict
+        )
