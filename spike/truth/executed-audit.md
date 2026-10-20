@@ -14,6 +14,10 @@ Counts: a 15, b 2, c 11. `truth/validate.py` checks that
 this table covers every executed or demoted fact and that each (b) row's statement
 matches `facts.yaml`.
 
+asbuilt#37 adds the four rider-portal facts (F-121 to F-124), whose Playwright
+tests run at c7 against three backend fidelities; their rows are at the end, all
+(a), so the counts are now a 19, b 2, c 11 over 32 facts.
+
 | Fact | Test | Verdict | Asserts now | Narrowed statement, or assertion to add | Steps |
 |---|---|---|---|---|---|
 | F-001 | `tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free` | c | a member's 20-minute ride costs 0 cents | add: a member ride of exactly 30 minutes costs 0 cents and a 31-minute member ride costs 15 cents | c1 (history/c1 overlay) |
@@ -44,3 +48,7 @@ matches `facts.yaml`.
 | F-051 | `tests/e2e/test_checkin.py::test_checkin_full_station_returns_409` | a | the 409 body is exactly {error: station_full} | - | - |
 | F-052 | `tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio` | a | the status body is exactly station_id, available_bikes 3, empty_docks 1, fill_ratio 0.75 | - | - |
 | F-053 | `rideEvents > counts ride.completed toward the return station's demand` | a | two ride.completed events for station-9 give it a demand of 2 | - | - |
+| F-121 | `refund request › refuses a ride that ended 15 days ago` | a | a ride ended 15 days before now gets the page's refund-window-closed message, in all three projects | - | c7: mocked, fake, real |
+| F-122 | `check-out › shows a banner when the rider is at the bike limit` | a | a check-out answered 409 checkout_limit_reached shows the limit banner as an alert | - | c7: mocked only (skipped at fake and real) |
+| F-123 | `fare preview › shows the price-sheet cap for a 200-minute casual ride` | a | a 200-minute casual preview shows $25.00 | none; fails at real by plan (truth/planted-runs.yaml P-6), so the fact is demoted | c7: mocked, fake pass; real fails |
+| F-124 | `fare preview › shows the farebox cap for a 200-minute casual ride` | a | a 200-minute casual preview shows $30.00 | - | c7: real passes; mocked, fake fail |

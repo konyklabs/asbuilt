@@ -2,8 +2,10 @@
 # Entities are named, never given as E- ids: explain and contradictions pass an
 # entity's `name` from truth/entities.yaml, or, for q-explain-alias-*, one of its
 # aliases; the scorer resolves both through truth/aliases.yaml, which arms never read.
-# 25 explain (20 by name, 5 by alias), 17 search and 13 ask (5 of them, q-impact-*,
-# are multi-hop impact questions), 4 contradictions, 3 stale; weights are percentages.
+# 29 explain (24 by name, 5 by alias), 17 search and 13 ask (5 of them, q-impact-*,
+# are multi-hop impact questions), 5 contradictions, 3 stale; weights are percentages.
+# The rider portal's five queries (asbuilt#37) come last; their facts are valid from
+# c7, so a run through c6 expects nothing of them (bench/score.py, asbuilt#34).
 # explain: expected = every fact tagged with the resolved entity (bench/score.py).
 # contradictions: expected = every X- whose facts carry the entity (every X- when null).
 # stale: expected = every S- whose changed_by step is dated after `since`.
@@ -242,3 +244,18 @@ queries:
 - id: q-stale-03
   surface: stale
   since: '2026-08-01T00:00:00-04:00'
+- id: q-explain-21
+  surface: explain
+  entity: rider-portal
+- id: q-explain-22
+  surface: explain
+  entity: fare-preview page
+- id: q-explain-23
+  surface: explain
+  entity: check-out page
+- id: q-explain-24
+  surface: explain
+  entity: refund-request page
+- id: q-contradictions-05
+  surface: contradictions
+  entity: fare-preview page

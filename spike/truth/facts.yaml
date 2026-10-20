@@ -4,11 +4,15 @@
 # Documented facts without valid_from/valid_to that lose a contradiction never
 # held; they exist because a source states them. demoted_by names the failing
 # run that demoted a once-executed statement (D-013; truth/planted-runs.yaml).
+# fidelity, on an executed fact only, is the strongest backend fidelity at which
+# a cited run passes (truth/fidelities.yaml); a Playwright run carrier names its
+# project, which fixes that run's fidelity.
 - id: F-001
   statement: A member's first 30 minutes of every ride are free.
   category: business-logic
   entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
+  fidelity: in-process
   valid_to: c2
   claim:
     entity: E-rule-member-free-minutes
@@ -29,6 +33,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
+  fidelity: in-process
   valid_from: c2
   valid_to: c4
   claim:
@@ -56,6 +61,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
+  fidelity: in-process
   valid_from: c4
   claim:
     entity: E-rule-member-free-minutes
@@ -75,6 +81,8 @@
     location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
   - document: run/pytest-c6
     location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - document: run/pytest-c7
+    location: tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
   - document: wiki/spring-promotion
     location: '#free-minutes'
     version: 2
@@ -87,6 +95,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-casual-unlock-fee, E-table-riders]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-casual-unlock-fee
     attribute: unlock_fee
@@ -111,6 +120,8 @@
     location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
   - document: run/pytest-c6
     location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - document: run/pytest-c7
+    location: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
   - document: wiki/casual-pricing
     location: '#unlock'
     version: 4
@@ -119,6 +130,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-per-minute-rate, E-rule-member-free-minutes, E-table-memberships]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-per-minute-rate
     attribute: member_rate_per_minute
@@ -143,6 +155,8 @@
     location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - document: run/pytest-c6
     location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - document: run/pytest-c7
+    location: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   - document: wiki/member-pricing
     location: '#per-minute'
     version: 3
@@ -154,6 +168,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-per-minute-rate]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-per-minute-rate
     attribute: casual_rate_per_minute
@@ -178,6 +193,8 @@
     location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
   - document: run/pytest-c6
     location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - document: run/pytest-c7
+    location: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
   - document: wiki/casual-pricing
     location: '#per-minute'
     version: 4
@@ -189,6 +206,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-ebike-surcharge, E-flag-ebike-surcharge, E-table-bikes]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-ebike-surcharge
     attribute: surcharge_per_minute
@@ -204,6 +222,8 @@
   - document: run/pytest-c5
     location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
   - document: run/pytest-c6
+    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - document: run/pytest-c7
     location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
   - document: wiki/ebike-surcharge
     location: '#rule'
@@ -221,6 +241,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-single-ride-cap]
   tier: executed
+  fidelity: in-process
   valid_to: c5
   claim:
     entity: E-rule-single-ride-cap
@@ -247,6 +268,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-single-ride-cap]
   tier: executed
+  fidelity: in-process
   valid_from: c5
   claim:
     entity: E-rule-single-ride-cap
@@ -264,6 +286,8 @@
     location: tests/unit/test_pricing.py::test_single_ride_cap_30
   - document: run/pytest-c6
     location: tests/unit/test_pricing.py::test_single_ride_cap_30
+  - document: run/pytest-c7
+    location: tests/unit/test_pricing.py::test_single_ride_cap_30
   - document: wiki/casual-pricing
     location: '#cap'
     version: 4
@@ -276,6 +300,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-lost-bike-fee, E-table-rides]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-lost-bike-fee
     attribute: lost_after
@@ -299,6 +324,8 @@
   - document: run/pytest-c5
     location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
   - document: run/pytest-c6
+    location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - document: run/pytest-c7
     location: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
   - document: wiki/lost-and-stolen-bikes
     location: '#detection'
@@ -337,6 +364,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-lost-bike-fee, E-table-invoice-lines]
   tier: executed
+  fidelity: in-process
   valid_from: c5
   claim:
     entity: E-rule-lost-bike-fee
@@ -352,6 +380,8 @@
     version: c6
   - document: run/pytest-c6
     location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  - document: run/pytest-c7
+    location: tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
   - document: pull/14
     location: body
   - document: ticket/GW-163
@@ -361,6 +391,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-refund-window, E-endpoint-refund, E-table-refunds]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-refund-window
     attribute: window
@@ -385,6 +416,8 @@
     location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
   - document: run/pytest-c6
     location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - document: run/pytest-c7
+    location: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
   - document: wiki/refunds-process
     location: '#window'
     version: 3
@@ -396,6 +429,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-refund-auto-approve, E-flag-refund-auto-approve, E-table-refunds]
   tier: executed
+  fidelity: in-process
   valid_from: c6
   claim:
     entity: E-rule-refund-auto-approve
@@ -410,6 +444,8 @@
     location: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
     version: c6
   - document: run/pytest-c6
+    location: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
+  - document: run/pytest-c7
     location: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
   - document: pull/19
     location: body
@@ -426,6 +462,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
   tier: executed
+  fidelity: in-process
   valid_to: c3
   claim:
     entity: E-rule-membership-grace
@@ -448,6 +485,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-membership-grace, E-table-memberships]
   tier: executed
+  fidelity: in-process
   valid_from: c3
   claim:
     entity: E-rule-membership-grace
@@ -469,6 +507,8 @@
     location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
   - document: run/pytest-c6
     location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - document: run/pytest-c7
+    location: tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
   - document: pull/11
     location: body
   - document: wiki/membership-lifecycle
@@ -489,6 +529,7 @@
   - E-endpoint-checkin
   - E-table-stations
   tier: executed
+  fidelity: in-process
   carriers:
   - document: code/dockyard/services/capacity.py
     location: can_accept_bike
@@ -507,6 +548,8 @@
   - document: run/pytest-c5
     location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
   - document: run/pytest-c6
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - document: run/pytest-c7
     location: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
   - document: wiki/station-capacity
     location: '#full-station'
@@ -519,6 +562,7 @@
   category: business-logic
   entities: [E-dockyard, E-rule-station-capacity, E-flag-overflow-parking, E-endpoint-checkin]
   tier: executed
+  fidelity: in-process
   carriers:
   - document: code/dockyard/services/capacity.py
     location: can_accept_bike
@@ -538,6 +582,8 @@
     location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - document: run/pytest-c6
     location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - document: run/pytest-c7
+    location: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   - document: wiki/station-capacity
     location: '#overflow'
     version: 3
@@ -548,6 +594,7 @@
   category: business-logic
   entities: [E-dockyard, E-rule-checkout-limit, E-endpoint-checkout, E-table-rides]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-checkout-limit
     attribute: max_bikes
@@ -572,6 +619,8 @@
     location: tests/e2e/test_checkout.py::test_third_checkout_refused
   - document: run/pytest-c6
     location: tests/e2e/test_checkout.py::test_third_checkout_refused
+  - document: run/pytest-c7
+    location: tests/e2e/test_checkout.py::test_third_checkout_refused
   - document: doc/dockyard-design
     location: '#checkout'
     version: 7Hc2Xr31
@@ -587,6 +636,7 @@
   - E-table-maintenance-tickets
   - E-table-bikes
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-fault-threshold
     attribute: fault_reports
@@ -611,6 +661,8 @@
     location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - document: run/vitest-c6
     location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - document: run/vitest-c7
+    location: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   - document: wiki/runbook-maintenance-sweep
     location: '#threshold'
     version: 2
@@ -619,6 +671,7 @@
   category: business-logic
   entities: [E-dispatch, E-rule-rebalance-trigger, E-job-nightly-rebalance, E-table-rebalance-orders]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-rebalance-trigger
     attribute: low_fill
@@ -643,6 +696,8 @@
     location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
   - document: run/vitest-c6
     location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - document: run/vitest-c7
+    location: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
   - document: doc/dispatch-design
     location: '#rebalance'
     version: 3Tz9Kr18
@@ -651,6 +706,7 @@
   category: business-logic
   entities: [E-dispatch, E-rule-storm-pause, E-job-nightly-rebalance, E-int-skyglass, E-table-weather-readings]
   tier: executed
+  fidelity: in-process
   valid_from: c6
   claim:
     entity: E-rule-storm-pause
@@ -669,6 +725,8 @@
     version: c6
   - document: run/vitest-c6
     location: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+  - document: run/vitest-c7
+    location: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
   - document: pull/19
     location: body
   - document: wiki/storm-pause
@@ -684,6 +742,7 @@
   category: business-logic
   entities: [E-farebox, E-rule-payment-retry, E-int-tollbooth-pay, E-table-payments]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-rule-payment-retry
     attribute: retries
@@ -707,6 +766,8 @@
   - document: run/pytest-c5
     location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
   - document: run/pytest-c6
+    location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  - document: run/pytest-c7
     location: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
   - document: wiki/tollbooth-pay
     location: '#retries'
@@ -1084,6 +1145,7 @@
   category: technical-implementation
   entities: [E-farebox, E-flag-dynamic-pricing, E-table-feature-flags]
   tier: executed
+  fidelity: in-process
   carriers:
   - document: code/farebox/flags.py
     location: FLAGS
@@ -1103,6 +1165,8 @@
     location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
   - document: run/pytest-c6
     location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - document: run/pytest-c7
+    location: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
   - document: wiki/dynamic-pricing
     location: '#status'
     version: 2
@@ -1111,6 +1175,7 @@
   category: technical-implementation
   entities: [E-farebox, E-queue-ride-events, E-table-rides]
   tier: executed
+  fidelity: in-process
   carriers:
   - document: code/farebox/services/rides.py
     location: close_ride
@@ -1136,6 +1201,7 @@
   category: technical-implementation
   entities: [E-dockyard, E-endpoint-checkin, E-rule-station-capacity]
   tier: executed
+  fidelity: in-process
   claim:
     entity: E-endpoint-checkin
     attribute: station_full_status
@@ -1160,6 +1226,8 @@
     location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
   - document: run/pytest-c6
     location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - document: run/pytest-c7
+    location: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
   - document: wiki/dockyard-api
     location: '#checkin'
     version: 5
@@ -1171,6 +1239,7 @@
   category: technical-implementation
   entities: [E-dockyard, E-endpoint-station-status, E-table-stations, E-table-docks]
   tier: executed
+  fidelity: in-process
   carriers:
   - document: code/dockyard/services/station_status.py
     location: station_status
@@ -1190,6 +1259,8 @@
     location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
   - document: run/pytest-c6
     location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - document: run/pytest-c7
+    location: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
   - document: wiki/dockyard-api
     location: '#station-status'
     version: 5
@@ -1198,6 +1269,7 @@
   category: technical-implementation
   entities: [E-dispatch, E-queue-ride-events]
   tier: executed
+  fidelity: in-process
   carriers:
   - document: code/dispatch/src/consumers/rideEvents.ts
     location: onRideEvent
@@ -1216,6 +1288,8 @@
   - document: run/vitest-c5
     location: rideEvents > counts ride.completed toward the return station's demand
   - document: run/vitest-c6
+    location: rideEvents > counts ride.completed toward the return station's demand
+  - document: run/vitest-c7
     location: rideEvents > counts ride.completed toward the return station's demand
   - document: wiki/ride-events
     location: '#consumers'
@@ -2202,3 +2276,111 @@
   - document: wiki/glossary
     location: '#dock'
     version: 8
+- id: F-121
+  statement: The refund request page rejects a ride that ended 15 days earlier as past the refund window.
+  category: business-logic
+  entities: [E-web-rider-portal, E-page-refund-request, E-rule-refund-window]
+  tier: executed
+  fidelity: real
+  valid_from: c7
+  claim:
+    entity: E-page-refund-request
+    attribute: refused_ride_age
+    value: 15
+    unit: day
+  carriers:
+  - document: code/web/public/portal.js
+    location: REFUND_REFUSALS
+    version: c7
+  - document: code/farebox/services/refunds.py
+    location: REFUND_WINDOW_DAYS
+    version: c7
+  - document: code/web/tests/refund-request.spec.ts
+    location: refund request › refuses a ride that ended 15 days ago
+    version: c7
+  - document: run/playwright-c7
+    project: mocked
+    location: refund request › refuses a ride that ended 15 days ago
+  - document: run/playwright-c7
+    project: fake
+    location: refund request › refuses a ride that ended 15 days ago
+  - document: run/playwright-c7
+    project: real
+    location: refund request › refuses a ride that ended 15 days ago
+- id: F-122
+  statement: The check-out page shows a limit banner when check-out is refused with checkout_limit_reached.
+  category: technical-implementation
+  entities: [E-web-rider-portal, E-page-check-out, E-rule-checkout-limit]
+  tier: executed
+  fidelity: mocked
+  valid_from: c7
+  carriers:
+  - document: code/web/public/portal.js
+    location: CHECKOUT_REFUSALS
+    version: c7
+  - document: code/web/tests/check-out.spec.ts
+    location: check-out › shows a banner when the rider is at the bike limit
+    version: c7
+  - document: run/playwright-c7
+    project: mocked
+    location: check-out › shows a banner when the rider is at the bike limit
+- id: F-123
+  statement: The fare preview page caps a 200-minute casual ride at $25.00.
+  category: business-logic
+  entities: [E-web-rider-portal, E-page-fare-preview, E-rule-single-ride-cap]
+  tier: code
+  valid_from: c7
+  demoted_by:
+    document: run/playwright-c7
+    project: real
+    location: fare preview › shows the price-sheet cap for a 200-minute casual ride
+  claim:
+    entity: E-page-fare-preview
+    attribute: single_ride_cap
+    value: 25.0
+    unit: usd
+  carriers:
+  - document: code/web/fake_farebox.py
+    location: SINGLE_RIDE_CAP_CENTS
+    version: c7
+  - document: code/web/tests/fare-preview.spec.ts
+    location: fare preview › shows the price-sheet cap for a 200-minute casual ride
+    version: c7
+  - document: run/playwright-c7
+    project: mocked
+    location: fare preview › shows the price-sheet cap for a 200-minute casual ride
+  - document: run/playwright-c7
+    project: fake
+    location: fare preview › shows the price-sheet cap for a 200-minute casual ride
+- id: F-124
+  statement: The fare preview page caps a 200-minute casual ride at $30.00.
+  category: business-logic
+  entities: [E-web-rider-portal, E-page-fare-preview, E-rule-single-ride-cap]
+  tier: executed
+  fidelity: real
+  valid_from: c7
+  claim:
+    entity: E-page-fare-preview
+    attribute: single_ride_cap
+    value: 30.0
+    unit: usd
+  carriers:
+  - document: code/farebox/pricing.py
+    location: SINGLE_RIDE_CAP
+    version: c7
+  - document: code/web/tests/fare-preview.spec.ts
+    location: fare preview › shows the farebox cap for a 200-minute casual ride
+    version: c7
+  - document: run/playwright-c7
+    project: real
+    location: fare preview › shows the farebox cap for a 200-minute casual ride
+- id: F-125
+  statement: The rider portal's real backend calls checkout_endpoint, price_ride and create_refund_endpoint directly.
+  category: technical-implementation
+  entities: [E-web-rider-portal, E-dockyard, E-farebox]
+  tier: code
+  valid_from: c7
+  carriers:
+  - document: code/web/serve.py
+    location: route_api
+    version: c7

@@ -18,8 +18,11 @@ own conftest can record it (and the commit) itself via pytest's
 conftest already populated it. Vitest has no equivalent hook, so its JSON
 gets the same treatment unconditionally. Either report's top-level ``root``
 (pytest-json-report writes an absolute path under the authoring machine's
-home; vitest reports have no such key) is rewritten to ``"."``, so the
-evidence file carries no local path.
+home; vitest reports have no such key) is rewritten to ``"."``, and, since
+asbuilt#37, every other occurrence of the built repository's absolute path in
+any string of any report (pytest's crash ``path`` and ``longrepr``, Vitest's
+``testResults[].name``) becomes ``"."`` too, so the evidence file carries no
+local path. The c1 to c6 reports were written before that and keep theirs.
 
 Planted-outcome tolerance and reruns (D-013 #7; ``truth/planted-runs.yaml``'s
 own ``runner`` section is the contract this follows): every step's pytest
@@ -90,6 +93,29 @@ environment path" warning on every step, so ``_step_env`` drops it. The
 pytest ``uv run`` also gets ``--quiet``, so a step's output is just the
 pytest/vitest summary, not uv's own venv-creation and resolution chatter.
 
+Playwright (asbuilt#37): if ``web/playwright.config.ts`` exists at a step,
+``npm ci --silent`` in ``web/`` (once per run of this script) and then ``npx
+playwright test --reporter=list,json,junit`` there, once: the config's three
+projects (``mocked``, ``fake``, ``real``) each start their own backend through
+``webServer``, with ``retries: 0``, and nothing is rerun, since a planted
+Playwright failure is a fidelity outcome, not a flaky one. The subprocess gets
+``GEARWELL_COMMIT=<sha>`` (the config's ``metadata.commit`` and every
+project's ``metadata.backend``), ``GEARWELL_PYTHON`` (this interpreter, for
+``web/serve.py``) and ``FORCE_COLOR=0``; the JSON and JUnit reports are
+written under bare filenames in ``web/`` (the report-path guard below) and
+moved to ``runs/playwright-<step>.json`` and ``runs/playwright-<step>.xml``.
+Both are scrubbed of local paths like every report (below), and an absolute
+path in ``config.argv`` (the node binary) becomes its file name; what that
+reaches in a Playwright report is the config's ``rootDir`` and
+``configFile``, each project's ``testDir``/``outputDir``/``snapshotDir``, an
+attachment's ``path`` and a failure's message and stack. The JSON then gets
+the same top-level ``metadata: {commit, step}`` the other reports carry. Its
+outcomes are checked per project against
+``planted-runs.yaml``'s entries with ``runner: playwright``, whose
+``outcomes`` map a step to ``{project: outcome}``: exactly those are
+expected, a planted outcome the run did not report is unexpected, and any
+other test that neither passed nor was skipped is unexpected.
+
 CLI: ``uv run python bench/runs.py [--fixture .] [--out build] [--steps c1,c2]``.
 Exits non-zero only on an unexpected failure (see above). ``--fixture``/
 ``--out`` are additions for testability and default so the documented
@@ -103,9 +129,17 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
-import yaml
+SPIKE_ROOT = Path(__file__).resolve().parent.parent
+if str(SPIKE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SPIKE_ROOT))
+
+import yaml  # noqa: E402
+
+from bench.truth import playwright_outcomes  # noqa: E402
 
 
 class RunsError(RuntimeError):
@@ -133,7 +167,7 @@ def _planted_entry(planted: dict | None, test_id: str) -> dict | None:
     if not planted:
         return None
     for entry in planted.get("planted", []):
-        if entry.get("test") == test_id:
+        if entry.get("test") == test_id and entry.get("runner") != "playwright":
             return entry
     return None
 
@@ -197,6 +231,76 @@ def _unexpected_vitest_outcomes(
             if outcome == "failed":
                 unexpected.append(full_name)
     return unexpected
+
+
+def _unexpected_playwright_outcomes(
+    report_path: Path, step_id: str, planted: dict | None
+) -> list[str]:
+    if not report_path.is_file():
+        return ["<no report written>"]
+    data = json.loads(report_path.read_text())
+    unexpected = [
+        f"<playwright error: {error.get('message', '').splitlines()[0][:120]}>"
+        for error in data.get("errors", [])
+    ]
+    expected: dict[tuple[str, str], str] = {}
+    for entry in (planted or {}).get("planted", []):
+        if entry.get("runner") == "playwright":
+            for project, outcome in (entry.get("outcomes") or {}).get(step_id, {}).items():
+                expected[(entry.get("test"), project)] = outcome
+    reported: set[tuple[str, str]] = set()
+    for project, title_path, status in playwright_outcomes(data):
+        key = (title_path, project)
+        reported.add(key)
+        want = expected.get(key)
+        if want is not None:
+            if status != want:
+                unexpected.append(f"[{project}] {title_path} (expected {want!r}, got {status!r})")
+        elif status not in ("passed", "skipped"):
+            unexpected.append(f"[{project}] {title_path} ({status})")
+    for title_path, project in sorted(expected.keys() - reported):
+        unexpected.append(f"[{project}] {title_path} (expected {expected[title_path, project]!r})")
+    return unexpected
+
+
+def _scrub(value: Any, prefixes: list[str]) -> Any:
+    if isinstance(value, str):
+        for prefix in prefixes:
+            value = value.replace(prefix, ".")
+        return value
+    if isinstance(value, list):
+        return [_scrub(v, prefixes) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub(v, prefixes) for k, v in value.items()}
+    return value
+
+
+def _local_prefixes(repo: Path) -> list[str]:
+    """The repository's absolute path as the reports may spell it (macOS
+    gives /private/var for /var), longest first."""
+    return sorted({str(repo), str(repo.resolve())}, key=len, reverse=True)
+
+
+def _scrub_json_report(report_path: Path, repo: Path) -> None:
+    """Every occurrence of the repository's absolute path, in any string of
+    the report, becomes "."; an absolute path in a Playwright report's
+    `config.argv` (the node binary) becomes its file name."""
+    if not report_path.is_file():
+        return
+    data = _scrub(json.loads(report_path.read_text()), _local_prefixes(repo))
+    config = data.get("config") if isinstance(data.get("config"), dict) else {}
+    if isinstance(config.get("argv"), list):
+        config["argv"] = [Path(a).name if Path(a).is_absolute() else a for a in config["argv"]]
+    report_path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _scrub_xml_report(report_path: Path, repo: Path) -> None:
+    if not report_path.is_file():
+        return
+    text = report_path.read_text()
+    for prefix in _local_prefixes(repo):
+        text = text.replace(prefix, ".")
+    report_path.write_text(text)
 
 
 def _inject_metadata(report_path: Path, sha: str, step_id: str) -> None:
@@ -292,6 +396,7 @@ def _run_pytest(repo: Path, runs_dir: Path, step_id: str, sha: str, planted: dic
     temp_report = _run_pytest_once(repo, step_id, attempt=1)
     report_path = runs_dir / f"pytest-{step_id}.json"
     _collect_report(temp_report, report_path)
+    _scrub_json_report(report_path, repo)
     _inject_metadata(report_path, sha, step_id)
     unexpected = _unexpected_pytest_outcomes(report_path, step_id, planted, attempt=1)
 
@@ -306,6 +411,7 @@ def _run_pytest(repo: Path, runs_dir: Path, step_id: str, sha: str, planted: dic
         temp_rerun = _run_pytest_once(repo, step_id, attempt=2, nodeids=failed_nodeids)
         rerun_path = runs_dir / f"pytest-{step_id}-rerun.json"
         _collect_report(temp_rerun, rerun_path)
+        _scrub_json_report(rerun_path, repo)
         _inject_metadata(rerun_path, sha, step_id)
         unexpected += _unexpected_pytest_outcomes(rerun_path, step_id, planted, attempt=2)
 
@@ -351,6 +457,7 @@ def _run_vitest(
     temp_report = _run_vitest_once(dispatch_dir, step_id, attempt=1)
     report_path = runs_dir / f"vitest-{step_id}.json"
     _collect_report(temp_report, report_path)
+    _scrub_json_report(report_path, repo)
     # Vitest has no metadata hook of its own; always fill it in ourselves.
     _inject_metadata(report_path, sha, step_id)
     unexpected = _unexpected_vitest_outcomes(report_path, step_id, planted, attempt=1)
@@ -367,6 +474,7 @@ def _run_vitest(
         temp_rerun = _run_vitest_once(dispatch_dir, step_id, attempt=2)
         rerun_path = runs_dir / f"vitest-{step_id}-rerun.json"
         _collect_report(temp_rerun, rerun_path)
+        _scrub_json_report(rerun_path, repo)
         _inject_metadata(rerun_path, sha, step_id)
         unexpected += _unexpected_vitest_outcomes(rerun_path, step_id, planted, attempt=2)
 
@@ -374,6 +482,60 @@ def _run_vitest(
         print(f"[{step_id}] vitest: unexpected failure(s): {sorted(set(unexpected))}")
         return False
     print(f"[{step_id}] vitest: no unexpected failures")
+    return True
+
+
+def _run_playwright(
+    repo: Path,
+    runs_dir: Path,
+    step_id: str,
+    sha: str,
+    npm_installed: set[Path],
+    planted: dict | None,
+) -> bool:
+    web_dir = repo / "web"
+    if not (web_dir / "playwright.config.ts").is_file():
+        return True
+
+    if web_dir not in npm_installed:
+        install = subprocess.run(["npm", "ci", "--silent"], cwd=web_dir)
+        if install.returncode != 0:
+            print(f"[{step_id}] npm ci in web/ failed (exit {install.returncode})")
+            return False
+        npm_installed.add(web_dir)
+
+    temp_json = web_dir / f".bench-runs-report-playwright-{step_id}.json"
+    temp_xml = web_dir / f".bench-runs-report-playwright-{step_id}.xml"
+    for temp in (temp_json, temp_xml):
+        temp.unlink(missing_ok=True)
+    env = _step_env(step_id)
+    env.update(
+        {
+            "GEARWELL_COMMIT": sha,
+            "GEARWELL_PYTHON": sys.executable,
+            "PLAYWRIGHT_JSON_OUTPUT_NAME": temp_json.name,
+            "PLAYWRIGHT_JUNIT_OUTPUT_NAME": temp_xml.name,
+            "FORCE_COLOR": "0",
+        }
+    )
+    subprocess.run(
+        ["npx", "playwright", "test", "--reporter=list,json,junit"], cwd=web_dir, env=env
+    )
+    json_path = runs_dir / f"playwright-{step_id}.json"
+    xml_path = runs_dir / f"playwright-{step_id}.xml"
+    _collect_report(temp_json, json_path)
+    _collect_report(temp_xml, xml_path)
+    _scrub_json_report(json_path, repo)
+    _scrub_xml_report(xml_path, repo)
+    _inject_metadata(json_path, sha, step_id)
+
+    unexpected = _unexpected_playwright_outcomes(json_path, step_id, planted)
+    if not xml_path.is_file():
+        unexpected.append("<no JUnit report written>")
+    if unexpected:
+        print(f"[{step_id}] playwright: unexpected outcome(s): {sorted(set(unexpected))}")
+        return False
+    print(f"[{step_id}] playwright: no unexpected outcomes")
     return True
 
 
@@ -400,6 +562,8 @@ def run_all(fixture_root: Path, out_root: Path, steps: list[str] | None = None) 
         if not _run_pytest(repo, runs_dir, step_id, sha, planted):
             ok = False
         if not _run_vitest(repo, runs_dir, step_id, sha, npm_installed, planted):
+            ok = False
+        if not _run_playwright(repo, runs_dir, step_id, sha, npm_installed, planted):
             ok = False
 
     return ok

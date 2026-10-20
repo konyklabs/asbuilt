@@ -26,7 +26,9 @@ carrier's ``location`` is checked against it:
                      containing " > " (describe(s) > it) checks each name as
                      a literal quoted `describe(...)`/`it(...)` call argument
                      (any of ' " `, not a word boundary — a bare mention
-                     isn't a call); a dotted symbol (e.g.
+                     isn't a call); a Playwright title path containing " › "
+                     (describe(s) › test) checks the same way, with `test(`
+                     for the last name; a dotted symbol (e.g.
                      `FareboxClient.close_ride`) checks the class name and
                      the last segment each as a whole word; anything else
                      checks the whole `location` as a whole word.
@@ -37,7 +39,18 @@ carrier's ``location`` is checked against it:
                      assertionResult's `ancestorTitles + [title]` joined with
                      " > ", with `status == "passed"` (the join is
                      reconstructed rather than trusting a raw `fullName`
-                     field, whose own separator isn't guaranteed).
+                     field, whose own separator isn't guaranteed); for a
+                     Playwright JSON report (has `suites` and `config`), the
+                     carrier names its `project`, and `location` must equal
+                     a spec's title path below its file suite, joined with
+                     " › " (the JUnit reporter's testcase name), whose test
+                     in that project last reported `passed`.
+
+Fidelity (D-014, asbuilt#37): ``truth/fidelities.yaml`` ranks the backend
+fidelities, names the system's real backend and gives every run document's
+fidelity, by framework and, for Playwright, by project
+(``Fidelities.of_carrier``). An executed fact's own ``fidelity`` is the
+strongest of its run carriers'.
 """
 
 from __future__ import annotations
@@ -56,6 +69,10 @@ FACTS_FILE = "facts.yaml"
 CONTRADICTIONS_FILE = "contradictions.yaml"
 STALE_FILE = "stale.yaml"
 ALIASES_FILE = "aliases.yaml"
+FIDELITIES_FILE = "fidelities.yaml"
+
+_RUN_DOCUMENT_RE = re.compile(r"run/([a-z]+)-(c\d+)(-rerun)?")
+_PLAYWRIGHT_SEPARATOR = " › "
 
 _HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 
@@ -74,6 +91,9 @@ class Carrier:
     document: str
     location: str | None = None
     version: str | None = None
+    # A Playwright run carrier's project (asbuilt#37): one report holds a run
+    # per project, each at its own fidelity (truth/fidelities.yaml).
+    project: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +114,9 @@ class TruthFact:
     # single numeric claim to make (and always None on a fixture authored
     # before this field existed, e.g. tests/fixtures/mini/).
     claim: dict[str, Any] | None = None
+    # The strongest backend fidelity at which a cited run passes, on an
+    # executed fact only (D-014, asbuilt#37): a name from truth/fidelities.yaml.
+    fidelity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +157,34 @@ class AliasEntry:
     aliases: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class Fidelities:
+    """truth/fidelities.yaml (D-014, asbuilt#37): `ranked` highest first,
+    `real_backend` one of them, and `run_fidelity` mapping a run framework to
+    its fidelity, or for Playwright a project name to its fidelity."""
+
+    ranked: tuple[str, ...]
+    real_backend: str
+    run_fidelity: dict[str, Any] = field(default_factory=dict)
+
+    def rank(self, name: str | None) -> int:
+        """Higher is stronger; 0 for a name the vocabulary does not have."""
+        return len(self.ranked) - self.ranked.index(name) if name in self.ranked else 0
+
+    def of_carrier(self, carrier: Carrier) -> str | None:
+        """A run carrier's fidelity: the truth's, never a result's own say-so."""
+        match = _RUN_DOCUMENT_RE.fullmatch(carrier.document)
+        if match is None:
+            return None
+        by_framework = self.run_fidelity.get(match.group(1))
+        if isinstance(by_framework, dict):
+            return by_framework.get(carrier.project)
+        return by_framework
+
+    def at_or_above_real_backend(self, name: str | None) -> bool:
+        return self.rank(name) >= self.rank(self.real_backend) > 0
+
+
 @dataclass
 class Truth:
     entities: dict[str, Entity] = field(default_factory=dict)
@@ -141,6 +192,8 @@ class Truth:
     contradictions: dict[str, TruthContradiction] = field(default_factory=dict)
     stale: dict[str, StaleEntry] = field(default_factory=dict)
     aliases: dict[str, AliasEntry] = field(default_factory=dict)
+    # None for a truth directory with no fidelities.yaml (the mini fixture).
+    fidelities: Fidelities | None = None
 
 
 def _load_raw(path: Path) -> list[dict]:
@@ -170,6 +223,7 @@ def load_facts(path: Path) -> dict[str, TruthFact]:
                 document=c["document"],
                 location=c.get("location"),
                 version=c.get("version"),
+                project=c.get("project"),
             )
             for c in raw.get("carriers", [])
         )
@@ -183,6 +237,7 @@ def load_facts(path: Path) -> dict[str, TruthFact]:
             valid_from=raw.get("valid_from"),
             valid_to=raw.get("valid_to"),
             claim=raw.get("claim"),
+            fidelity=raw.get("fidelity"),
         )
     return facts
 
@@ -232,6 +287,18 @@ def load_aliases(path: Path) -> dict[str, AliasEntry]:
     }
 
 
+def load_fidelities(path: Path) -> Fidelities | None:
+    """truth/fidelities.yaml, or None when the file is absent."""
+    if not path.is_file():
+        return None
+    raw = yaml.safe_load(path.read_text()) or {}
+    return Fidelities(
+        ranked=tuple(raw.get("ranked") or ()),
+        real_backend=raw.get("real_backend"),
+        run_fidelity=dict(raw.get("run_fidelity") or {}),
+    )
+
+
 def load_truth(truth_root: Path) -> Truth:
     return Truth(
         entities=load_entities(truth_root / ENTITIES_FILE),
@@ -239,6 +306,7 @@ def load_truth(truth_root: Path) -> Truth:
         contradictions=load_contradictions(truth_root / CONTRADICTIONS_FILE),
         stale=load_stale(truth_root / STALE_FILE),
         aliases=load_aliases(truth_root / ALIASES_FILE),
+        fidelities=load_fidelities(truth_root / FIDELITIES_FILE),
     )
 
 
@@ -364,6 +432,23 @@ def _check_code_carrier(carrier: Carrier, fixture_root: Path, timeline) -> str |
     text = content.decode("utf-8", errors="replace")
     location = carrier.location or ""
 
+    if _PLAYWRIGHT_SEPARATOR in location:
+        # A Playwright title path: describe(s) › test, each a literal quoted
+        # call argument, `test.describe("...")` and `test("...")`.
+        *describes, test_title = location.split(_PLAYWRIGHT_SEPARATOR)
+        for name in describes:
+            if not _has_quoted_call(text, "describe", name):
+                return (
+                    f"code:{carrier.document}:{location}:"
+                    f"describe({name!r}) not found at {carrier.version}"
+                )
+        if not _has_quoted_call(text, "test", test_title):
+            return (
+                f"code:{carrier.document}:{location}:"
+                f"test({test_title!r}) not found at {carrier.version}"
+            )
+        return None
+
     if " > " in location:
         # A vitest test title: describe(s) > it. Each name must appear as a
         # literal quoted call argument (describe(...)/it(...)), not just a
@@ -409,6 +494,27 @@ def _run_fullname(assertion: dict) -> str:
     return " > ".join([*assertion.get("ancestorTitles", []), assertion.get("title", "")])
 
 
+def playwright_outcomes(data: dict) -> list[tuple[str, str, str | None]]:
+    """Every (project, title path, status) in a Playwright JSON report: the
+    title path is the describe titles and the test title below the file's own
+    suite, joined with " › " (the JUnit reporter's testcase name), and the
+    status is the test's last result's."""
+    outcomes: list[tuple[str, str, str | None]] = []
+
+    def walk(suite: dict, titles: list[str]) -> None:
+        for spec in suite.get("specs", []):
+            path = _PLAYWRIGHT_SEPARATOR.join([*titles, spec.get("title", "")])
+            for test in spec.get("tests", []):
+                results = test.get("results") or [{}]
+                outcomes.append((test.get("projectName"), path, results[-1].get("status")))
+        for child in suite.get("suites", []):
+            walk(child, [*titles, child.get("title", "")])
+
+    for file_suite in data.get("suites", []):
+        walk(file_suite, [])
+    return outcomes
+
+
 def _check_run_carrier(carrier: Carrier, fixture_root: Path) -> str | None:
     rest = carrier.document.split("/", 1)[1]
     report_path = fixture_root / "runs" / f"{rest}.json"
@@ -430,6 +536,13 @@ def _check_run_carrier(carrier: Carrier, fixture_root: Path) -> str | None:
                 if _run_fullname(assertion) == location and assertion.get("status") == "passed":
                     return None
         return f"run:{carrier.document}:{location}:no passed vitest fullName match"
+    if "suites" in data and "config" in data:
+        projects = {p.get("name") for p in data["config"].get("projects", [])}
+        if carrier.project not in projects:
+            return f"run:{carrier.document}:{location}:no project {carrier.project!r} in the report"
+        if (carrier.project, location, "passed") in playwright_outcomes(data):
+            return None
+        return f"run:{carrier.document}:{location}:no passed playwright test in {carrier.project!r}"
     return f"run:{carrier.document}:{location}:unrecognised run json shape"
 
 
@@ -444,6 +557,27 @@ def _check_carrier(carrier: Carrier, fixture_root: Path, timeline) -> str | None
     if kind == "run":
         return _check_run_carrier(carrier, fixture_root)
     return f"{kind}:{carrier.document}:{carrier.location}:unrecognised document kind"
+
+
+def _check_fidelity(fact: TruthFact, fidelities: Fidelities) -> list[str]:
+    """An executed fact's fidelity is the strongest of its run carriers'
+    (each fixed by fidelities.yaml); any other fact carries none."""
+    if fact.tier != "executed":
+        if fact.fidelity is not None:
+            return [f"fidelity: {fact.id} is {fact.tier}, so it carries no fidelity"]
+        return []
+    runs = [c for c in fact.carriers if c.document.startswith("run/")]
+    problems = [
+        f"fidelity: {fact.id} run carrier {c.document} {c.project or ''} has no fidelity"
+        for c in runs
+        if fidelities.of_carrier(c) is None
+    ]
+    strongest = max((fidelities.of_carrier(c) for c in runs), key=fidelities.rank, default=None)
+    if fact.fidelity not in fidelities.ranked or fact.fidelity != strongest:
+        problems.append(
+            f"fidelity: {fact.id} says {fact.fidelity!r}, its strongest run carrier {strongest!r}"
+        )
+    return problems
 
 
 def check_consistency(fixture_root: Path) -> list[str]:
@@ -489,6 +623,8 @@ def check_consistency(fixture_root: Path) -> list[str]:
             problems.append(f"fact: {fact.id} valid_from {fact.valid_from!r} is not a known step")
         if fact.valid_to is not None and step_ids and fact.valid_to not in step_ids:
             problems.append(f"fact: {fact.id} valid_to {fact.valid_to!r} is not a known step")
+        if truth.fidelities is not None:
+            problems.extend(_check_fidelity(fact, truth.fidelities))
 
     for contradiction in truth.contradictions.values():
         for fact_id in contradiction.facts:

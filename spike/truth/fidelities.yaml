@@ -1,0 +1,21 @@
+# Gearwell's backend fidelities (D-014, konyklabs/asbuilt#37). Executed evidence is
+# qualified by the fidelity of the backend its run passed against.
+#
+# ranked: the names, highest first. real_backend: the fidelity this system counts as
+# its real backend; an executed fact proven at or above it ranks above code, one
+# proven only below it ranks below code and above documented. run_fidelity: the
+# fidelity of every run document, by framework, and for Playwright by project.
+ranked: [real, in-process, fake, mocked]
+real_backend: in-process
+descriptions:
+  real: "Gearwell's own dockyard and farebox code serving HTTP (web/serve.py --backend real)."
+  in-process: "The services' code wired in one process, external integrations faked: every pytest and Vitest run."
+  fake: "farebox replaced by a fake written from its documentation (web/fake_farebox.py); dockyard real."
+  mocked: "/api routes intercepted in the browser with canned answers; no backend code runs."
+run_fidelity:
+  pytest: in-process
+  vitest: in-process
+  playwright:
+    mocked: mocked
+    fake: fake
+    real: real

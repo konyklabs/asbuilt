@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fare preview</title>
+  <script src="/portal.js" defer></script>
+</head>
+<body data-page="fare-preview">
+  <h1>Fare preview</h1>
+  <form id="fare-preview-form">
+    <label>Minutes <input name="minutes" type="number" min="0" required></label>
+    <label><input name="member" type="checkbox"> Member</label>
+    <label><input name="ebike" type="checkbox"> E-bike</label>
+    <button type="submit">Preview fare</button>
+  </form>
+  <p>Fare: <output id="fare-amount"></output></p>
+</body>
+</html>

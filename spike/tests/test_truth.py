@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
+from bench.build import Timeline
 from bench.truth import (
     Carrier,
+    Fidelities,
+    TruthFact,
+    _check_code_carrier,
+    _check_fidelity,
     _check_run_carrier,
     check_consistency,
     github_slugify,
@@ -12,8 +18,10 @@ from bench.truth import (
     load_contradictions,
     load_entities,
     load_facts,
+    load_fidelities,
     load_stale,
     load_truth,
+    playwright_outcomes,
     resolve_step,
     summarize,
 )
@@ -198,3 +206,130 @@ def test_summarize_groups_by_kind():
     assert "3 problem(s)" in report
     assert "wiki: 2" in report
     assert "fact: 1" in report
+
+
+def _playwright_report(tmp_path: Path) -> Path:
+    """A minimal Playwright JSON report: one file suite, one describe, one
+    test run in two projects, passing in one and failing in the other."""
+    report = {
+        "config": {"projects": [{"name": "fake"}, {"name": "real"}], "metadata": {}},
+        "suites": [
+            {
+                "title": "fare-preview.spec.ts",
+                "specs": [],
+                "suites": [
+                    {
+                        "title": "fare preview",
+                        "specs": [
+                            {
+                                "title": "shows the cap",
+                                "tests": [
+                                    {"projectName": "fake", "results": [{"status": "passed"}]},
+                                    {"projectName": "real", "results": [{"status": "failed"}]},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        "errors": [],
+        "stats": {},
+    }
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "playwright-c7.json").write_text(json.dumps(report))
+    return tmp_path
+
+
+def test_playwright_outcomes_joins_title_path_below_the_file_suite(tmp_path: Path):
+    data = json.loads((_playwright_report(tmp_path) / "runs" / "playwright-c7.json").read_text())
+    assert playwright_outcomes(data) == [
+        ("fake", "fare preview › shows the cap", "passed"),
+        ("real", "fare preview › shows the cap", "failed"),
+    ]
+
+
+def test_run_carrier_for_playwright_resolves_only_in_a_project_where_it_passed(tmp_path: Path):
+    root = _playwright_report(tmp_path)
+    location = "fare preview › shows the cap"
+    passed = Carrier(document="run/playwright-c7", location=location, project="fake")
+    failed = Carrier(document="run/playwright-c7", location=location, project="real")
+    unknown = Carrier(document="run/playwright-c7", location=location, project="staging")
+    assert _check_run_carrier(passed, root) is None
+    assert "no passed playwright test in 'real'" in _check_run_carrier(failed, root)
+    assert "no project 'staging'" in _check_run_carrier(unknown, root)
+
+
+def test_code_carrier_with_a_playwright_title_path(tmp_path: Path):
+    shutil.copytree(MINI_ROOT, tmp_path / "mini")
+    root = tmp_path / "mini"
+    spec = root / "system" / "web" / "tests" / "fare-preview.spec.ts"
+    spec.parent.mkdir(parents=True)
+    spec.write_text(
+        'test.describe("fare preview", () => {\n  test("shows the cap", async () => {});\n});\n'
+    )
+    timeline = Timeline(root)
+    step = timeline.steps[-1].id
+    good = Carrier(
+        document="code/web/tests/fare-preview.spec.ts",
+        location="fare preview › shows the cap",
+        version=step,
+    )
+    bad = Carrier(document=good.document, location="fare preview › shows the floor", version=step)
+    assert _check_code_carrier(good, root, timeline) is None
+    assert "test('shows the floor') not found" in _check_code_carrier(bad, root, timeline)
+
+
+def test_load_fidelities_and_the_fidelity_of_a_run_carrier(tmp_path: Path):
+    (tmp_path / "fidelities.yaml").write_text(
+        "ranked: [real, in-process, fake, mocked]\n"
+        "real_backend: in-process\n"
+        "run_fidelity:\n"
+        "  pytest: in-process\n"
+        "  playwright: {mocked: mocked, fake: fake, real: real}\n"
+    )
+    fidelities = load_fidelities(tmp_path / "fidelities.yaml")
+    assert fidelities.rank("real") > fidelities.rank("in-process") > fidelities.rank("mocked")
+    assert fidelities.rank("staging") == 0
+    assert fidelities.at_or_above_real_backend("in-process")
+    assert not fidelities.at_or_above_real_backend("fake")
+    assert fidelities.of_carrier(Carrier(document="run/pytest-c5-rerun")) == "in-process"
+    assert fidelities.of_carrier(Carrier(document="run/playwright-c7", project="fake")) == "fake"
+    assert fidelities.of_carrier(Carrier(document="run/playwright-c7")) is None
+    assert fidelities.of_carrier(Carrier(document="code/web/serve.py")) is None
+    assert load_fidelities(tmp_path / "absent.yaml") is None
+
+
+def test_check_fidelity_wants_the_strongest_passing_run(tmp_path: Path):
+    fidelities = Fidelities(
+        ranked=("real", "in-process", "fake", "mocked"),
+        real_backend="in-process",
+        run_fidelity={"pytest": "in-process", "playwright": {"fake": "fake", "real": "real"}},
+    )
+    runs = (
+        Carrier(document="run/playwright-c7", location="t", project="fake"),
+        Carrier(document="run/playwright-c7", location="t", project="real"),
+    )
+
+    def fact(tier: str, fidelity: str | None) -> TruthFact:
+        return TruthFact(
+            id="F-900",
+            statement="s.",
+            category="business-logic",
+            entities=("E-x",),
+            tier=tier,
+            carriers=runs,
+            fidelity=fidelity,
+        )
+
+    assert _check_fidelity(fact("executed", "real"), fidelities) == []
+    assert (
+        "strongest run carrier 'real'" in _check_fidelity(fact("executed", "fake"), fidelities)[0]
+    )
+    assert "carries no fidelity" in _check_fidelity(fact("code", "fake"), fidelities)[0]
+    assert _check_fidelity(fact("code", None), fidelities) == []
+
+
+def test_mini_truth_has_no_fidelities():
+    assert load_truth(MINI_ROOT / "truth").fidelities is None

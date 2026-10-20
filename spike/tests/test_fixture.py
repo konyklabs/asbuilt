@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from bench.build import build
-from bench.truth import check_consistency, load_truth, summarize
+from bench.truth import Carrier, _check_run_carrier, check_consistency, load_truth, summarize
 from tests._support import SPIKE_ROOT
 
 pytestmark = pytest.mark.fixture
@@ -42,8 +42,9 @@ def test_check_consistency_reports_no_problems():
 def test_truth_counts():
     _skip_if_no_real_fixture()
     truth = load_truth(SPIKE_ROOT / "truth")
-    assert len(truth.facts) == 120
-    assert len(truth.contradictions) == 21
+    # 125 and 22 since asbuilt#37: five rider-portal facts and one fake-vs-real pair at c7.
+    assert len(truth.facts) == 125
+    assert len(truth.contradictions) == 22
     assert len(truth.stale) == 10
 
     pull_only = [
@@ -56,7 +57,44 @@ def test_truth_counts():
     tier_counts: dict[str, int] = {}
     for fact in truth.facts.values():
         tier_counts[fact.tier] = tier_counts.get(fact.tier, 0) + 1
-    assert tier_counts == {"executed": 27, "code": 41, "documented": 52}
+    # asbuilt#37: three executed portal facts (real, mocked, real), one demoted
+    # to code by the real run, one code fact about the portal's server.
+    assert tier_counts == {"executed": 30, "code": 43, "documented": 52}
+
+    fidelity_counts: dict[str, int] = {}
+    for fact in truth.facts.values():
+        if fact.tier == "executed":
+            fidelity_counts[fact.fidelity] = fidelity_counts.get(fact.fidelity, 0) + 1
+    assert fidelity_counts == {"in-process": 27, "real": 2, "mocked": 1}
+    assert truth.fidelities is not None
+    assert truth.fidelities.ranked == ("real", "in-process", "fake", "mocked")
+    assert truth.fidelities.real_backend == "in-process"
+
+
+def test_playwright_run_carriers_resolve_by_project_and_title_path():
+    """Each Playwright run carrier resolves in its own project only: the same
+    title path in a project where the test failed or was skipped does not."""
+    _skip_if_no_real_fixture()
+    truth = load_truth(SPIKE_ROOT / "truth")
+    carriers = [
+        (fact.id, c)
+        for fact in truth.facts.values()
+        for c in fact.carriers
+        if c.document.startswith("run/playwright-")
+    ]
+    assert len(carriers) == 7
+    for fid, carrier in carriers:
+        assert _check_run_carrier(carrier, SPIKE_ROOT) is None, (fid, carrier)
+        assert truth.fidelities.of_carrier(carrier) == carrier.project
+
+    real_fail = Carrier(
+        document="run/playwright-c7",
+        project="real",
+        location="fare preview › shows the price-sheet cap for a 200-minute casual ride",
+    )
+    assert "no passed playwright test in 'real'" in _check_run_carrier(real_fail, SPIKE_ROOT)
+    no_project = Carrier(document="run/playwright-c7", location=real_fail.location)
+    assert "no project None" in _check_run_carrier(no_project, SPIKE_ROOT)
 
 
 def test_every_run_has_commit_and_step_metadata():

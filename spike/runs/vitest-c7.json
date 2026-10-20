@@ -1,0 +1,123 @@
+{
+  "numTotalTestSuites": 8,
+  "numPassedTestSuites": 8,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 4,
+  "numPassedTests": 4,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1792504490753,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "maintenanceSweep"
+          ],
+          "fullName": "maintenanceSweep locks a bike with 3 fault reports in 7 days and opens a ticket",
+          "status": "passed",
+          "title": "locks a bike with 3 fault reports in 7 days and opens a ticket",
+          "duration": 2.5946249999999935,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792504490855,
+      "endTime": 1792504490857.5947,
+      "status": "passed",
+      "message": "",
+      "name": "./dispatch/test/maintenanceSweep.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "nightlyRebalance"
+          ],
+          "fullName": "nightlyRebalance orders a rebalance for a station under 20% or over 90% full",
+          "status": "passed",
+          "title": "orders a rebalance for a station under 20% or over 90% full",
+          "duration": 2.40325,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792504490852,
+      "endTime": 1792504490854.4033,
+      "status": "passed",
+      "message": "",
+      "name": "./dispatch/test/nightlyRebalance.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "rideEvents"
+          ],
+          "fullName": "rideEvents counts ride.completed toward the return station's demand",
+          "status": "passed",
+          "title": "counts ride.completed toward the return station's demand",
+          "duration": 1.535459000000003,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792504490848,
+      "endTime": 1792504490849.5354,
+      "status": "passed",
+      "message": "",
+      "name": "./dispatch/test/rideEvents.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "stormPause"
+          ],
+          "fullName": "stormPause pauses rebalancing while the latest Skyglass severity is 3 or more",
+          "status": "passed",
+          "title": "pauses rebalancing while the latest Skyglass severity is 3 or more",
+          "duration": 2.5214590000000072,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1792504490852,
+      "endTime": 1792504490854.5215,
+      "status": "passed",
+      "message": "",
+      "name": "./dispatch/test/stormPause.test.ts"
+    }
+  ],
+  "metadata": {
+    "commit": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb",
+    "step": "c7"
+  }
+}

@@ -4,7 +4,7 @@ Run from anywhere:
 
     uv run --with pyyaml python spike/truth/validate.py
 
-Reads truth/{entities,facts,contradictions,stale,aliases,planted-runs,PLAN}.yaml,
+Reads truth/{entities,facts,contradictions,stale,aliases,planted-runs,fidelities,PLAN}.yaml,
 truth/executed-audit.md, system/history/steps.yaml and queries/mix.yaml. Prints
 the counts and every failed check, and exits 1 if any check fails.
 """
@@ -22,24 +22,45 @@ import yaml
 SPIKE = Path(__file__).resolve().parent.parent
 CATEGORIES = ("business-logic", "technical-implementation", "operations", "history")
 TIERS = ("executed", "code", "documented")
-TIER_RANK = {"executed": 3, "code": 2, "documented": 1}
-KINDS = ("wiki-vs-test", "ticket-vs-code", "page-vs-page", "doc-vs-code", "run-vs-code")
+KINDS = (
+    "wiki-vs-test",
+    "ticket-vs-code",
+    "page-vs-page",
+    "doc-vs-code",
+    "run-vs-code",
+    "fake-vs-real",
+)
+RUN_KINDS = ("run-vs-code", "fake-vs-real")
 DOC_KINDS = ("wiki", "ticket", "doc", "pull")
 SURFACES = ("explain", "search", "ask", "contradictions", "stale")
 
-# Target counts from the brief; the ranges are the tolerance for "about".
+# Target counts from the brief; the ranges are the tolerance for "about". asbuilt#37
+# added five rider-portal facts at c7, three of them business logic, a contradiction,
+# four explain queries, one contradictions query and four audited facts.
 EXPECT_TOTAL = (110, 130)
 EXPECT_CATEGORY = {
-    "business-logic": (40, 50),
+    "business-logic": (40, 52),
     "technical-implementation": (35, 45),
     "operations": (20, 30),
     "history": (8, 12),
 }
 EXPECT_TIER = {"executed": (25, 31), "code": (36, 44), "documented": (45, 60)}
-EXACT = {"contradictions": 21, "stale": 10, "pr_only": 5, "wiki": 40, "tickets": 80, "docs": 10}
-MIX_COUNTS = {"explain": 25, "search": 17, "ask": 13, "contradictions": 4, "stale": 3}
+EXACT = {"contradictions": 22, "stale": 10, "pr_only": 5, "wiki": 40, "tickets": 80, "docs": 10}
+MIX_COUNTS = {"explain": 29, "search": 17, "ask": 13, "contradictions": 5, "stale": 3}
 EXPLAIN_BY_ALIAS, IMPACT_QUERIES = 5, 5
-AUDITED = 28
+AUDITED = 32
+PLAYWRIGHT_OUTCOMES = ("passed", "failed", "skipped")
+PLANTED_KINDS = Counter(
+    {
+        "failing": 1,
+        "skipped": 1,
+        "flaky": 1,
+        "all-fidelities": 1,
+        "mocked-only": 1,
+        "fake-vs-real": 1,
+        "real-only": 1,
+    }
+)
 UNITS = ("usd", "minute", "day", "hour", "second", "percent", "count", "clock", None)
 NUMBER_WORDS = {
     w: n
@@ -66,7 +87,15 @@ def when(s) -> datetime:
 
 
 def is_test(path: str) -> bool:
-    return path.startswith("tests/") or path.startswith("dispatch/test/")
+    return path.startswith(("tests/", "dispatch/test/", "web/tests/"))
+
+
+def framework_of_test(doc: str) -> str:
+    """The runner of a code/ test document: Playwright under web/tests/, else by suffix."""
+    path = doc.removeprefix("code/")
+    if path.startswith("web/tests/"):
+        return "playwright"
+    return "vitest" if path.endswith(".ts") else "pytest"
 
 
 entities = {e["id"]: e for e in load("truth/entities.yaml")}
@@ -81,10 +110,15 @@ mix = load("queries/mix.yaml")
 plan = load("truth/PLAN.yaml")
 aliases = load("truth/aliases.yaml")
 planted = load("truth/planted-runs.yaml")
+fidelities = load("truth/fidelities.yaml")
+RANKED = list(fidelities.get("ranked") or [])
+REAL_BACKEND = fidelities.get("real_backend")
+RUN_FIDELITY = fidelities.get("run_fidelity") or {}
+PROJECTS = dict(RUN_FIDELITY.get("playwright") or {})
 audit_text = (SPIKE / "truth/executed-audit.md").read_text()
 plan_tests = {t["id"]: t for t in plan.get("tests", [])}
 plan_runs = {r["id"]: r for r in plan.get("runs", [])}
-RUN_ID = re.compile(r"run/(pytest|vitest)-(c\d+)(-rerun)?")
+RUN_ID = re.compile(r"run/(pytest|vitest|playwright)-(c\d+)(-rerun)?")
 
 
 def run_step(doc: str) -> str:
@@ -98,11 +132,87 @@ def outcome_steps(test: dict, field: str) -> list[str]:
     return list(test.get(field, []))
 
 
+def steps_of_test(test: dict) -> list[str]:
+    """The steps a PLAN test exists at: a Playwright test's outcome keys, else its four lists."""
+    if test.get("framework") == "playwright":
+        return list(test.get("outcomes", {}))
+    fields = ("passes_in", "fails_in", "skipped_in", "flaky_in")
+    return [s for fld in fields for s in test.get(fld, [])]
+
+
+def passing_steps(test: dict) -> set[str]:
+    """Steps at which a PLAN test passes (for a Playwright test, in any project)."""
+    if test.get("framework") == "playwright":
+        return {s for s, outs in test.get("outcomes", {}).items() if "passed" in outs.values()}
+    return set(test.get("passes_in", []))
+
+
+def fidelity_rank(name: str | None) -> int:
+    """Higher is stronger; 0 for a name the vocabulary does not have."""
+    return len(RANKED) - RANKED.index(name) if name in RANKED else 0
+
+
+def carrier_fidelity(c: dict) -> str | None:
+    """A run carrier's fidelity, from fidelities.yaml: by framework, by project for Playwright."""
+    m = RUN_ID.fullmatch(str(c.get("document", "")))
+    if not m:
+        return None
+    by = RUN_FIDELITY.get(m.group(1))
+    return by.get(c.get("project")) if isinstance(by, dict) else by
+
+
+def check_playwright_runs(fid: str, loc: str, pt: dict, runs: list, validity: list) -> None:
+    """An executed fact cites a Playwright test's run in every project, at every
+    step within its validity, at which PLAN says the test passes."""
+    want = {
+        f"{s}@{project}"
+        for s, outs in pt.get("outcomes", {}).items()
+        if s in validity
+        for project, outcome in outs.items()
+        if outcome == "passed"
+    }
+    got = {f"{run_step(r['document'])}@{r.get('project')}" for r in runs if r["location"] == loc}
+    if got != want:
+        fail(
+            f"{fid}: runs of {loc} at {sorted(got)}, "
+            f"but it passes within the validity at {sorted(want)}"
+        )
+    if not got:
+        fail(f"{fid}: executed, but {loc} never passes within the validity")
+
+
+def carrier_key(c: dict) -> str:
+    """A carrier's document, with the project for a Playwright run: one report, three runs."""
+    return f"{c['document']}@{c['project']}" if c.get("project") else c["document"]
+
+
+def run_list(run: dict | None, field: str, project: str | None = None) -> list[str]:
+    """A PLAN run's passes, failed or skipped list; a Playwright run's lists are per project."""
+    if not run:
+        return []
+    if run.get("framework") == "playwright":
+        return list((run.get("projects") or {}).get(project, {}).get(field, []))
+    return list(run.get(field, []))
+
+
 def steps_between(start: str | None, end: str | None) -> list[str]:
     i = STEPS.index(start) if start else 0
     j = STEPS.index(end) if end else len(STEPS)
     return STEPS[i:j]
 
+
+# ---------------------------------------------------------------- fidelities
+if not RANKED or len(set(RANKED)) != len(RANKED):
+    fail(f"fidelities: ranked must list distinct names, got {RANKED}")
+if REAL_BACKEND not in RANKED:
+    fail(f"fidelities: real_backend {REAL_BACKEND!r} is not a ranked name")
+if set(fidelities.get("descriptions") or {}) != set(RANKED):
+    fail("fidelities: descriptions must describe exactly the ranked names")
+for fw in ("pytest", "vitest"):
+    if RUN_FIDELITY.get(fw) not in RANKED:
+        fail(f"fidelities: run_fidelity.{fw} {RUN_FIDELITY.get(fw)!r} is not a ranked name")
+if not PROJECTS or any(v not in RANKED for v in PROJECTS.values()):
+    fail(f"fidelities: run_fidelity.playwright must map projects to ranked names, got {PROJECTS}")
 
 # ---------------------------------------------------------------- facts
 facts: dict[str, dict] = {}
@@ -141,12 +251,21 @@ for f in facts_list:
         fail(f"{fid}: omit valid_from when true from c1")
     if vf in STEPS and vt in STEPS and STEPS.index(vf) >= STEPS.index(vt):
         fail(f"{fid}: valid_from {vf} is not before valid_to {vt}")
+    for e in ents:
+        since = entities.get(e, {}).get("valid_from")
+        if since in STEPS and STEPS.index(vf if vf in STEPS else STEPS[0]) < STEPS.index(since):
+            fail(f"{fid}: tagged {e}, which exists from {since}, but valid from {vf or 'c1'}")
+    if f.get("tier") == "executed":
+        if f.get("fidelity") not in RANKED:
+            fail(f"{fid}: executed needs a fidelity from {RANKED}, got {f.get('fidelity')!r}")
+    elif "fidelity" in f:
+        fail(f"{fid}: fidelity is only valid on an executed fact")
     carriers = f.get("carriers") or []
     if not carriers:
         fail(f"{fid}: no carriers")
     seen = set()
     for c in carriers:
-        key = (c.get("document"), c.get("location"))
+        key = (c.get("document"), c.get("location"), c.get("project"))
         if key in seen:
             fail(f"{fid}: carrier listed twice: {key}")
         seen.add(key)
@@ -155,6 +274,11 @@ for f in facts_list:
             fail(f"{fid}: unknown document kind in {c.get('document')}")
         if not c.get("location"):
             fail(f"{fid}: carrier {c.get('document')} has no location")
+        playwright_run = str(c.get("document", "")).startswith("run/playwright-")
+        if playwright_run and c.get("project") not in PROJECTS:
+            fail(f"{fid}: {c.get('document')} needs a project from {sorted(PROJECTS)}")
+        elif not playwright_run and "project" in c:
+            fail(f"{fid}: only a Playwright run carrier names a project")
 
 # tier rules
 for fid, f in facts.items():
@@ -184,12 +308,21 @@ for fid, f in facts.items():
                 fail(f"{fid}: run {r['document']} is outside the fact's validity {validity}")
             fw = r["document"].split("/")[1].split("-", 1)[0]
             test_doc = next(c["document"] for c in code_tests if c["location"] == r["location"])
-            if (fw == "vitest") != test_doc.endswith(".ts"):
+            if fw != framework_of_test(test_doc):
                 fail(f"{fid}: run framework {fw} does not match test {test_doc}")
+        strongest = max((carrier_fidelity(r) for r in runs), key=fidelity_rank, default=None)
+        if runs and f.get("fidelity") != strongest:
+            fail(
+                f"{fid}: fidelity {f.get('fidelity')!r}, "
+                f"but its strongest passing run is {strongest!r}"
+            )
         for loc in test_locs:
             pt = plan_tests.get(loc)
             if not pt:
                 continue  # reported with the PLAN resolution below
+            if pt.get("framework") == "playwright":
+                check_playwright_runs(fid, loc, pt, runs, validity)
+                continue
             # A run proves the fact only at a step where the test both
             # passes and asserts it (asbuilt#35: F-007's member assertion is
             # in the test at c5 and c6 only, though the test passes c1..c6).
@@ -215,18 +348,28 @@ for fid, f in facts.items():
             dr = plan_runs.get(demoted.get("document", ""))
             if not dr:
                 fail(f"{fid}: demoted_by {demoted.get('document')} is not in PLAN runs")
-            elif demoted.get("location") not in dr.get("failed", []):
+            elif demoted.get("location") not in run_list(dr, "failed", demoted.get("project")):
                 fail(f"{fid}: demoted_by run does not list {demoted.get('location')} as failed")
             else:
                 later = STEPS.index(dr["step"])
-                if any(STEPS.index(run_step(r["document"])) >= later for r in runs):
+                if demoted.get("project"):
+                    # D-014: a failure at a higher fidelity demotes; the passes it
+                    # demotes are at lower fidelities, at that step or before.
+                    above = fidelity_rank(carrier_fidelity(demoted))
+                    if any(
+                        STEPS.index(run_step(r["document"])) > later
+                        or fidelity_rank(carrier_fidelity(r)) >= above
+                        for r in runs
+                    ):
+                        fail(f"{fid}: a passing run is cited at or above the demoting fidelity")
+                elif any(STEPS.index(run_step(r["document"])) >= later for r in runs):
                     fail(f"{fid}: a passing run is cited at or after the demoting run")
                 if demoted.get("location") not in {c["location"] for c in code_tests}:
                     fail(f"{fid}: demoted_by names a test that is not one of its carriers")
         elif code_tests:
             for c in code_tests:
                 pt = plan_tests.get(c["location"])
-                if pt and set(pt["passes_in"]) & set(validity):
+                if pt and passing_steps(pt) & set(validity):
                     fail(
                         f"{fid}: code tier, but its test {c['location']} passes within the validity"
                     )
@@ -326,18 +469,22 @@ for (doc, loc), t in tests.items():
     for e in t.get("asserts", []):
         plan_triples.add((doc, loc, e["fact"]))
 for rid, r in runs_plan.items():
-    for loc in r.get("passes", []):
-        for (_, tloc), t in tests.items():
-            if tloc == loc:
-                for e in t["asserts"]:
-                    if r["step"] in e["steps"]:
-                        plan_triples.add((rid, loc, e["fact"]))
+    run_projects = list(r.get("projects") or {}) if r.get("framework") == "playwright" else [None]
+    for project in run_projects:
+        for loc in run_list(r, "passes", project):
+            for (_, tloc), t in tests.items():
+                if tloc == loc:
+                    for e in t["asserts"]:
+                        if r["step"] in e["steps"]:
+                            plan_triples.add(
+                                (f"{rid}@{project}" if project else rid, loc, e["fact"])
+                            )
 
 fact_triples: set[tuple[str, str, str]] = set()
 for fid, f in facts.items():
     for c in f["carriers"]:
         doc, loc = c["document"], c["location"]
-        fact_triples.add((doc, loc, fid))
+        fact_triples.add((carrier_key(c), loc, fid))
         kind, rest = doc.split("/", 1)
         if kind == "wiki":
             p = wiki.get(rest)
@@ -362,11 +509,7 @@ for fid, f in facts.items():
                 t = tests.get((doc, loc))
                 if not t:
                     fail(f"{fid}: test {loc} in {doc} is not in PLAN tests")
-                elif c.get("version") not in [
-                    s
-                    for fld in ("passes_in", "fails_in", "skipped_in", "flaky_in")
-                    for s in t.get(fld, [])
-                ]:
+                elif c.get("version") not in steps_of_test(t):
                     fail(
                         f"{fid}: test {loc} carrier version {c.get('version')} "
                         "is not a step the test exists at"
@@ -396,8 +539,8 @@ for fid, f in facts.items():
             r = runs_plan.get(doc)
             if not r:
                 fail(f"{fid}: {doc} is not in PLAN runs")
-            elif loc not in r["passes"]:
-                fail(f"{fid}: {doc} does not list {loc} as passing")
+            elif loc not in run_list(r, "passes", c.get("project")):
+                fail(f"{fid}: {carrier_key(c)} does not list {loc} as passing")
 
 for t in sorted(fact_triples - plan_triples):
     fail(f"carrier not in PLAN: {t}")
@@ -463,10 +606,43 @@ for fw in ("pytest", "vitest"):
     for st in STEPS:
         if f"run/{fw}-{st}" not in runs_plan:
             fail(f"PLAN: run/{fw}-{st} missing")
+playwright_steps = {
+    s for t in tests.values() if t.get("framework") == "playwright" for s in t.get("outcomes", {})
+}
+for st in sorted(playwright_steps, key=STEPS.index):
+    if f"run/playwright-{st}" not in runs_plan:
+        fail(f"PLAN: run/playwright-{st} missing")
 for (doc, loc), t in tests.items():
     path = doc[5:]
     if not is_test(path):
-        fail(f"PLAN test {doc} is not under tests/ or dispatch/test/")
+        fail(f"PLAN test {doc} is not under tests/, dispatch/test/ or web/tests/")
+    if t.get("framework") != framework_of_test(doc):
+        fail(f"PLAN test {loc}: framework {t.get('framework')} does not match {doc}")
+    if t.get("framework") == "playwright":
+        if not path.endswith(".spec.ts"):
+            fail(f"PLAN test {doc} is not a .spec.ts file")
+        for s, outs in t.get("outcomes", {}).items():
+            if s not in STEPS:
+                fail(f"PLAN test {loc}: unknown step {s}")
+            if set(outs) != set(PROJECTS) or any(
+                o not in PLAYWRIGHT_OUTCOMES for o in outs.values()
+            ):
+                fail(f"PLAN test {loc}: {s} needs one of {PLAYWRIGHT_OUTCOMES} per project")
+        for r in runs_plan.values():
+            if r["framework"] != "playwright":
+                continue
+            for project in PROJECTS:
+                got = tuple(
+                    loc in run_list(r, fld, project) for fld in ("passes", "failed", "skipped")
+                )
+                outcome = t.get("outcomes", {}).get(r["step"], {}).get(project)
+                want = tuple(outcome == o for o in PLAYWRIGHT_OUTCOMES)
+                if got != want:
+                    fail(
+                        f"PLAN run {r['id']} {project} and test {loc} disagree: got pass/fail/skip "
+                        f"{got}, want {want}"
+                    )
+        continue
     if path.endswith(".py") and not loc.startswith(f"{path}::"):
         fail(f"PLAN test {loc}: node id does not start with its file")
     fields = ("passes_in", "fails_in", "skipped_in", "flaky_in")
@@ -478,7 +654,7 @@ for (doc, loc), t in tests.items():
         if s not in STEPS:
             fail(f"PLAN test {loc}: unknown step {s}")
     for r in runs_plan.values():
-        if (r["framework"] == "vitest") != path.endswith(".ts"):
+        if r["framework"] == "playwright" or (r["framework"] == "vitest") != path.endswith(".ts"):
             continue
         s, attempt = r["step"], r.get("attempt", 1)
         passes, failed, skipped = (
@@ -503,6 +679,14 @@ for rid, r in runs_plan.items():
     m = RUN_ID.fullmatch(rid)
     if not m or m.group(1) != r.get("framework") or m.group(2) != r.get("step"):
         fail(f"PLAN run {rid}: id disagrees with its framework or step")
+    elif m.group(1) == "playwright":
+        if m.group(3) or r.get("attempt") != 1:
+            fail(f"PLAN run {rid}: a Playwright run is attempt 1 and never rerun")
+        if set(r.get("projects") or {}) != set(PROJECTS) or "passes" in r:
+            fail(
+                f"PLAN run {rid}: lists its outcomes per project, "
+                f"one entry for each of {sorted(PROJECTS)}"
+            )
     elif m.group(3):
         first = runs_plan.get(rid.removesuffix("-rerun"))
         if r.get("attempt") != 2 or r.get("reruns") != rid.removesuffix("-rerun") or not first:
@@ -537,6 +721,18 @@ def carrier_date(fid: str, c: dict) -> datetime:
 
 def recency(fid: str) -> datetime:
     return max(carrier_date(fid, c) for c in facts[fid]["carriers"])
+
+
+def standing(fid: str) -> tuple:
+    """D-014's order for a contradiction's winner: executed at or above the real
+    backend, then code, then executed below it, then documented; then fidelity;
+    then recency."""
+    f = facts[fid]
+    if f["tier"] == "executed":
+        fidelity = f.get("fidelity")
+        band = 4 if fidelity_rank(fidelity) >= fidelity_rank(REAL_BACKEND) else 2
+        return (band, fidelity_rank(fidelity), recency(fid))
+    return ({"code": 3, "documented": 1}.get(f["tier"], 0), 0, recency(fid))
 
 
 # dates of documents against the facts they state
@@ -674,17 +870,17 @@ for x in contradictions:
             fail(f"{xid}: {fld} {v!r} is not a step id")
     if ob in STEPS and rb in STEPS and STEPS.index(ob) >= STEPS.index(rb):
         fail(f"{xid}: opened_by {ob} is not before resolved_by {rb}")
-    if x.get("kind") == "run-vs-code" and ob is None:
-        fail(f"{xid}: a run-vs-code contradiction needs opened_by")
+    if x.get("kind") in RUN_KINDS and ob is None:
+        fail(f"{xid}: a {x.get('kind')} contradiction needs opened_by")
     fa, fb = facts[a], facts[b]
     if not set(fa["entities"]) & set(fb["entities"]):
         fail(f"{xid}: {a} and {b} share no entity")
-    ka, kb = (TIER_RANK[fa["tier"]], recency(a)), (TIER_RANK[fb["tier"]], recency(b))
+    ka, kb = standing(a), standing(b)
     if ka == kb:
-        fail(f"{xid}: no winner by tier then recency")
+        fail(f"{xid}: no winner by tier, fidelity then recency")
     expected = a if ka > kb else b
     if x.get("winner") != expected:
-        fail(f"{xid}: winner {x.get('winner')} but tier/recency picks {expected}")
+        fail(f"{xid}: winner {x.get('winner')} but tier/fidelity/recency picks {expected}")
     loser = b if expected == a else a
     losers.add(loser)
     kinds_of = {
@@ -701,6 +897,17 @@ for x in contradictions:
         ok = bool(facts[loser].get("demoted_by")) and facts[expected]["tier"] in (
             "code",
             "executed",
+        )
+    elif k == "fake-vs-real":
+        # The run at the higher fidelity wins: the loser was demoted by a failure
+        # at a project the winner passes at, and the pair opens at that run's step.
+        demoting = facts[loser].get("demoted_by") or {}
+        ok = (
+            bool(demoting.get("project"))
+            and facts[expected]["tier"] == "executed"
+            and facts[expected].get("fidelity") == carrier_fidelity(demoting)
+            and RUN_ID.fullmatch(demoting.get("document", "")) is not None
+            and ob == run_step(demoting["document"])
         )
     else:
         ok = all(kinds_of[fid] & set(DOC_KINDS) for fid in (a, b))
@@ -939,11 +1146,65 @@ for fid, (loc, verdict, now_cell, change) in audit_rows.items():
     if verdict == "c" and not change.startswith("add: "):
         fail(f"audit {fid}: a (c) row must say what to add")
 
+
 # ---------------------------------------------------------------- planted runs
+def check_planted_playwright(pl: dict, pt: dict) -> None:
+    """A planted Playwright test (asbuilt#37): its outcomes per step and project are
+    PLAN's, and the facts it touches follow D-014's fidelity rule for its kind."""
+    pid, kind, loc = pl.get("id"), pl.get("kind"), pl.get("test")
+    if pt.get("framework") != "playwright" or pt.get("document") != f"code/{pl.get('file')}":
+        fail(f"planted {pid}: {loc} is not a Playwright test in {pl.get('file')}")
+    outcomes = pl.get("outcomes") or {}
+    if outcomes != pt.get("outcomes"):
+        fail(f"planted {pid}: outcomes {outcomes} differ from PLAN's {pt.get('outcomes')}")
+    by = {o: set() for o in PLAYWRIGHT_OUTCOMES}
+    for outs in outcomes.values():
+        for project, o in outs.items():
+            by.setdefault(o, set()).add(PROJECTS.get(project))
+    affected = pl.get("facts") or {}
+    for fid in affected:
+        if fid not in facts:
+            fail(f"planted {pid}: unknown fact {fid}")
+    affected_facts = [facts[fid] for fid in affected if fid in facts]
+    top = max(by["passed"], key=fidelity_rank, default=None)
+    if kind == "all-fidelities":
+        ok = not by["failed"] and not by["skipped"] and by["passed"] == set(PROJECTS.values())
+        ok = ok and all(
+            f["tier"] == "executed" and f.get("fidelity") == top for f in affected_facts
+        )
+    elif kind == "mocked-only":
+        ok = len(by["passed"]) == 1 and fidelity_rank(top) < fidelity_rank(REAL_BACKEND)
+        ok = ok and not by["failed"] and str(pl.get("marker", "")).startswith("test.skip(")
+        ok = ok and all(
+            f["tier"] == "executed" and f.get("fidelity") == top for f in affected_facts
+        )
+    elif kind == "fake-vs-real":
+        ok = bool(by["failed"]) and min(map(fidelity_rank, by["failed"])) > fidelity_rank(top)
+        demoted = [
+            fid
+            for fid in affected
+            if (facts.get(fid, {}).get("demoted_by") or {}).get("location") == loc
+        ]
+        xid = str(pl.get("contradiction", "")).split(" ", 1)[0]
+        x = x_ids.get(xid)
+        ok = ok and len(demoted) == 1 and bool(x) and x.get("kind") == "fake-vs-real"
+        ok = ok and bool(demoted) and demoted[0] in (x or {}).get("facts", [])
+    elif kind == "real-only":
+        ok = by["passed"] == {max(PROJECTS.values(), key=fidelity_rank)}
+        ok = ok and all(
+            f["tier"] == "executed" and f.get("fidelity") == top and not f.get("demoted_by")
+            for f in affected_facts
+        )
+    else:
+        ok = False
+    if not ok:
+        fail(f"planted {pid}: outcomes {outcomes} or its facts do not fit kind {kind!r}")
+
+
 kinds_planted = Counter(pl.get("kind") for pl in planted.get("planted", []))
-if kinds_planted != Counter({"failing": 1, "skipped": 1, "flaky": 1}):
+if kinds_planted != PLANTED_KINDS:
     fail(
-        f"planted: expected one failing, one skipped and one flaky test, got {dict(kinds_planted)}"
+        f"planted: expected one test of each of {sorted(PLANTED_KINDS)}, got {dict(kinds_planted)}"
     )
 if not planted.get("rules") or not planted.get("runner", {}).get("env"):
     fail("planted: rules and runner.env are required")
@@ -953,6 +1214,9 @@ for pl in planted.get("planted", []):
     pt = plan_tests.get(loc)
     if not pt:
         fail(f"planted {pid}: test {loc} is not in PLAN tests")
+        continue
+    if pl.get("runner") == "playwright":
+        check_planted_playwright(pl, pt)
         continue
     if not loc.startswith(f"{pl.get('file')}::"):
         fail(f"planted {pid}: test {loc} is not in file {pl.get('file')}")
@@ -1056,6 +1320,11 @@ print(
     + ", ".join(f"{k} {n}" for k, n in Counter(x["kind"] for x in contradictions).items())
 )
 print(f"stale {len(stale)}; mix stale expectations {stale_counts}")
+by_fidelity = Counter(f.get("fidelity") for f in facts.values() if f["tier"] == "executed")
+print(
+    f"fidelity: {' > '.join(RANKED)}, real backend {REAL_BACKEND}; executed facts by fidelity: "
+    + ", ".join(f"{k} {by_fidelity[k]}" for k in RANKED)
+)
 print(
     "contradiction windows: "
     + (

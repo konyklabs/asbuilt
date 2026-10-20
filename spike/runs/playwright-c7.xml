@@ -1,0 +1,164 @@
+<testsuites id="" name="" tests="12" failures="3" skipped="2" errors="0" time="18.587525">
+<testsuite name="check-out.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="mocked" tests="1" failures="0" skipped="0" time="0.256" errors="0">
+<testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts" time="0.256">
+</testcase>
+</testsuite>
+<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="mocked" tests="2" failures="1" skipped="0" time="5.215" errors="0">
+<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.113">
+</testcase>
+<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.102">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-mocked/error-context.md]]
+]]>
+</system-out>
+<failure message="expect(locator).toHaveText(expected) failed" type="expect.toHaveText">
+<![CDATA[  [mocked] › fare-preview.spec.ts:14:3 › fare preview › shows the farebox cap for a 200-minute casual ride 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  locator('#fare-amount')
+    Expected: "$30.00"
+    Received: "$25.00"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveText" locator('#fare-amount') with timeout 5000ms
+      - waiting for locator('#fare-amount')
+        - locator resolved to <output id="fare-amount"></output>
+        - unexpected value ""
+        13 × locator resolved to <output id="fare-amount">$25.00</output>
+           - unexpected value "$25.00"
+
+
+      13 |
+      14 |   test("shows the farebox cap for a 200-minute casual ride", async ({ page }) => {
+    > 15 |     await expect(page.locator("#fare-amount")).toHaveText("$30.00");
+         |                                                ^
+      16 |   });
+      17 | });
+      18 |
+        at ./web/tests/fare-preview.spec.ts:15:48
+
+    Error Context: ../test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-mocked/error-context.md
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="mocked" tests="1" failures="0" skipped="0" time="0.131" errors="0">
+<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.131">
+</testcase>
+</testsuite>
+<testsuite name="check-out.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="fake" tests="1" failures="0" skipped="1" time="0.039" errors="0">
+<testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts">
+<properties>
+<property name="skip" value="no seeding hook puts a rider at the limit in this backend">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="fake" tests="2" failures="1" skipped="0" time="5.212" errors="0">
+<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.119">
+</testcase>
+<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.093">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-fake/error-context.md]]
+]]>
+</system-out>
+<failure message="expect(locator).toHaveText(expected) failed" type="expect.toHaveText">
+<![CDATA[  [fake] › fare-preview.spec.ts:14:3 › fare preview › shows the farebox cap for a 200-minute casual ride 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  locator('#fare-amount')
+    Expected: "$30.00"
+    Received: "$25.00"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveText" locator('#fare-amount') with timeout 5000ms
+      - waiting for locator('#fare-amount')
+        - locator resolved to <output id="fare-amount"></output>
+        - unexpected value ""
+        13 × locator resolved to <output id="fare-amount">$25.00</output>
+           - unexpected value "$25.00"
+
+
+      13 |
+      14 |   test("shows the farebox cap for a 200-minute casual ride", async ({ page }) => {
+    > 15 |     await expect(page.locator("#fare-amount")).toHaveText("$30.00");
+         |                                                ^
+      16 |   });
+      17 | });
+      18 |
+        at ./web/tests/fare-preview.spec.ts:15:48
+
+    Error Context: ../test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-fake/error-context.md
+]]>
+</failure>
+</testcase>
+</testsuite>
+<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="fake" tests="1" failures="0" skipped="0" time="0.127" errors="0">
+<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.127">
+</testcase>
+</testsuite>
+<testsuite name="check-out.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="real" tests="1" failures="0" skipped="1" time="0.038" errors="0">
+<testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts">
+<properties>
+<property name="skip" value="no seeding hook puts a rider at the limit in this backend">
+</property>
+</properties>
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="real" tests="2" failures="1" skipped="0" time="5.232" errors="0">
+<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.103">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results/fare-preview-fare-preview--8eaa7-or-a-200-minute-casual-ride-real/error-context.md]]
+]]>
+</system-out>
+<failure message="expect(locator).toHaveText(expected) failed" type="expect.toHaveText">
+<![CDATA[  [real] › fare-preview.spec.ts:10:3 › fare preview › shows the price-sheet cap for a 200-minute casual ride 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  locator('#fare-amount')
+    Expected: "$25.00"
+    Received: "$30.00"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveText" locator('#fare-amount') with timeout 5000ms
+      - waiting for locator('#fare-amount')
+        - locator resolved to <output id="fare-amount"></output>
+        - unexpected value ""
+        13 × locator resolved to <output id="fare-amount">$30.00</output>
+           - unexpected value "$30.00"
+
+
+       9 |
+      10 |   test("shows the price-sheet cap for a 200-minute casual ride", async ({ page }) => {
+    > 11 |     await expect(page.locator("#fare-amount")).toHaveText("$25.00");
+         |                                                ^
+      12 |   });
+      13 |
+      14 |   test("shows the farebox cap for a 200-minute casual ride", async ({ page }) => {
+        at ./web/tests/fare-preview.spec.ts:11:48
+
+    Error Context: ../test-results/fare-preview-fare-preview--8eaa7-or-a-200-minute-casual-ride-real/error-context.md
+]]>
+</failure>
+</testcase>
+<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.129">
+</testcase>
+</testsuite>
+<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="real" tests="1" failures="0" skipped="0" time="0.112" errors="0">
+<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.112">
+</testcase>
+</testsuite>
+</testsuites>
