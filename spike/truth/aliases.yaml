@@ -165,3 +165,15 @@
 - id: E-endpoint-station-status
   name: GET /stations/{id}/status
   aliases: [station status endpoint, station status API, '/stations/{id}/status', station_status_endpoint]
+- id: E-web-rider-portal
+  name: rider-portal
+  aliases: [rider portal, the rider portal, web portal, portal]
+- id: E-page-fare-preview
+  name: fare-preview page
+  aliases: [fare preview page, fare preview, /fare-preview.html, fare-preview.html]
+- id: E-page-check-out
+  name: check-out page
+  aliases: [checkout page, the check-out page, /check-out.html, check-out.html]
+- id: E-page-refund-request
+  name: refund-request page
+  aliases: [refund request page, refund page, /refund-request.html, refund-request.html]

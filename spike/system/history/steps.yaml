@@ -35,3 +35,8 @@
   message: "Pause rebalancing in storms; add the refund_auto_approve flag"
   changes: [E-rule-storm-pause, E-rule-refund-auto-approve, E-flag-refund-auto-approve]
   pull: 19
+- id: c7
+  date: "2026-10-06T11:00:00-04:00"
+  message: "Add the rider portal: fare preview, check-out and refund request pages"
+  changes: [E-web-rider-portal]
+  note: "web/: static pages, web/serve.py (dockyard and farebox over HTTP), web/fake_farebox.py (farebox as its wiki describes it), Playwright tests run against mocked routes, the fake and the real backend; dockyard, farebox and dispatch unchanged"

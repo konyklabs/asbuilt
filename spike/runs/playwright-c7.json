@@ -1,0 +1,784 @@
+{
+  "config": {
+    "argv": [
+      "node",
+      "./web/node_modules/.bin/playwright",
+      "test",
+      "--reporter=list,json,junit"
+    ],
+    "configFile": "./web/playwright.config.ts",
+    "rootDir": "./web/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "commit": "782d8992ac4249943882898abe1876c007869d5b",
+      "step": "c7",
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "./web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
+        },
+        "id": "mocked",
+        "name": "mocked",
+        "testDir": "./web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "./web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
+        },
+        "id": "fake",
+        "name": "fake",
+        "testDir": "./web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "./web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
+        },
+        "id": "real",
+        "name": "real",
+        "testDir": "./web/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "./web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
+        },
+        "name": "mocked",
+        "testDir": "./web/tests",
+        "snapshotDir": "./web/tests",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "trace": "off",
+          "screenshot": "off",
+          "video": "off",
+          "baseURL": "http://127.0.0.1:4301",
+          "backend": "mocked"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "mocked"
+      },
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "./web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
+        },
+        "name": "fake",
+        "testDir": "./web/tests",
+        "snapshotDir": "./web/tests",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "trace": "off",
+          "screenshot": "off",
+          "video": "off",
+          "baseURL": "http://127.0.0.1:4302",
+          "backend": "fake"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "fake"
+      },
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "./web/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
+        },
+        "name": "real",
+        "testDir": "./web/tests",
+        "snapshotDir": "./web/tests",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "trace": "off",
+          "screenshot": "off",
+          "video": "off",
+          "baseURL": "http://127.0.0.1:4303",
+          "backend": "real"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "real"
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ],
+      [
+        "junit"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "check-out.spec.ts",
+      "file": "check-out.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "check-out",
+          "file": "check-out.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "shows a banner when the rider is at the bike limit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mocked",
+                  "projectName": "mocked",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 251,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:30.433Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "4969cd695fe7a87b403c-8b8d3b72a6887975917a",
+              "file": "check-out.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "shows a banner when the rider is at the bike limit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "no seeding hook puts a rider at the limit in this backend",
+                      "location": {
+                        "file": "./web/tests/check-out.spec.ts",
+                        "line": 5,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "fake",
+                  "projectName": "fake",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 40,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:36.805Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "no seeding hook puts a rider at the limit in this backend",
+                          "location": {
+                            "file": "./web/tests/check-out.spec.ts",
+                            "line": 5,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ],
+              "id": "4969cd695fe7a87b403c-399961c0e62d9b074031",
+              "file": "check-out.spec.ts",
+              "line": 4,
+              "column": 3
+            },
+            {
+              "title": "shows a banner when the rider is at the bike limit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "no seeding hook puts a rider at the limit in this backend",
+                      "location": {
+                        "file": "./web/tests/check-out.spec.ts",
+                        "line": 5,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "real",
+                  "projectName": "real",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 43,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:42.826Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "no seeding hook puts a rider at the limit in this backend",
+                          "location": {
+                            "file": "./web/tests/check-out.spec.ts",
+                            "line": 5,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ],
+              "id": "4969cd695fe7a87b403c-0f2f9f7810ea9d4d414f",
+              "file": "check-out.spec.ts",
+              "line": 4,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "fare-preview.spec.ts",
+      "file": "fare-preview.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "fare preview",
+          "file": "fare-preview.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "shows the price-sheet cap for a 200-minute casual ride",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mocked",
+                  "projectName": "mocked",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 120,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:30.897Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ac2bc0f4404173c1b881-7be8cf7ab0b076678312",
+              "file": "fare-preview.spec.ts",
+              "line": 10,
+              "column": 3
+            },
+            {
+              "title": "shows the farebox cap for a 200-minute casual ride",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mocked",
+                  "projectName": "mocked",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 5105,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n\n    at ./web/tests/fare-preview.spec.ts:15:48",
+                        "location": {
+                          "file": "./web/tests/fare-preview.spec.ts",
+                          "column": 48,
+                          "line": 15
+                        },
+                        "snippet": "  13 |\n  14 |   test(\"shows the farebox cap for a 200-minute casual ride\", async ({ page }) => {\n> 15 |     await expect(page.locator(\"#fare-amount\")).toHaveText(\"$30.00\");\n     |                                                ^\n  16 |   });\n  17 | });\n  18 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "./web/tests/fare-preview.spec.ts",
+                            "column": 48,
+                            "line": 15
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n\n\n  13 |\n  14 |   test(\"shows the farebox cap for a 200-minute casual ride\", async ({ page }) => {\n> 15 |     await expect(page.locator(\"#fare-amount\")).toHaveText(\"$30.00\");\n     |                                                ^\n  16 |   });\n  17 | });\n  18 |\n    at ./web/tests/fare-preview.spec.ts:15:48"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:31.024Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "./web/test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-mocked/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "./web/tests/fare-preview.spec.ts",
+                        "column": 48,
+                        "line": 15
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "ac2bc0f4404173c1b881-b53d936d6293c22c02ff",
+              "file": "fare-preview.spec.ts",
+              "line": 14,
+              "column": 3
+            },
+            {
+              "title": "shows the price-sheet cap for a 200-minute casual ride",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "fake",
+                  "projectName": "fake",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 120,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:36.919Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ac2bc0f4404173c1b881-6ea12a9bef9ea9e59b9b",
+              "file": "fare-preview.spec.ts",
+              "line": 10,
+              "column": 3
+            },
+            {
+              "title": "shows the farebox cap for a 200-minute casual ride",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "fake",
+                  "projectName": "fake",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 5097,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n\n    at ./web/tests/fare-preview.spec.ts:15:48",
+                        "location": {
+                          "file": "./web/tests/fare-preview.spec.ts",
+                          "column": 48,
+                          "line": 15
+                        },
+                        "snippet": "  13 |\n  14 |   test(\"shows the farebox cap for a 200-minute casual ride\", async ({ page }) => {\n> 15 |     await expect(page.locator(\"#fare-amount\")).toHaveText(\"$30.00\");\n     |                                                ^\n  16 |   });\n  17 | });\n  18 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "./web/tests/fare-preview.spec.ts",
+                            "column": 48,
+                            "line": 15
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n\n\n  13 |\n  14 |   test(\"shows the farebox cap for a 200-minute casual ride\", async ({ page }) => {\n> 15 |     await expect(page.locator(\"#fare-amount\")).toHaveText(\"$30.00\");\n     |                                                ^\n  16 |   });\n  17 | });\n  18 |\n    at ./web/tests/fare-preview.spec.ts:15:48"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:37.044Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "./web/test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-fake/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "./web/tests/fare-preview.spec.ts",
+                        "column": 48,
+                        "line": 15
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "ac2bc0f4404173c1b881-46a46c6401494be3b8f8",
+              "file": "fare-preview.spec.ts",
+              "line": 14,
+              "column": 3
+            },
+            {
+              "title": "shows the price-sheet cap for a 200-minute casual ride",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "real",
+                  "projectName": "real",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 5098,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$30.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$30.00\"\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$30.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$30.00\"\u001b[22m\n\n    at ./web/tests/fare-preview.spec.ts:11:48",
+                        "location": {
+                          "file": "./web/tests/fare-preview.spec.ts",
+                          "column": 48,
+                          "line": 11
+                        },
+                        "snippet": "   9 |\n  10 |   test(\"shows the price-sheet cap for a 200-minute casual ride\", async ({ page }) => {\n> 11 |     await expect(page.locator(\"#fare-amount\")).toHaveText(\"$25.00\");\n     |                                                ^\n  12 |   });\n  13 |\n  14 |   test(\"shows the farebox cap for a 200-minute casual ride\", async ({ page }) => {"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "./web/tests/fare-preview.spec.ts",
+                            "column": 48,
+                            "line": 11
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$30.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$30.00\"\u001b[22m\n\n\n   9 |\n  10 |   test(\"shows the price-sheet cap for a 200-minute casual ride\", async ({ page }) => {\n> 11 |     await expect(page.locator(\"#fare-amount\")).toHaveText(\"$25.00\");\n     |                                                ^\n  12 |   });\n  13 |\n  14 |   test(\"shows the farebox cap for a 200-minute casual ride\", async ({ page }) => {\n    at ./web/tests/fare-preview.spec.ts:11:48"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:42.946Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "./web/test-results/fare-preview-fare-preview--8eaa7-or-a-200-minute-casual-ride-real/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "./web/tests/fare-preview.spec.ts",
+                        "column": 48,
+                        "line": 11
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "ac2bc0f4404173c1b881-7dfad11552c76bc846c2",
+              "file": "fare-preview.spec.ts",
+              "line": 10,
+              "column": 3
+            },
+            {
+              "title": "shows the farebox cap for a 200-minute casual ride",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "real",
+                  "projectName": "real",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 130,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:48.265Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ac2bc0f4404173c1b881-22cd61eda22dae2763f0",
+              "file": "fare-preview.spec.ts",
+              "line": 14,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "refund-request.spec.ts",
+      "file": "refund-request.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "refund request",
+          "file": "refund-request.spec.ts",
+          "line": 5,
+          "column": 6,
+          "specs": [
+            {
+              "title": "refuses a ride that ended 15 days ago",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mocked",
+                  "projectName": "mocked",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 133,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:36.376Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "490ed1587e5934eba9a7-5b4294878ffd91fba034",
+              "file": "refund-request.spec.ts",
+              "line": 6,
+              "column": 3
+            },
+            {
+              "title": "refuses a ride that ended 15 days ago",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "fake",
+                  "projectName": "fake",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 149,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:42.379Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "490ed1587e5934eba9a7-b7ddd4a5fb61e56503d9",
+              "file": "refund-request.spec.ts",
+              "line": 6,
+              "column": 3
+            },
+            {
+              "title": "refuses a ride that ended 15 days ago",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "real",
+                  "projectName": "real",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 113,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-20T14:12:48.472Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "490ed1587e5934eba9a7-b0c8343c177e10cd6746",
+              "file": "refund-request.spec.ts",
+              "line": 6,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-20T14:12:29.914Z",
+    "duration": 18699.653000000002,
+    "expected": 7,
+    "skipped": 2,
+    "unexpected": 3,
+    "flaky": 0
+  },
+  "metadata": {
+    "commit": "782d8992ac4249943882898abe1876c007869d5b",
+    "step": "c7"
+  }
+}
