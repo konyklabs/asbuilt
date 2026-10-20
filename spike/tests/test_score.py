@@ -14,6 +14,7 @@ from bench.score import (
     DEFAULT_CALIBRATION,
     SPIKE_ROOT,
     _attributes_match,
+    _bound_direction_conflict,
     _boundary_numbers_ok,
     _citation_fidelities,
     _claim_metrics,
@@ -3802,3 +3803,55 @@ def test_facts_holds_a_fact_current_only_before_its_valid_to():
     assert (at_c4["tp"], at_c4["hard_false_positives"]) == (1, 0)
     assert (at_c5["tp"], at_c5["hard_false_positives"]) == (0, 1)
     assert "F-011" not in {m["id"] for m in at_c5["missed"]}
+
+
+@pytest.mark.fixture
+def test_a_flipped_duration_bound_is_refused_negated_or_not():
+    """Item 1: where both statements state a duration bound on the same
+    number and unit, the directions must agree. Each candidate keeps the
+    truth fact's words and flips only the direction word; each was credited
+    before the rule, so the polarity and negation rules alone let a wrong
+    statement through. Refused in both readings, with the fact's own claim.
+    The same direction in another word, and a duration with no direction
+    word ("older than"), are still credited."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+
+    def matches(candidate: str, fid: str, strict: bool) -> bool:
+        tf = truth.facts[fid]
+        return _statement_matches(candidate, tf.statement, mention_index, None, tf.claim, strict)
+
+    flipped = {
+        "F-013": "A refund requested within 14 days after the ride ended is rejected.",
+        "F-020": (
+            "A bike with 3 fault reports after 7 days is locked and gets a maintenance ticket."
+        ),
+        "F-048": "Support may waive the lost-bike fee when the bike is found after 72 hours.",
+        "F-091": (
+            "When the latest Skyglass reading is less than 60 minutes old, the storm pause "
+            "does not pause rebalancing."
+        ),
+        "F-060": "Each Tollbooth Pay call times out within 5 seconds.",
+    }
+    same_direction = {
+        "F-013": "A refund requested over 14 days after the ride ended is rejected.",
+        "F-020": (
+            "A bike with 3 fault reports in the past 7 days is locked and gets a maintenance "
+            "ticket."
+        ),
+        "F-048": "If the bike is found within 72 hours, support may waive the lost-bike fee.",
+        "F-091": (
+            "When the latest Skyglass reading is older than 60 minutes, the storm pause "
+            "does not pause rebalancing."
+        ),
+        "F-060": "A Tollbooth Pay call times out past 5 seconds.",
+    }
+    for strict in (True, False):
+        for fid, candidate in flipped.items():
+            assert not matches(candidate, fid, strict), (fid, strict)
+        for fid, candidate in same_direction.items():
+            assert matches(candidate, fid, strict), (fid, strict)
+    assert _bound_direction_conflict("within 24 hours", "not within 24 hours past 24 hours")
+    assert not _bound_direction_conflict("open for 24 hours", "past 24 hours")
+    assert not _bound_direction_conflict("within 24 minutes", "past 24 hours")
+    assert not _bound_direction_conflict("in the past 7 days", "within 7 days")

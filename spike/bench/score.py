@@ -285,6 +285,13 @@ New in konyklabs/asbuilt#66 (found while building #63):
   `valid_to` (`_current_at_step`), the fixture's own half-open window:
   the step that superseded a fact no longer expects it. Explain's
   whole-history expectation (`_fact_by_step`) is unchanged.
+* Bound directions agree, negated or not (`_bound_direction_conflict`, a
+  veto before the claim path): where both statements state a duration
+  bound on the same number and unit, the directions they state there
+  (inside: within, less than, under, up to, at most; beyond: past, after,
+  more than, over, beyond, longer than) must be the same. "A refund
+  requested within 14 days is rejected." no longer matches F-013. A
+  duration with no direction word states no direction and never vetoes.
 """
 
 from __future__ import annotations
@@ -636,6 +643,57 @@ def _outcome_conflict(a: str, b: str) -> bool:
     round)."""
     outcomes_a, outcomes_b = _outcomes(a), _outcomes(b)
     return bool(outcomes_a) and bool(outcomes_b) and not (outcomes_a & outcomes_b)
+
+
+# konyklabs/asbuilt#66: a duration bound is a number and a time unit after a
+# direction word, inside (`within`, `less than`, `under`, `up to`, `at most`)
+# or beyond (`past`, `after`, `more than`, `over`, `beyond`, `longer than`):
+# the reader of #63's withdrawn design, on the raw words, with no negation
+# read into the direction. "the past 7 days" names a window, the last seven
+# days, not a bound beyond them, so `past` after "the" is not read.
+_DURATION = r"(?P<n>\d+(?:\.\d+)?)\s+(?P<unit>second|minute|hour|day|week|month|year)s?\b"
+_INSIDE_WORDS = ("within", "less than", "under", "up to", "at most")
+_BEYOND_WORDS = ("past", "after", "more than", "over", "beyond", "longer than")
+_BOUND_RE = re.compile(
+    r"(?<!\bthe\s)\b(?P<dir>" + "|".join(_INSIDE_WORDS + _BEYOND_WORDS) + r")\s+" + _DURATION,
+    re.IGNORECASE,
+)
+
+
+def _bound_directions(text: str) -> dict[tuple[str, str], set[str]]:
+    """(number, unit) -> the directions `text` states a duration bound in
+    there, "inside" or "beyond" (`_BOUND_RE`, after number words are read
+    as digits)."""
+    bounds: dict[tuple[str, str], set[str]] = {}
+    for m in _BOUND_RE.finditer(_prenormalize_numeric_prose(text)):
+        direction = "inside" if m.group("dir").lower() in _INSIDE_WORDS else "beyond"
+        key = (_normalize_number(m.group("n")), m.group("unit").lower())
+        bounds.setdefault(key, set()).add(direction)
+    return bounds
+
+
+def _bound_direction_conflict(a: str, b: str) -> bool:
+    """konyklabs/asbuilt#66: True when both sentences state a duration
+    bound on the same number and unit and the directions they state there
+    differ ("A refund requested within 14 days is rejected." against "more
+    than 14 days after"; "after 7 days is locked" against "within 7 days").
+    The polarity and negation rules compare outcome words and negation, so
+    a flipped bound that keeps the truth's words passed them. Negated or
+    not, the words decide: "not docked within 24 hours" is an inside bound
+    here, so the complement "open past 24 hours" conflicts, as the plain
+    negation veto already refuses it (F-010, #63). A duration with no
+    direction word before it ("open for 24 hours", "a 7-day window",
+    "older than 60 minutes") states no known direction and never conflicts:
+    such a pair is left to the other rules. Known cost: a statement naming
+    both sides of one boundary ("within 14 days ... more than 14 days")
+    conflicts with a fact stating one side; the direction sets must be
+    equal, so a statement still matches itself, and "past 24 hours ...
+    unless it is not docked within 24 hours" is refused against "not docked
+    within 24 hours". Units are not compared ("within 24 minutes" against
+    "within 24 hours" is another key, so no conflict), and bounds on money
+    or counts are not read."""
+    bounds_a, bounds_b = _bound_directions(a), _bound_directions(b)
+    return any(bounds_a[key] != bounds_b[key] for key in bounds_a.keys() & bounds_b.keys())
 
 
 def _names_quantity(
@@ -1088,6 +1146,10 @@ def _statement_matches(
     if _flag_state_conflict(returned_statement, truth_statement, mention_index):
         return False
     if _outcome_conflict(returned_statement, truth_statement):
+        return False
+    if _bound_direction_conflict(returned_statement, truth_statement):
+        # konyklabs/asbuilt#66: before the claim path, so an agreeing claim
+        # does not credit a flipped bound either.
         return False
     if _entity_mention_conflict(returned_statement, truth_statement, mention_index):
         return False
