@@ -1366,6 +1366,7 @@ def _by_category_counts(
 # --------------------------------------------------------------------------
 
 _EXECUTED = "executed"
+_OTHER_TIERS = ("code", "documented")
 
 
 def _has_run_citation(rf: dict[str, Any]) -> bool:
@@ -1403,13 +1404,23 @@ def _tier_stats(
     )
     expected_executed = sum(1 for f in expected.values() if f.tier == _EXECUTED)
 
-    return {
+    stats: dict[str, Any] = {
         "confusion": confusion,
         "hard_errors": hard_errors,
         "returned_executed": returned_executed,
         "tp_executed": tp_executed,
         "expected_executed": expected_executed,
     }
+    # The other tiers' lines (konyklabs/asbuilt#34), counted exactly as the
+    # executed line is: every returned fact claiming the tier, matched or
+    # not, over the static truth tier of what it matched.
+    for tier in _OTHER_TIERS:
+        stats[f"returned_{tier}"] = sum(1 for rf in resolved if rf.get("tier") == tier)
+        stats[f"tp_{tier}"] = sum(
+            1 for rf, fid in matches if rf.get("tier") == tier and expected[fid].tier == tier
+        )
+        stats[f"expected_{tier}"] = sum(1 for f in expected.values() if f.tier == tier)
+    return stats
 
 
 def _category_accuracy(
@@ -1735,6 +1746,77 @@ def _step_dates(fixture_root: Path) -> dict[str, datetime]:
     return {r["id"]: datetime.fromisoformat(r["date"]) for r in raw}
 
 
+def _run_step_rank(
+    through_step: str | None, step_dates: dict[str, datetime], commits: dict[str, Any]
+) -> tuple[dict[str, int], int | None]:
+    """The step order and the rank of the step a run was ingested through
+    (konyklabs/asbuilt#34). Order comes from the fixture's own steps.yaml
+    dates, which is what `bench/run.py` took `through_step` from, and from
+    commits.json only when the fixture has no steps.yaml. A results file
+    with no `through_step`, or one naming a step neither knows, gets rank
+    None: nothing is held back, which is how every results file was scored
+    before the rule existed."""
+    if step_dates:
+        ordered = sorted(step_dates, key=step_dates.__getitem__)
+        order = {step: i for i, step in enumerate(ordered)}
+    else:
+        order = _step_order(commits)
+    return order, order.get(through_step) if through_step else None
+
+
+def _at_or_before(step: str | None, order: dict[str, int], rank: int | None) -> bool:
+    """`step` is at or before `rank`. No rank or no step never holds a truth
+    entry back. A step the run's fixture doesn't list does, once the rank
+    is known: a truth checkout ahead of the run's fixture (a seventh step
+    the run never saw) must not be expected of it. `_warn_unknown_steps`
+    says so on stderr."""
+    if rank is None or step is None:
+        return True
+    return step in order and order[step] <= rank
+
+
+def _unknown_step(step: str | None, order: dict[str, int], rank: int | None) -> bool:
+    return rank is not None and step is not None and step not in order
+
+
+def _warn_unknown_steps(
+    truth: Truth, order: dict[str, int], rank: int | None, through_step: str | None
+) -> None:
+    """One stderr line naming the truth steps the run's fixture doesn't list
+    and what `_at_or_before` held back for that reason; stdout, and so the
+    report, is unchanged."""
+    fact_steps = {
+        fid: f.valid_from
+        for fid, f in truth.facts.items()
+        if _unknown_step(f.valid_from, order, rank)
+    }
+    contradictions = [
+        xid
+        for xid, xc in truth.contradictions.items()
+        if any(fid in fact_steps for fid in xc.facts)
+    ]
+    stale_steps = [
+        e.changed_by for e in truth.stale.values() if _unknown_step(e.changed_by, order, rank)
+    ]
+    steps = sorted({*fact_steps.values(), *stale_steps})
+    if not steps:
+        return
+    print(
+        f"warning: truth names step(s) {', '.join(steps)} that the run's fixture does not "
+        f"list; held back as later than through_step {through_step}: {len(fact_steps)} "
+        f"facts, {len(contradictions)} contradictions, {len(stale_steps)} stale pages",
+        file=sys.stderr,
+    )
+
+
+def _fact_by_step(tf: TruthFact | None, order: dict[str, int], rank: int | None) -> bool:
+    """A truth fact is expected of a run only once it is valid: `valid_from`
+    at or before the run's step. `valid_to` is deliberately not checked —
+    explain expects a fact's whole history, retired values included. A
+    missing fact (a contradiction naming an unknown id) is not held back."""
+    return tf is None or _at_or_before(tf.valid_from, order, rank)
+
+
 def _comparable(a: datetime, b: datetime) -> tuple[datetime, datetime]:
     """Drop tzinfo from both sides if only one is aware, so a date-only
     ``since`` (naive) can still be compared against an offset-aware step
@@ -1819,6 +1901,9 @@ def _merge_fact_surface(outcomes: list[dict[str, Any]]) -> dict[str, Any]:
     unresolved: list[str] = []
     unplanted: list[dict[str, Any]] = []
     p5_hits = p5_n = r10_hits = 0
+    other_tiers = {
+        f"{count}_{t}": 0 for t in _OTHER_TIERS for count in ("returned", "tp", "expected")
+    }
 
     for outcome in outcomes:
         tier = outcome.get("tier", {})
@@ -1830,6 +1915,8 @@ def _merge_fact_surface(outcomes: list[dict[str, Any]]) -> dict[str, Any]:
         returned_executed += tier.get("returned_executed", 0)
         tp_executed += tier.get("tp_executed", 0)
         expected_executed += tier.get("expected_executed", 0)
+        for key in other_tiers:
+            other_tiers[key] += tier.get(key, 0)
 
         cat = outcome.get("category_accuracy", {})
         cat_correct += cat.get("correct", 0)
@@ -1860,7 +1947,12 @@ def _merge_fact_surface(outcomes: list[dict[str, Any]]) -> dict[str, Any]:
         "returned_executed": returned_executed,
         "tp_executed": tp_executed,
         "expected_executed": expected_executed,
+        **other_tiers,
     }
+    for t in _OTHER_TIERS:
+        tp = other_tiers[f"tp_{t}"]
+        merged["tier"][f"precision_{t}"] = _ratio(tp, other_tiers[f"returned_{t}"])
+        merged["tier"][f"recall_{t}"] = _ratio(tp, other_tiers[f"expected_{t}"])
     merged["category_accuracy"] = {
         "correct": cat_correct,
         "total": cat_total,
@@ -1976,6 +2068,21 @@ def score(
     mention_index = build_mention_index(truth)
     phase = results.get("phase")
     all_returned_facts: list[dict[str, Any]] = []
+    # Expected sets honour the step the run was ingested through
+    # (konyklabs/asbuilt#34): see `_run_step_rank` for the default.
+    order, run_rank = _run_step_rank(results.get("through_step"), step_dates, commits)
+    _warn_unknown_steps(truth, order, run_rank, results.get("through_step"))
+    facts_by_step = {fid: f for fid, f in truth.facts.items() if _fact_by_step(f, order, run_rank)}
+    contradictions_by_step = {
+        xid: xc
+        for xid, xc in truth.contradictions.items()
+        if all(_fact_by_step(truth.facts.get(fid), order, run_rank) for fid in xc.facts)
+    }
+    stale_by_step = {
+        sid: entry
+        for sid, entry in truth.stale.items()
+        if _at_or_before(entry.changed_by, order, run_rank)
+    }
 
     per_query: dict[str, list[dict[str, Any]]] = {s: [] for s in SURFACES}
     for q in results["queries"]:
@@ -1986,7 +2093,7 @@ def score(
             resolved_ids, _ = align_entities([raw_entity], alias_index, truth.entities)
             entity_id = resolved_ids[0] if resolved_ids else None
             expected = {
-                fid: f for fid, f in truth.facts.items() if entity_id and entity_id in f.entities
+                fid: f for fid, f in facts_by_step.items() if entity_id and entity_id in f.entities
             }
             all_returned_facts.extend(q["result"])
             per_query["explain"].append(
@@ -2005,7 +2112,7 @@ def score(
             )
         elif surface == "search":
             expects = params.get("expects") or []
-            expected = {fid: truth.facts[fid] for fid in expects if fid in truth.facts}
+            expected = {fid: facts_by_step[fid] for fid in expects if fid in facts_by_step}
             all_returned_facts.extend(q["result"])
             per_query["search"].append(
                 {
@@ -2023,7 +2130,7 @@ def score(
             )
         elif surface == "ask":
             expects = params.get("expects") or []
-            expected = {fid: truth.facts[fid] for fid in expects if fid in truth.facts}
+            expected = {fid: facts_by_step[fid] for fid in expects if fid in facts_by_step}
             per_query["ask"].append(
                 {
                     **score_ask_query(q["result"], expected, ask_citation_cap, mention_index),
@@ -2038,7 +2145,7 @@ def score(
                 entity_id = resolved_ids[0] if resolved_ids else None
             if raw_entity and entity_id:
                 expected_x = {}
-                for xid, xc in truth.contradictions.items():
+                for xid, xc in contradictions_by_step.items():
                     # Tolerate a contradiction naming a fact id that doesn't
                     # resolve, like the unfiltered branch below does (a
                     # missing fact just contributes no entities, rather than
@@ -2054,7 +2161,7 @@ def score(
             elif raw_entity and not entity_id:
                 expected_x = {}
             else:
-                expected_x = dict(truth.contradictions)
+                expected_x = dict(contradictions_by_step)
             resolved_result = [
                 _resolve_contradiction_entities(rc, alias_index, truth.entities)
                 for rc in q["result"]
@@ -2078,7 +2185,7 @@ def score(
                     **score_stale(
                         resolved_result,
                         since,
-                        truth.stale,
+                        stale_by_step,
                         step_dates,
                         truth.facts,
                         mention_index,
@@ -2173,6 +2280,23 @@ def score(
 
 _TRUTH_FILTER_PREFIXES: dict[str, tuple[str, ...]] = {
     "tests": ("code/tests/", "code/dispatch/test/"),
+    "code": ("code/",),
+    "documents": ("wiki/", "doc/", "ticket/", "pull/"),
+}
+# `code` is the code outside the test directories (konyklabs/asbuilt#34).
+_TRUTH_FILTER_EXCLUDES: dict[str, tuple[str, ...]] = {
+    "code": _TRUTH_FILTER_PREFIXES["tests"],
+}
+# Filters whose carriers' `version` is a history step. A `documents`
+# carrier's is not: a wiki or doc `version` is the page's own revision, and
+# ticket and pull carriers have none.
+_STEP_VERSIONED_FILTERS = frozenset({"tests", "code"})
+# The tier lines `--facts` prints: a `documented` line only where a
+# documented fact can be expected at all.
+_FILTER_TIERS: dict[str, tuple[str, ...]] = {
+    "tests": ("executed", "code"),
+    "code": ("executed", "code"),
+    "documents": ("executed", "code", "documented"),
 }
 
 
@@ -2246,19 +2370,48 @@ def _has_test_carrier_by_step(
     )
 
 
+def _in_truth_filter(document: str, truth_filter: str) -> bool:
+    return document.startswith(_TRUTH_FILTER_PREFIXES[truth_filter]) and not document.startswith(
+        _TRUTH_FILTER_EXCLUDES.get(truth_filter, ())
+    )
+
+
+def _has_filter_carrier_by_step(
+    tf: TruthFact,
+    truth_filter: str,
+    order: dict[str, int],
+    step_rank: int | None,
+) -> bool:
+    """A carrier of the kind `truth_filter` names (`_in_truth_filter`),
+    held to `_has_test_carrier_by_step`'s rule where the filter's carrier
+    versions are history steps (`tests`, `code`). A `documents` carrier
+    can't be placed on the history that way, so any one counts and only
+    the fact's own validity window (`_current_at_step`) places it at a
+    step (konyklabs/asbuilt#34)."""
+    kept = [c for c in tf.carriers if _in_truth_filter(c.document, truth_filter)]
+    if step_rank is None or truth_filter not in _STEP_VERSIONED_FILTERS:
+        return bool(kept)
+    return any(
+        c.version is not None and order.get(c.version, step_rank + 1) <= step_rank for c in kept
+    )
+
+
 def _expected_tier_at_step(tf: TruthFact, step_id: str) -> str:
     """`executed` if the fact has a `run/pytest-<step_id>` or
     `run/vitest-<step_id>` carrier — an EXACT match, or a "-rerun"-suffixed
     variant ("a rerun carrier counts" — konyklabs/asbuilt#8 review); `code`
-    otherwise. Every fact `score_test_connector`'s `expected` can contain
-    already carries a test-shaped `code/` document (that is what put it in
-    scope at all — see `_has_test_carrier_by_step`), so `code` is always a
-    meaningful fallback tier here, never `documented`."""
+    otherwise, when the fact has a `code/` carrier. Under the `tests` and
+    `code` filters every expected fact has one (that is what put it in
+    scope); under `documents` a fact with none keeps its own static tier,
+    `documented` in the fixture, rather than being labelled `code`
+    (konyklabs/asbuilt#34)."""
     for c in tf.carriers:
         for framework in ("pytest", "vitest"):
             prefix = f"run/{framework}-{step_id}"
             if c.document == prefix or c.document.startswith(prefix + "-"):
                 return _EXECUTED
+    if not any(c.document.startswith("code/") for c in tf.carriers):
+        return tf.tier
     return "code"
 
 
@@ -2393,9 +2546,11 @@ def score_test_connector(
 ) -> dict[str, Any]:
     """Scores a connector's flat bag of candidate Facts against the truth
     facts that carry a test-shaped document (`code/tests/...` or
-    `code/dispatch/test/...` by default — see `_TRUTH_FILTER_PREFIXES`; only
-    "tests" is defined so far) and are current (`_current_at_step`) at
-    `step` (a step id or a commit SHA — resolved via `commits`).
+    `code/dispatch/test/...` by default — see `_TRUTH_FILTER_PREFIXES`;
+    `code` is a `code/` carrier outside those and `documents` a wiki, doc,
+    ticket or pull carrier, konyklabs/asbuilt#34) and are current
+    (`_current_at_step`) at `step` (a step id or a commit SHA — resolved
+    via `commits`).
     `facts_payload` is either a bare list of facts, or an object with
     `facts` and `contradiction_candidates` keys (see module docstring); a
     bare list skips contradiction-candidate scoring (reported as all-zero).
@@ -2416,8 +2571,7 @@ def score_test_connector(
     mention_index = build_mention_index(truth)
     entities = truth.entities
 
-    prefixes = _TRUTH_FILTER_PREFIXES.get(truth_filter)
-    if prefixes is None:
+    if truth_filter not in _TRUTH_FILTER_PREFIXES:
         raise ValueError(
             f"unknown --truth-filter {truth_filter!r}; known: {sorted(_TRUTH_FILTER_PREFIXES)}"
         )
@@ -2428,7 +2582,7 @@ def score_test_connector(
     expected = {
         fid: tf
         for fid, tf in truth.facts.items()
-        if _has_test_carrier_by_step(tf, prefixes, order, step_rank)
+        if _has_filter_carrier_by_step(tf, truth_filter, order, step_rank)
         and _current_at_step(tf, order, step_rank)
     }
 
@@ -2449,7 +2603,8 @@ def score_test_connector(
             "id": fid,
             "statement": tf.statement,
             "test": next(
-                (c.location for c in tf.carriers if c.document.startswith(prefixes)), None
+                (c.location for c in tf.carriers if _in_truth_filter(c.document, truth_filter)),
+                None,
             ),
         }
         for fid, tf in expected.items()
@@ -2506,7 +2661,7 @@ def score_test_connector(
         "f1": f1_score(precision, recall),
         "by_tier": {
             tier: _tier_precision_recall(resolved, matches, expected, tier, step_id)
-            for tier in ("executed", "code")
+            for tier in _FILTER_TIERS[truth_filter]
         },
         "tier_confusion": _step_tier_confusion(resolved, matches, expected, step_id),
         "category_accuracy": cat_stats,
@@ -2580,9 +2735,10 @@ _MULTI_RUN_METRICS = ("precision", "recall", "f1")
 def aggregate_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
     """Median/min/max, across several independently-scored runs of the same
     arm, for each surface's precision/recall/f1 and (explain/search only)
-    executed-tier precision. Per-run diagnostics (by-category, unplanted
-    audit, entity resolution) are not re-aggregated here — see module
-    docstring."""
+    executed-tier precision and the code and documented tiers' precision
+    and recall (konyklabs/asbuilt#34). Per-run diagnostics (by-category,
+    unplanted audit, entity resolution) are not re-aggregated here — see
+    module docstring."""
     surfaces: dict[str, dict[str, dict[str, float]]] = {}
     for name in SURFACES:
         metrics: dict[str, dict[str, float]] = {}
@@ -2610,6 +2766,19 @@ def aggregate_reports(reports: list[dict[str, Any]]) -> dict[str, Any]:
                 "min": min(tier),
                 "max": max(tier),
             }
+        for t in _OTHER_TIERS:
+            for ratio in ("precision", "recall"):
+                values = [
+                    r["surfaces"][name]["tier"][f"{ratio}_{t}"]
+                    for r in reports
+                    if r["surfaces"][name].get("tier", {}).get(f"{ratio}_{t}") is not None
+                ]
+                if values:
+                    metrics[f"{t}_tier_{ratio}"] = {
+                        "median": statistics.median(values),
+                        "min": min(values),
+                        "max": max(values),
+                    }
         surfaces[name] = metrics
     return {"surfaces": surfaces}
 
@@ -2837,6 +3006,13 @@ def _print_fact_surface_detail(s: dict[str, Any], phase: str | None = None) -> N
         f"recall={_fmt(tier.get('recall'))} ({tp_executed}/{tier.get('expected_executed', 0)}) "
         f"hard_errors={tier.get('hard_errors', 0)}"
     )
+    for t in _OTHER_TIERS:
+        tp = tier.get(f"tp_{t}", 0)
+        print(
+            f"    tier {t}: precision={_fmt(tier.get(f'precision_{t}'))} "
+            f"({tp}/{tier.get(f'returned_{t}', 0)}) "
+            f"recall={_fmt(tier.get(f'recall_{t}'))} ({tp}/{tier.get(f'expected_{t}', 0)})"
+        )
     cat = s.get("category_accuracy", {})
     print(
         f"    category accuracy={_fmt(cat.get('accuracy'))} "
@@ -3021,7 +3197,8 @@ def main(argv: list[str] | None = None) -> int:
         metavar="FILE",
         help=(
             "score a test connector's bag of candidate Facts (konyklabs/asbuilt#8) "
-            "against truth facts carrying a test document; skips normal scoring"
+            "against truth facts carrying a test document, or the carriers "
+            "--truth-filter names; skips normal scoring"
         ),
     )
     parser.add_argument(

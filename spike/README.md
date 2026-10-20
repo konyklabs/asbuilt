@@ -218,6 +218,26 @@ uv sync
    its own polarity, a claim naming the entity its own way handed to the
    statement rule — are in the module docstring under asbuilt#17.
 
+   Explain and search print a line per provenance tier (asbuilt#34):
+   `tier executed`, `tier code` and `tier documented`, each with precision
+   (returned facts claiming the tier that matched a truth fact of that tier,
+   over every returned fact claiming it) and recall (the same numerator over
+   the expected facts of that tier). `--json` carries them under the
+   surface's `tier` (`precision_code`, `recall_documented`, and the counts
+   beside them), and several runs print their median, minimum and maximum.
+   Expected sets honour the results file's `through_step`: a truth fact
+   valid from a later step, a contradiction one of whose facts is, and a
+   page made stale by a later step are not expected of the run. A results
+   file without `through_step` holds nothing back.
+
+   `--facts FILE --step STEP` scores a connector's bag of facts instead of
+   a results file, against the truth facts current at the step that have a
+   carrier of the kind `--truth-filter` names: `tests` (the default, a test
+   file at or before the step), `code` (a `code/` file outside the test
+   directories, at or before the step) or `documents` (a wiki page, doc,
+   ticket or pull request; their versions are not history steps, so any
+   one counts).
+
 5. **Check the fixture's own consistency** (a library call, not yet a CLI):
 
    ```python
