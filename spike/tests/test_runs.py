@@ -6,15 +6,22 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 
+import bench.runs
 from bench.build import build as build_repo
 from bench.runs import (
     _clear_pycache,
+    _run_playwright,
+    _scrub_json_report,
+    _scrub_xml_report,
+    _unexpected_playwright_outcomes,
     _unexpected_pytest_outcomes,
     _unexpected_vitest_outcomes,
     load_planted_runs,
     run_all,
 )
+from bench.truth import playwright_outcomes
 from tests._support import MINI_ROOT, SPIKE_ROOT
 
 
@@ -354,3 +361,210 @@ def test_run_all_fails_on_unplanted_failure(tmp_path: Path):
     ok = run_all(fixture, out_root)
     assert not ok
     assert (fixture / "runs" / "pytest-c1-rerun.json").is_file()
+
+
+def _playwright_report(path: Path, statuses: dict[str, dict[str, str]], errors=()) -> Path:
+    """A Playwright JSON report with one describe, `statuses` mapping a test
+    title to {project: status}."""
+    specs = [
+        {
+            "title": title,
+            "tests": [
+                {"projectName": project, "results": [{"status": status}]}
+                for project, status in by_project.items()
+            ],
+        }
+        for title, by_project in statuses.items()
+    ]
+    path.write_text(
+        json.dumps(
+            {
+                "config": {"projects": []},
+                "suites": [
+                    {"title": "a.spec.ts", "specs": [], "suites": [{"title": "a", "specs": specs}]}
+                ],
+                "errors": list(errors),
+            }
+        )
+    )
+    return path
+
+
+def _planted_playwright(test: str, c7: dict[str, str]) -> dict:
+    return _planted([{"runner": "playwright", "test": test, "outcomes": {"c7": c7}}])
+
+
+def test_unexpected_playwright_outcomes_tolerates_exactly_the_planted_ones(tmp_path: Path):
+    outcomes = {"mocked": "passed", "fake": "passed", "real": "failed"}
+    report = _playwright_report(tmp_path / "p.json", {"t": outcomes, "u": {"real": "passed"}})
+    assert (
+        _unexpected_playwright_outcomes(report, "c7", _planted_playwright("a › t", outcomes)) == []
+    )
+
+
+def test_unexpected_playwright_outcomes_flags_a_planted_mismatch_and_a_missing_one(tmp_path: Path):
+    planted = _planted_playwright("a › t", {"mocked": "passed", "real": "failed"})
+    report = _playwright_report(tmp_path / "p.json", {"t": {"real": "passed"}})
+    assert _unexpected_playwright_outcomes(report, "c7", planted) == [
+        "[real] a › t (expected 'failed', got 'passed')",
+        "[mocked] a › t (expected 'passed')",
+    ]
+
+
+def test_unexpected_playwright_outcomes_flags_unplanted_failures_and_report_errors(tmp_path: Path):
+    report = _playwright_report(
+        tmp_path / "p.json",
+        {"t": {"real": "timedOut"}, "u": {"fake": "skipped"}},
+        errors=[{"message": "Error: webServer exited early\nmore"}],
+    )
+    assert _unexpected_playwright_outcomes(report, "c7", None) == [
+        "<playwright error: Error: webServer exited early>",
+        "[real] a › t (timedOut)",
+    ]
+
+
+def test_scrub_reports_replaces_the_repository_path_everywhere(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    json_report = tmp_path / "p.json"
+    json_report.write_text(
+        json.dumps(
+            {
+                "config": {
+                    "rootDir": f"{repo}/web/tests",
+                    "argv": [
+                        "/opt/node/bin/node",
+                        f"{repo}/web/node_modules/.bin/playwright",
+                        "test",
+                    ],
+                    "projects": [{"outputDir": f"{repo.resolve()}/web/test-results"}],
+                },
+                "suites": [
+                    {
+                        "specs": [
+                            {
+                                "tests": [
+                                    {
+                                        "results": [
+                                            {
+                                                "errors": [
+                                                    {"stack": f"at {repo}/web/tests/a.spec.ts:3"}
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            }
+        )
+    )
+    xml_report = tmp_path / "p.xml"
+    xml_report.write_text(f"<failure>at {repo}/web/tests/a.spec.ts:3</failure>")
+    _scrub_json_report(json_report, repo)
+    _scrub_xml_report(xml_report, repo)
+    data = json.loads(json_report.read_text())
+    assert data["config"]["rootDir"] == "./web/tests"
+    assert data["config"]["argv"] == ["node", "./web/node_modules/.bin/playwright", "test"]
+    assert data["config"]["projects"][0]["outputDir"] == "./web/test-results"
+    for text in (json_report.read_text(), xml_report.read_text()):
+        assert str(tmp_path) not in text and str(tmp_path.resolve()) not in text
+
+
+def test_committed_c7_reports_carry_no_local_path():
+    """The Playwright reports and the regenerated c7 pytest and Vitest reports
+    (asbuilt#37) name no directory of the machine that wrote them."""
+    reports = sorted((SPIKE_ROOT / "runs").glob("*-c7*"))
+    assert {p.name for p in reports} >= {
+        "playwright-c7.json",
+        "playwright-c7.xml",
+        "pytest-c7.json",
+    }
+    for report in reports:
+        text = report.read_text()
+        for marker in ("/Users/", "/home/", "/private/", "/tmp/", "/var/folders/", "/opt/"):
+            assert marker not in text, (report.name, marker)
+
+
+def _web_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
+    repo = tmp_path / "repo"
+    (repo / "web").mkdir(parents=True)
+    (repo / "web" / "playwright.config.ts").write_text("")
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _playwright_report(runs_dir / "playwright-c7.json", {"t": {"real": "passed"}})
+    (runs_dir / "playwright-c7.xml").write_text("<testsuites></testsuites>\n")
+    return repo, repo / "web", runs_dir
+
+
+def test_run_playwright_refuses_a_run_that_wrote_no_report(tmp_path: Path, monkeypatch):
+    """A crashed Playwright run must not be judged by the committed reports
+    it failed to replace: refused, and those reports left byte for byte."""
+    repo, web, runs_dir = _web_repo(tmp_path)
+    committed = {p.name: p.read_bytes() for p in runs_dir.iterdir()}
+    calls = []
+
+    def writes_nothing(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1)
+
+    monkeypatch.setattr(bench.runs.subprocess, "run", writes_nothing)
+    assert _run_playwright(repo, runs_dir, "c7", "0" * 40, {web}, None) is False
+    assert calls == [["npx", "playwright", "test", "--reporter=list,json,junit"]]
+    assert {p.name: p.read_bytes() for p in runs_dir.iterdir()} == committed
+
+
+def test_run_playwright_refuses_a_run_that_did_not_complete(tmp_path: Path, monkeypatch):
+    repo, web, runs_dir = _web_repo(tmp_path)
+    committed = {p.name: p.read_bytes() for p in runs_dir.iterdir()}
+
+    def backend_never_started(cmd, cwd, env, **kwargs):
+        report = {"config": {}, "suites": [], "errors": [{"message": "Error: webServer timed out"}]}
+        report["stats"] = {"expected": 0, "unexpected": 0, "flaky": 0, "skipped": 0}
+        (cwd / env["PLAYWRIGHT_JSON_OUTPUT_NAME"]).write_text(json.dumps(report))
+        (cwd / env["PLAYWRIGHT_JUNIT_OUTPUT_NAME"]).write_text("<testsuites></testsuites>")
+        return subprocess.CompletedProcess(cmd, 1)
+
+    monkeypatch.setattr(bench.runs.subprocess, "run", backend_never_started)
+    assert _run_playwright(repo, runs_dir, "c7", "0" * 40, {web}, None) is False
+    assert {p.name: p.read_bytes() for p in runs_dir.iterdir()} == committed
+    assert not list(web.glob(".bench-runs-report-*"))
+
+
+def _junit_outcomes(xml_path: Path) -> dict[tuple[str, str], str]:
+    """(project, testcase name) -> status, from Playwright's JUnit report:
+    each <testsuite> is one file in one project (its hostname)."""
+    outcomes = {}
+    for suite in ElementTree.parse(xml_path).getroot().iter("testsuite"):
+        for case in suite.iter("testcase"):
+            if case.find("failure") is not None or case.find("error") is not None:
+                status = "failed"
+            elif case.find("skipped") is not None:
+                status = "skipped"
+            else:
+                status = "passed"
+            outcomes[(suite.get("hostname"), case.get("name"))] = status
+    return outcomes
+
+
+def test_committed_playwright_reports_hold_exactly_the_planted_outcomes():
+    """runs/playwright-c7.json and .xml, read offline: every planted
+    Playwright test has its planted outcome in every project, the two
+    reports agree test by test, and no unplanted test failed."""
+    data = json.loads((SPIKE_ROOT / "runs" / "playwright-c7.json").read_text())
+    from_json = {(project, path): status for project, path, status in playwright_outcomes(data)}
+    from_junit = _junit_outcomes(SPIKE_ROOT / "runs" / "playwright-c7.xml")
+    assert from_json == from_junit
+
+    planted = {
+        (project, entry["test"]): outcome
+        for entry in load_planted_runs(SPIKE_ROOT)["planted"]
+        if entry.get("runner") == "playwright"
+        for project, outcome in entry["outcomes"]["c7"].items()
+    }
+    assert len(planted) == 12
+    assert {key: from_json.get(key) for key in planted} == planted
+    unplanted = {key: s for key, s in from_json.items() if key not in planted}
+    assert all(status in ("passed", "skipped") for status in unplanted.values()), unplanted

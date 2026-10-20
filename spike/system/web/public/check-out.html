@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Check out a bike</title>
+  <script src="/portal.js" defer></script>
+</head>
+<body data-page="check-out">
+  <h1>Check out a bike</h1>
+  <div id="checkout-banner" role="alert" hidden></div>
+  <form id="check-out-form">
+    <label>Rider <input name="rider_id" required></label>
+    <label>Bike <input name="bike_id" required></label>
+    <label>Station <input name="station_id" required></label>
+    <button type="submit">Check out</button>
+  </form>
+  <p id="checkout-result"></p>
+</body>
+</html>

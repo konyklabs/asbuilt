@@ -22,12 +22,15 @@
     value: 409 station_full
     unit: null
 - truth_id: F-051
-  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full
+    when the overflow_parking flag is off.
   source: model
   test: test_checkin_full_station_returns_409
   candidate: 'Checking in to a station that is already full returns HTTP 409 with JSON body {''error'':
     ''station_full''}.'
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: condition dropped (F-051 states the overflow_parking flag off since asbuilt#63)'
   truth_claim:
     entity: E-endpoint-checkin
     attribute: station_full_status
@@ -408,11 +411,14 @@
   lenient_expect: true
   why: '#35 item 4 strict reading: condition dropped (F-018 is the opposite with the flag on)'
 - truth_id: F-051
-  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full
+    when the overflow_parking flag is off.
   source: rules
   test: test_checkin_full_station_returns_409
   candidate: Checkin full station returns 409.
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: condition dropped (F-051 states the overflow_parking flag off since asbuilt#63)'
   truth_claim:
     entity: E-endpoint-checkin
     attribute: station_full_status
@@ -904,7 +910,8 @@
     value: 15000
     unit: usd_cents
 - truth_id: F-051
-  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full
+    when the overflow_parking flag is off.
   source: model-cross
   test: test_membership_lapses_7_days_after_failed_renewal
   candidate: A single failed renewal charge sets the membership status to GRACE and grace_ends_at to exactly
@@ -1127,18 +1134,22 @@
     value: 14
     unit: day
 - truth_id: F-051
-  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full
+    when the overflow_parking flag is off.
   source: rule-positive
   candidate: Checking in at a full station returns HTTP 409 with error code station_full.
-  expect: true
-  why: the fact is about the response and the code agrees
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: condition dropped (F-051 states the overflow_parking flag off since
+    asbuilt#63); lenient: the fact is about the response and the code agrees'
   truth_claim:
     entity: E-endpoint-checkin
     attribute: station_full_status
     value: 409
     unit: null
 - truth_id: F-051
-  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full
+    when the overflow_parking flag is off.
   source: rule-negative
   candidate: Checking in at a full station returns HTTP 404 with error code station_full.
   expect: false

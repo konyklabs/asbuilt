@@ -17,7 +17,7 @@ usable as a demo script, not just a scored artefact.
 Ingest-root integrity (D-013): ``ingest()`` is never handed the raw fixture.
 ``assemble_ingest_root`` builds ``build/ingest/`` from three things only —
 the built repository's content *through* ``--through-step`` (default: the
-fixture's last step), via ``bench.build.Timeline``, never a git checkout of
+fixture's registered step, below), via ``bench.build.Timeline``, never a git checkout of
 ``system/`` itself; ``sources/{wiki,docs,tickets,pulls}``, whole (they don't
 carry a step); and only the ``runs/*.json`` reports at or before that step
 (by each report's own ``metadata.step``, not by filename — a report that
@@ -28,19 +28,31 @@ scripts under ``tools/`` are never assembled in — see ``tests/test_leaks.py``
 for the check that nothing under the assembled root carries a truth fact id
 or near-verbatim statement.
 
+The registered benchmark (D-013, asbuilt#37): ``queries/mix.yaml``'s
+``registered`` block names the step a run ingests through when it names
+none (``through_step``) and the two steps ``--incremental`` ingests
+(``incremental``). The real fixture registers c6 and c5 then c6, the
+benchmark D-013 registered and every results file was produced against; c7
+(the rider portal) is ingested only when asked for with ``--through-step
+c7``. A mix with no ``registered`` block (the mini fixture's) falls back to
+the fixture's last step and its last two. A query that carries
+``valid_from`` (a step id) is asked only of a run through that step or a
+later one, so a run through c6 asks exactly the queries it asked before c7
+existed.
+
 ``--incremental``: the two-phase run (D-013). Assembles the ingest root
-through the fixture's *second-to-last* step and calls
-``ingest(root, ENTITY_KINDS, incremental=False)``, then assembles it again
-through the *last* step and calls
+through the registered first step (by default the fixture's *second-to-last*)
+and calls ``ingest(root, ENTITY_KINDS, incremental=False)``, then assembles it
+again through the registered second step (by default the *last*) and calls
 ``ingest(root, ENTITY_KINDS, incremental=True)``. Both ``IngestReport``s and
 their delta (seconds, tokens, dollars, calls — the second call's own numbers,
 since each call reports only the work it did) are recorded under
 ``ingest_incremental`` in the results file; ``phase`` is ``"incremental"``
 (else ``"full"``). The query mix still runs once, after the second ingest,
 so the scorer can check the prototype answers as of the *later* state
-(supersession, not a stale snapshot from the first phase). ``--through-step``
-is ignored with ``--incremental`` (the two steps are fixed by the fixture's
-own history, not chosen).
+(supersession, not a stale snapshot from the first phase). With
+``--incremental``, an explicit ``--through-step S`` makes the two steps the
+one before S and S.
 
 Prototype lookup: ``--prototype null`` loads ``bench.null:NullPrototype``.
 Any other name ``X`` loads ``prototypes.X:Prototype``, importable from
@@ -294,6 +306,34 @@ def load_mix(queries_path: Path) -> dict[str, Any]:
     return mix
 
 
+def registered_steps(mix: dict[str, Any], step_ids: list[str]) -> tuple[str, tuple[str, str]]:
+    """The step a run ingests through by default and the two steps of an
+    incremental run: the mix's `registered` block (D-013's benchmark, see
+    the module docstring), else the fixture's last step and last two."""
+    registered = mix.get("registered") or {}
+    through = registered.get("through_step") or step_ids[-1]
+    pair = tuple(registered.get("incremental") or step_ids[-2:])
+    for step in (through, *pair):
+        if step not in step_ids:
+            raise RunError(f"registered step {step!r} is not one of {step_ids}")
+    if len(pair) != 2 or step_ids.index(pair[0]) >= step_ids.index(pair[1]):
+        raise RunError(f"registered incremental steps {list(pair)} are not two ordered steps")
+    return through, pair
+
+
+def queries_at_step(mix: dict[str, Any], step: str, step_ids: list[str]) -> list[dict[str, Any]]:
+    """The mix's queries a run through `step` asks: those without a
+    `valid_from`, and those whose `valid_from` is `step` or earlier."""
+    selected = []
+    for query in mix["queries"]:
+        since = query.get("valid_from")
+        if since is not None and since not in step_ids:
+            raise RunError(f"query {query.get('id')!r}: valid_from {since!r} is not a step")
+        if since is None or step_ids.index(since) <= step_ids.index(step):
+            selected.append(query)
+    return selected
+
+
 def _percentile(sorted_values: list[float], pct: float) -> float:
     if not sorted_values:
         return float("nan")
@@ -527,11 +567,21 @@ def run(
         os.environ["ASBUILT_BUDGET_DOLLARS"] = str(budget_dollars)
 
     ingest_incremental: dict[str, Any] | None = None
+    mix = load_mix(fixture_root / "queries" / "mix.yaml")
+    step_ids = [s.id for s in timeline.steps]
+    if through_step is not None and through_step not in step_ids:
+        raise RunError(f"unknown step {through_step!r}; known steps are {step_ids}")
 
     if incremental:
         if len(timeline.steps) < 2:
             raise RunError("--incremental needs at least two history steps")
-        first_step, second_step = timeline.steps[-2].id, timeline.steps[-1].id
+        if through_step is None:
+            first_step, second_step = registered_steps(mix, step_ids)[1]
+        elif step_ids.index(through_step) == 0:
+            raise RunError(f"--incremental through {through_step} has no step before it")
+        else:
+            first_step = step_ids[step_ids.index(through_step) - 1]
+            second_step = through_step
 
         first_root = assemble_ingest_root(fixture_root, first_step, ingest_root / "phase-1")
         first_report, first_waited = _ingest_timed(prototype, first_root, False)
@@ -558,15 +608,13 @@ def run(
             },
         }
     else:
-        step = through_step or timeline.steps[-1].id
+        step = through_step or registered_steps(mix, step_ids)[0]
         assembled = assemble_ingest_root(fixture_root, step, ingest_root)
         ingest_report, ingest_waited = _ingest_timed(prototype, assembled, False)
 
-    mix = load_mix(fixture_root / "queries" / "mix.yaml")
+    asked = queries_at_step(mix, step, step_ids)
     selected_queries = (
-        mix["queries"]
-        if only_surfaces is None
-        else [q for q in mix["queries"] if q["surface"] in only_surfaces]
+        asked if only_surfaces is None else [q for q in asked if q["surface"] in only_surfaces]
     )
     prototype_display_name = getattr(prototype, "name", prototype_name)
 
@@ -665,7 +713,9 @@ def main(argv: list[str] | None = None) -> int:
         "--out", default=None, help="results file (default: build/results-<prototype>.json)"
     )
     parser.add_argument(
-        "--through-step", default=None, help="build the ingest root as of this step (default: last)"
+        "--through-step",
+        default=None,
+        help="build the ingest root as of this step (default: the mix's registered step, c6)",
     )
     parser.add_argument(
         "--repeats", type=int, default=DEFAULT_REPEATS, help="warm latency repeats per query"
@@ -684,7 +734,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--incremental",
         action="store_true",
-        help="two-phase ingest: second-to-last step, then the last with incremental=True",
+        help="two-phase ingest: the registered pair (c5 then c6), or the step before "
+        "--through-step and that step",
     )
     parser.add_argument(
         "--only-surfaces",

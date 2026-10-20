@@ -66,3 +66,10 @@
 - {id: E-endpoint-checkin, kind: endpoint, name: "POST /rides/{id}/checkin", owner: E-dockyard}
 - {id: E-endpoint-refund, kind: endpoint, name: "POST /refunds", owner: E-farebox}
 - {id: E-endpoint-station-status, kind: endpoint, name: "GET /stations/{id}/status", owner: E-dockyard}
+
+# the rider portal (c7): valid_from is the step that adds the entity; every fact
+# tagged with it is valid from that step or later (truth/validate.py)
+- {id: E-web-rider-portal, kind: service, name: rider-portal, valid_from: c7, summary: "Rider-facing web pages over dockyard and farebox: fare preview, check-out, refund request. Plain HTML and JavaScript."}
+- {id: E-page-fare-preview, kind: endpoint, name: fare-preview page, owner: E-web-rider-portal, valid_from: c7}
+- {id: E-page-check-out, kind: endpoint, name: check-out page, owner: E-web-rider-portal, valid_from: c7}
+- {id: E-page-refund-request, kind: endpoint, name: refund-request page, owner: E-web-rider-portal, valid_from: c7}

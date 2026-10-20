@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Request a refund</title>
+  <script src="/portal.js" defer></script>
+</head>
+<body data-page="refund-request">
+  <h1>Request a refund</h1>
+  <form id="refund-request-form">
+    <label>Ride <input name="ride_id" required></label>
+    <label>Ride ended at <input name="ride_ended_at" required></label>
+    <label>Charged (cents) <input name="charged_cents" type="number" min="0" required></label>
+    <label>Refund (cents) <input name="requested_cents" type="number" min="1" required></label>
+    <button type="submit">Request refund</button>
+  </form>
+  <p id="refund-result"></p>
+</body>
+</html>

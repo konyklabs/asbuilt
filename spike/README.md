@@ -28,37 +28,72 @@ benchmark and resembling no real system (`../AGENTS.md`). Three services:
 `farebox` (Python: memberships, ride pricing, invoices, refunds, payments
 through the invented provider *Tollbooth Pay*, and the `ride.events` queue)
 and `dispatch` (TypeScript: rebalancing, maintenance tickets, three scheduled
-jobs, the invented weather service *Skyglass*). Fifty entities in
-`truth/entities.yaml`: 3 teams, 3 services, 15 tables, 1 queue, 2
-integrations, 3 jobs, 4 feature flags, 15 business rules, 4 endpoints.
+jobs, the invented weather service *Skyglass*), and since c7 a small `web/`
+rider portal over the first two. Fifty-four entities in
+`truth/entities.yaml`: 3 teams, 4 services (the portal is the fourth), 15
+tables, 1 queue, 2 integrations, 3 jobs, 4 feature flags, 15 business
+rules, 7 endpoints (4 API endpoints and the portal's 3 pages).
 
-Six commits (`system/history/steps.yaml`, January to August 2026): the
+Seven commits (`system/history/steps.yaml`, January to October 2026): the
 import; the spring promotion raising member free minutes to 45; membership
 grace from 3 to 7 days; the promotion's end; the single-ride cap to $30 and
 the lost-bike fee to $150; storm-pause for rebalancing plus the
-`refund_auto_approve` flag. `system/<path>` is each file's final content and
+`refund_auto_approve` flag; the rider portal (c7, asbuilt#37), which changes
+nothing in the three services, so c1 to c6 and their SHAs are what they were
+before it (every new path has a `history/c6/<path>.absent` marker).
+`system/<path>` is each file's final content and
 `system/history/<step>/<path>` its content *through* that step; `build.py`
 turns that into a repository with reproducible SHAs.
 
-Planted, listed in `truth/` before any artefact was written: 120 facts
-(48 business logic, 38 technical implementation, 24 operations, 10 history;
-27 at the `executed` tier, 41 `code`, 52 `documented`), 21 contradictions in
-five kinds (6 wiki-vs-test, 6 doc-vs-code, 4 ticket-vs-code, 4 page-vs-page,
-1 run-vs-code), 10 stale pages, and 5 facts whose only carrier is a
-pull-request comment. Carriers: 54 Python modules and 16 TypeScript files;
-24 distinct pytest node ids across the history (20 collected at the final
-commit, of which one is skipped) and 4 Vitest tests, with 14 run reports
-(one per suite per commit, plus two reruns); 40 wiki pages, 10 documents,
-80 tickets (57 of them noise), 8 pull-request threads. `truth/PLAN.yaml` is
+Planted, listed in `truth/` before any artefact was written: 125 facts
+(51 business logic, 40 technical implementation, 24 operations, 10 history;
+30 at the `executed` tier, 42 `code`, 53 `documented`), 22 contradictions in
+six kinds (6 wiki-vs-test, 6 doc-vs-code, 4 ticket-vs-code, 4 page-vs-page,
+1 run-vs-code, 1 fake-vs-real), 10 stale pages, and 5 facts whose only
+carrier is a pull-request comment. Carriers: 54 Python modules and 16
+TypeScript files in the services, plus the portal's `serve.py`,
+`fake_farebox.py` and page script; 24 distinct pytest node ids across the
+history (20 collected at the final commit, of which one is skipped), 4
+Vitest tests and 4 Playwright tests, with 18 JSON run reports (one per
+suite per commit, three reruns, and one Playwright report holding three
+projects) plus that report's JUnit twin; 40 wiki pages, 10 documents, 80
+tickets (57 of them noise), 8 pull-request threads. `truth/PLAN.yaml` is
 the authoring plan every document was written from; the prose paraphrases
 each fact (never its statement verbatim) so that extraction is measured, not
 string matching.
 
 The JavaScript runner is **Vitest** (5.0.2): its JSON reporter carries
 `ancestorTitles` and `title` per test, which is what a run carrier needs to
-name a test exactly; Jest would have served, Mocha lacks the structured
-reporter out of the box, and Playwright is a browser runner the fixture does
-not need. The sizing is the estimate from the tiering comment on
+name a test exactly; Jest would have served, and Mocha lacks the structured
+reporter out of the box.
+
+**The rider portal and backend fidelity** (c7, D-014, asbuilt#37). `web/`
+holds three plain HTML pages and one script (`public/`): a fare preview, a
+check-out and a refund request, calling `/api/*`. `web/serve.py` serves them
+and answers `/api` with `--backend real` (dockyard's and farebox's own
+handlers, in its process), `fake` (farebox's routes from `fake_farebox.py`, a
+fake written from the wiki's Farebox API, Casual rider pricing and Fares
+overview pages and the fares price sheet, so it still caps a ride at
+$25.00) or `none`. The
+Playwright suite (`@playwright/test` 1.64.1, `web/tests/`) runs in three
+projects, `mocked` (routes intercepted in the browser), `fake` and `real`,
+each starting its own backend through `webServer`; `config.metadata` carries
+the commit and step and each project's `metadata.backend` the commit it ran
+against. `truth/fidelities.yaml` ranks the fidelities `real`, `in-process`
+(every pytest and Vitest run), `fake`, `mocked`, names `in-process` the real
+backend, and gives every run document's fidelity (by framework, by project
+for Playwright). An executed fact carries `fidelity`, the strongest at which
+a cited run passes: the 27 earlier ones are `in-process`. Planted (P-4 to P-7
+in `truth/planted-runs.yaml`): the refund window passes in all three
+projects (F-121, `real`); the check-out banner is proven only against mocked
+routes (F-122, `mocked`, which ranks below code); the $25.00 cap passes
+against the mocks and the fake and fails against the real backend, so its
+fact (F-123) is demoted, to `documented` on the stale fares pages the fake
+was written from, since a test double is not Gearwell's code, and a
+`fake-vs-real` contradiction (X-022) opens, won by F-124, the $30.00 cap the
+`real` project proves.
+
+The sizing is the estimate from the tiering comment on
 konyklabs/roadmap#154 and stands until Oleg's local landscape note reweights
 it.
 
@@ -116,9 +151,17 @@ uv sync
 
    For each step: `git checkout` its commit in `build/repo/`, run the
    Python suite with `pytest --json-report` into `runs/pytest-<step>.json`
-   (skipped, with a message, if there's no `tests/` yet), and if
+   (skipped, with a message, if there's no `tests/` yet), if
    `dispatch/package.json` exists, `npm ci` once and `npx vitest run` into
-   `runs/vitest-<step>.json`.
+   `runs/vitest-<step>.json`, and if `web/playwright.config.ts` exists (c7
+   on), `npm ci` once in `web/` and `npx playwright test` with the JSON and
+   JUnit reporters into `runs/playwright-<step>.json` and `.xml`: one run,
+   three projects, retries 0, no rerun. That needs node, npm and Playwright's
+   Chromium locally (`npx playwright install chromium`, a download, no
+   account); CI never runs it, since the reports are committed. Every
+   report is scrubbed of the build's absolute path (asbuilt#37; the c1 to c6
+   reports were written before that and keep the path they were built at),
+   and gets a top-level `metadata: {commit, step}`.
 
    Planted-outcome tolerance and reruns (D-013; the contract is
    `truth/planted-runs.yaml`'s own `runner` section): a failing test (P-1), a
@@ -134,7 +177,10 @@ uv sync
    Whether an outcome counts as *unexpected* (and makes the run exit
    non-zero) is checked against `planted-runs.yaml`'s per-test `outcomes`
    (attempt 1) and `reruns` (attempt 2) tables if the file exists; without
-   it, any failure is unexpected (reruns still happen). See
+   it, any failure is unexpected (reruns still happen). A Playwright entry
+   (`runner: playwright`) gives an outcome per step and project, and those
+   are exactly the expected ones: a planted outcome the run did not report
+   is unexpected too. See
    `bench/runs.py`'s module docstring for the exact matching rule and the
    stale-bytecode and report-path guards it also carries.
 
@@ -146,9 +192,19 @@ uv sync
      [--budget-tokens N] [--reset]
    ```
 
+   With no `--through-step` a run is D-013's registered benchmark, as
+   `queries/mix.yaml`'s `registered` block states it: through c6, and with
+   `--incremental` c5 then c6, which is what every results file so far was
+   produced against. To run through c7 (the rider portal, asbuilt#37) ask
+   for it: `--through-step c7`, or `--incremental --through-step c7` for c6
+   then c7. A query carrying `valid_from` (the portal's five) is asked only
+   of a run through that step or later, so a c6 run asks the same 62.
+   `bench/score.py` scores a c7 run's executed tier per backend fidelity
+   (asbuilt#38; step 4).
+
    Assembles `build/ingest/` — the ingest-root integrity rule (D-013): never
    the raw fixture, only the built repository's content *through*
-   `--through-step` (default: the fixture's last step, via `Timeline`, never
+   `--through-step` (default: the registered step, via `Timeline`, never
    a git checkout of `system/`), `sources/{wiki,docs,tickets,pulls}` whole,
    and the `runs/*.json` reports at or before that step (by each report's own
    `metadata.step`). `truth/`, `truth/PLAN.yaml`, `queries/` and `tools/` are
@@ -208,13 +264,15 @@ uv sync
    across a surface's queries — micro-averaged — before computing ratios,
    and per-category breakdowns bucket by the *truth* fact's category only).
    The matcher itself is calibrated: `bench/score.py --calibrate` runs the
-   130 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
-   (1.0/1.0), and `--calibrate tests/fixtures/calibration-model-run.yaml`
-   the 91 pairs judged from the test connector's first real model run plus
-   targeted pairs per rule (asbuilt#17 and #35: precision 1.0, recall 0.59
-   strict and 0.62 lenient by design — the misses are narratives of a test
-   scenario, not matcher defects, and one paraphrase the over-claim rule
-   misses, kept to show its cost). The rules a fuller statement is held to — HTTP codes set
+   140 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
+   (1.0/1.0 in both readings), and `--calibrate
+   tests/fixtures/calibration-model-run.yaml` the 91 pairs judged from the
+   test connector's first real model run plus targeted pairs per rule
+   (asbuilt#17, #35 and #63: precision 1.0, recall 0.56 strict and 0.62
+   lenient by design — the misses are narratives of a test scenario, not
+   matcher defects, one paraphrase the over-claim rule misses, kept to show
+   its cost, and F-010's bound stated from its other side, the negation
+   veto's known cost). The rules a fuller statement is held to — HTTP codes set
    aside, extra numbers only of a kind the fact does not use, flag state as
    its own polarity, a claim naming the entity its own way handed to the
    statement rule — are in the module docstring under asbuilt#17.
@@ -261,10 +319,51 @@ uv sync
    `--facts FILE --step STEP` scores a connector's bag of facts instead of
    a results file, against the truth facts current at the step that have a
    carrier of the kind `--truth-filter` names: `tests` (the default, a test
-   file at or before the step), `code` (a `code/` file outside the test
+   file at or before the step: `code/tests/`, `code/dispatch/test/` and,
+   since asbuilt#38, the portal's Playwright specs in `code/web/tests/`), `code` (a `code/` file outside the test
    directories, at or before the step) or `documents` (a wiki page, doc,
    ticket or pull request; their versions are not history steps, so any
-   one counts).
+   one counts). A fact's tier at the step is `executed` when a run at or
+   before the step lifts it, no demotion applies by then and the step is
+   before the fact's `valid_to` (asbuilt#63; F-050's flaky c6 runs leave
+   it executed on its c1 to c5 runs, and a fact at its own `valid_to` step
+   is `code`); otherwise `code` where code carries it.
+
+   **Backend fidelity** (asbuilt#38, D-014). A returned executed fact
+   names the fidelity it claims in its own `fidelity` field (a name from
+   `truth/fidelities.yaml`), and cites a Playwright run as the truth does:
+   `{"document": "run/playwright-c7", "location": "<title path>",
+   "project": "<project>"}`. A cited run's fidelity is the truth's, by
+   runner and, for Playwright, by `project`; the fact's own say-so never
+   decides it. Explain, search and `--facts` print `tier executed by
+   fidelity` under the tier lines: per fidelity, precision (claims of F
+   that matched an executed truth fact of fidelity F, over every claim of
+   F) and recall, and hard errors (a claim of F citing no run at F that
+   the truth has by the run's step, with the cited test, when one is
+   named, among those that passed there: a failed run, a run that does
+   not exist and a later run count at no fidelity), grouped into the band at or above the real backend (which outranks
+   code) and the band below it (which code outranks), in the file's own
+   order; then `unqualified`, executed facts that claim no fidelity (every
+   results file before asbuilt#38), credited against an executed fact of
+   any fidelity; then a fidelity confusion matrix over matched facts
+   claiming `executed` (row `none`: the truth fact is not executed). Below
+   the distinct line, `executed tier, distinct facts by fidelity` repeats
+   the distinct measure per claimed fidelity (one fact claimed at two
+   fidelities is two claims), strict and lenient, with n
+   and the Wilson lower bound. `--json` carries these under the surface's
+   `tier.fidelity`, under `fidelity` for `--facts`, and under
+   `distinct_executed_by_fidelity`. Explain and search take a fact's
+   fidelity from the truth's `fidelity`; the distinct measure and `--facts`
+   from the runs that lift it by the run's step, where a Playwright run
+   counts at its project's fidelity and, from the step of the run that
+   demoted a fact, its passes below that run's fidelity do not: at c7 F-123 is `documented`, F-121 and F-124
+   are executed at `real` and F-122 at `mocked`. The contradictions surface
+   prints `kind fake-vs-real`: how many of the truth's fake-versus-real
+   pairs were found and how many winners (the higher-fidelity run's fact)
+   were right; `--facts` scores its contradiction candidates against them
+   too, and at c7 under the default `tests` filter it scores a Playwright
+   connector's facts. `tests/fixtures/fidelity-results.json` is a hand-made run through
+   c7 with one fact per case.
 
 5. **Check the fixture's own consistency** (a library call, not yet a CLI):
 

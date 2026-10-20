@@ -1,4 +1,5 @@
-# Pairs of facts that cannot both hold. Winner: tier (executed > code > documented), then recency.
+# Pairs of facts that cannot both hold. Winner (D-014): executed at or above the real
+# backend > code > executed below it > documented, then fidelity, then recency.
 - id: X-001
   facts: [F-036, F-003]
   kind: wiki-vs-test
@@ -106,3 +107,9 @@
   label: refutes
   opened_by: c5
   resolved_by: c6
+- id: X-022
+  facts: [F-123, F-124]
+  kind: fake-vs-real
+  winner: F-124
+  label: refutes
+  opened_by: c7

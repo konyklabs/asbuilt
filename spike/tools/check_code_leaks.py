@@ -1,7 +1,7 @@
 """Scan code (not prose) for the benchmark's own answer key.
 
 Walks a directory tree (default spike/system, excluding node_modules,
-.venv, __pycache__ and .git) over .py and .ts files, extracts every
+.venv, __pycache__ and .git) over .py, .ts and .js files, extracts every
 docstring and comment, and flags three kinds of leak against
 truth/facts.yaml:
 
@@ -19,10 +19,11 @@ out `//` line comments and `/* */` block comments while tracking whether
 it is inside a '...', "..." or `...` string, so a `//` in a URL or a `/*`
 in a template literal is never mistaken for a comment start -- good enough
 for a leak scan, not a real TS parser (it does not walk `${...}`
-interpolation inside template literals as a nested expression).
+interpolation inside template literals as a nested expression). JavaScript
+(the rider portal's page script, asbuilt#37) goes through the same scanner.
 
 Run: cd spike && uv run --with pyyaml python tools/check_code_leaks.py
-     [--root DIR] [--ext .py,.ts] [--facts PATH]
+     [--root DIR] [--ext .py,.ts,.js] [--facts PATH]
 
 Exits non-zero if any hit is found.
 """
@@ -207,7 +208,7 @@ def typescript_blocks(path: Path) -> list[TextBlock]:  # noqa: C901
 def extract_blocks(path: Path) -> list[TextBlock]:
     if path.suffix == ".py":
         return python_blocks(path)
-    if path.suffix == ".ts":
+    if path.suffix in (".ts", ".js"):
         return typescript_blocks(path)
     return []
 
@@ -272,7 +273,7 @@ def scan(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=str(SPIKE / "system"), help="directory to scan")
-    parser.add_argument("--ext", default=".py,.ts", help="comma-separated extensions")
+    parser.add_argument("--ext", default=".py,.ts,.js", help="comma-separated extensions")
     parser.add_argument("--facts", default=str(SPIKE / "truth/facts.yaml"), help="facts.yaml path")
     args = parser.parse_args(argv)
 

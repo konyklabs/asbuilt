@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import functools
 import json
 import re
 from datetime import datetime
@@ -14,6 +15,7 @@ from bench.score import (
     SPIKE_ROOT,
     _attributes_match,
     _boundary_numbers_ok,
+    _citation_fidelities,
     _claim_metrics,
     _claim_value_as_number_token,
     _claim_values_match,
@@ -21,7 +23,10 @@ from bench.score import (
     _current_at_step,
     _duplicate_count,
     _entity_mention_conflict,
+    _executed_by_step,
+    _expected_fidelity_at_step,
     _expected_tier_at_step,
+    _fidelity_by_step,
     _first_step,
     _flag_state_conflict,
     _flag_states,
@@ -29,6 +34,7 @@ from bench.score import (
     _has_negation,
     _has_test_carrier_by_step,
     _mentioned_entities,
+    _merge_fidelity_counts,
     _normalise_unit,
     _number_tokens,
     _outcome_conflict,
@@ -71,11 +77,13 @@ from bench.score import (
     score_fact_query,
     score_stale,
     score_test_connector,
+    truth_runs,
     wilson_lower_bound,
 )
 from bench.truth import (
     Carrier,
     Entity,
+    Fidelities,
     StaleEntry,
     TruthContradiction,
     TruthFact,
@@ -2236,14 +2244,16 @@ def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
     reading (two dropping the flag condition, two leaving the value to the
     claim, one over-claim: each pair's `why`) and added the F-077 paraphrase
     the over-claim rule misses in both readings, which moved the floor from
-    35/55 to 30/51."""
+    35/55 to 30/51. asbuilt#63 gave F-051 its flag condition and relabelled
+    the three pairs whose candidate drops it (each pair's `why`), which moved
+    it to 27/48; the lenient reading is unchanged at 34/55."""
     pairs = load_calibration(SPIKE_ROOT / "tests/fixtures/calibration-model-run.yaml")
     assert len(pairs) == 91
     truth = load_truth(SPIKE_ROOT / "truth")
     report = calibrate(pairs, build_mention_index(truth), build_alias_index(truth), truth.entities)
     assert report["fp"] == 0, report["misclassified"]
     assert report["precision"] == 1.0
-    assert report["recall"] >= 0.58, report["misclassified"]
+    assert report["recall"] >= 0.56, report["misclassified"]
     assert report["recall"] < 0.9  # an honest floor: see the docstring
     # every targeted rule pair (both directions) must hold exactly
     rule_pairs = [p for p in pairs if str(p.get("source", "")).startswith("rule-")]
@@ -3310,3 +3320,444 @@ def test_a_unit_word_heading_a_hyphenated_modifier_does_not_merge():
     assert _number_tokens("a forty-five-minute ride") == {"45"}
     assert _number_tokens("a fortyfive-minute ride") == {"45"}
     assert _number_tokens("forty five minutes") == {"45"}
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#38: executed-tier precision per backend fidelity, and the
+# fake-versus-real contradiction (D-014). tests/fixtures/fidelity-results.json
+# is a hand-made run through c7 against the real truth, one fact per case.
+# --------------------------------------------------------------------------
+
+FIDELITY_RESULTS = SPIKE_ROOT / "tests" / "fixtures" / "fidelity-results.json"
+
+
+@functools.cache
+def _fidelity_report() -> dict:
+    results = json.loads(FIDELITY_RESULTS.read_text())
+    return score({**results, "fixture": str(SPIKE_ROOT)}, SPIKE_ROOT / "truth")
+
+
+def _explain_fidelity() -> dict:
+    return _fidelity_report()["surfaces"]["explain"]["tier"]["fidelity"]
+
+
+@pytest.mark.fixture
+def test_fidelity_case_right_fidelity_is_a_true_positive_at_its_fidelity():
+    """F-124 claimed `real`, citing the real project's run: a hit at `real`,
+    on explain and in the distinct measure (a Playwright run carrier counts
+    at its project's fidelity)."""
+    real = _explain_fidelity()["by_fidelity"]["real"]
+    assert (real["tp"], real["expected"]) == (1, 2)
+    assert _explain_fidelity()["confusion"]["real"]["real"] == 1
+    distinct_real = _fidelity_report()["distinct_executed_by_fidelity"]["by_fidelity"]["real"]
+    assert (distinct_real["strict"]["tp"], distinct_real["strict"]["n"]) == (1, 2)
+
+
+@pytest.mark.fixture
+def test_fidelity_case_claimed_real_but_proven_only_at_fake_is_a_miss_at_real():
+    """F-123's $25 cap claimed `real`, citing its fake run and its real run:
+    the truth has it passing only against the fake and the mocked routes,
+    demoted by the real run, so it is no executed target at all. Its real
+    test failed, so that citation counts at no fidelity: a hard error at
+    `real` too (lens round G2)."""
+    real = _explain_fidelity()["by_fidelity"]["real"]
+    assert (real["tp"], real["returned"], real["precision"]) == (1, 2, 0.5)
+    assert real["hard_errors"] == 1
+    assert _explain_fidelity()["confusion"]["none"] == {"real": 1}
+    distinct = _fidelity_report()["distinct_executed"]["strict"]
+    assert (distinct["tp"], distinct["n"]) == (3, 4)
+    assert distinct["wrong"] == ["The fare preview page caps a casual ride at $25.00."]
+
+
+@pytest.mark.fixture
+def test_fidelity_case_executed_without_fidelity_is_unqualified_not_an_error():
+    """F-121 claimed `executed` with no fidelity: its own bucket, credited
+    against an executed target of any fidelity, and no hard error."""
+    fidelity = _explain_fidelity()
+    assert fidelity["unqualified"] == {"returned": 1, "tp": 1, "precision": 1.0}
+    assert fidelity["confusion"]["real"]["unqualified"] == 1
+    assert {f: row["hard_errors"] for f, row in fidelity["by_fidelity"].items()} == {
+        "real": 1,
+        "in-process": 0,
+        "fake": 1,
+        "mocked": 0,
+    }
+    unqualified = _fidelity_report()["distinct_executed_by_fidelity"]["unqualified"]
+    assert (unqualified["strict"]["tp"], unqualified["strict"]["n"]) == (1, 1)
+
+
+@pytest.mark.fixture
+def test_fidelity_case_a_fidelity_with_no_run_at_it_is_a_hard_error():
+    """F-122 claimed `fake`, citing only the mocked project's run: a hard
+    error at `fake`, whatever the fact says of itself; and a miss, since the
+    truth proves it at `mocked`."""
+    fake = _explain_fidelity()["by_fidelity"]["fake"]
+    assert (fake["hard_errors"], fake["returned"], fake["tp"]) == (1, 1, 0)
+    assert _explain_fidelity()["confusion"]["mocked"] == {"fake": 1}
+    assert _explain_fidelity()["bands"]["below"]["hard_errors"] == 1
+
+
+@pytest.mark.fixture
+def test_fidelity_case_fake_vs_real_contradiction_winner_checked():
+    """X-022 returned twice, by two queries: once won by F-124 (the real
+    run's fact, right) and once by F-123 (wrong)."""
+    contradictions = _fidelity_report()["surfaces"]["contradictions"]
+    assert contradictions["by_kind"]["fake-vs-real"] == {
+        "matched": 2,
+        "expected": 2,
+        "winner_checked": 2,
+        "winner_correct": 1,
+    }
+
+
+@pytest.mark.fixture
+def test_fidelity_lines_print_in_bands(capsys):
+    print_report(_fidelity_report())
+    out = capsys.readouterr().out
+    assert (
+        "      at or above the real backend (outranks code): precision=0.500 (1/2) "
+        "recall=0.500 (1/2) hard_errors=1\n"
+        "        real: precision=0.500 (1/2) recall=0.500 (1/2) hard_errors=1\n"
+        "        in-process: precision=n/a (0/0) recall=n/a (0/0) hard_errors=0\n"
+        "      below the real backend (code outranks): precision=0.000 (0/1) "
+        "recall=0.000 (0/1) hard_errors=1\n"
+    ) in out
+    assert "    kind fake-vs-real: matched=2 vs expected=2 recall=1.000 winner=1/2" in out
+
+
+def test_fidelity_bands_follow_the_vocabulary_not_hard_coded_names():
+    """The bands come from `fidelities.yaml`'s order and real backend: here
+    an invented vocabulary whose real backend is its second name."""
+    fidelities = Fidelities(ranked=("gold", "silver", "tin"), real_backend="silver")
+    merged = _merge_fidelity_counts([], fidelities)
+    assert merged["bands"]["at_or_above"]["fidelities"] == ["gold", "silver"]
+    assert merged["bands"]["below"]["fidelities"] == ["tin"]
+    assert list(merged["by_fidelity"]) == ["gold", "silver", "tin"]
+
+
+@pytest.mark.fixture
+def test_step_tier_at_c7_knows_playwright_and_the_demotion():
+    """The deep lens on #37: at c7 F-121 and F-124 are executed at `real`,
+    F-122 at `mocked`; F-123, passing only below the real run that demoted
+    it, is `documented`, not executed and not `code` through its test file.
+    F-011 (demoted at c5 by a pytest run) is still executed at c1."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+    fidelities = truth.fidelities
+
+    def tier(fid: str, step: str = "c7") -> str:
+        return _expected_tier_at_step(truth.facts[fid], step, fidelities, order)
+
+    def fidelity(fid: str) -> str | None:
+        return _expected_fidelity_at_step(truth.facts[fid], "c7", fidelities)
+
+    assert [tier(f) for f in ("F-121", "F-122", "F-123", "F-124")] == [
+        "executed",
+        "executed",
+        "documented",
+        "executed",
+    ]
+    assert [fidelity(f) for f in ("F-121", "F-122", "F-123", "F-124")] == [
+        "real",
+        "mocked",
+        None,
+        "real",
+    ]
+    assert (tier("F-011", "c1"), tier("F-011", "c5")) == ("executed", "code")
+
+
+@pytest.mark.fixture
+def test_facts_at_c7_score_per_fidelity_on_a_hand_made_bag():
+    """`--facts` at c7 on the hand-made file's four facts, under the default
+    `tests` filter, which holds the portal's Playwright specs: the same
+    counts as explain, and F-123 matched but expected `documented`. A spec
+    file is a test carrier, so F-123, carried in code only by its spec, is
+    out of the `code` filter."""
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    bag = json.loads(FIDELITY_RESULTS.read_text())["queries"][0]["result"]
+    report = score_test_connector(bag, SPIKE_ROOT / "truth", "c7", commits)
+    assert report["tp"] == 4
+    assert report["tier_confusion"]["confusion"]["documented"] == {"executed": 1}
+    code = score_test_connector(bag, SPIKE_ROOT / "truth", "c7", commits, "code")
+    assert code["tp"] == 3
+    fidelity = report["fidelity"]
+    assert {f: (r["tp"], r["returned"]) for f, r in fidelity["by_fidelity"].items()} == {
+        "real": (1, 2),
+        "in-process": (0, 0),
+        "fake": (0, 1),
+        "mocked": (0, 0),
+    }
+    assert fidelity["by_fidelity"]["fake"]["hard_errors"] == 1
+    assert fidelity["unqualified"]["tp"] == 1
+    assert report["fake_vs_real_candidates"]["expected"] == 1
+
+
+@pytest.mark.fixture
+def test_a_demotion_applies_from_the_demoting_runs_step_on():
+    """A synthetic fact passing at `fake` at c6 and failing at `real` only at
+    c7: before the real failure exists the fake pass lifts it, so it is an
+    executed target at `fake` through c6; through c7 it is not."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    fidelities = truth.fidelities
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+    title = "fare preview › shows an invented cap"
+    tf = TruthFact(
+        id="F-X",
+        statement="The fare preview page shows an invented cap.",
+        category="business-logic",
+        entities=("E-page-fare-preview",),
+        tier="documented",
+        carriers=(Carrier(document="run/playwright-c6", location=title, project="fake"),),
+        demoted_by=Carrier(document="run/playwright-c7", location=title, project="real"),
+    )
+    assert _executed_by_step(tf, order, order["c6"], fidelities)
+    assert _fidelity_by_step(tf, order, order["c6"], fidelities) == "fake"
+    assert not _executed_by_step(tf, order, order["c7"], fidelities)
+    assert _expected_tier_at_step(tf, "c6", fidelities, order) == "executed"
+    assert _expected_tier_at_step(tf, "c7", fidelities, order) == "documented"
+
+
+# The #38 lens round (G1-G4), on hand-made runs over the same portal facts.
+
+_FAREBOX_CAP = "fare preview › shows the farebox cap for a 200-minute casual ride"
+_SHEET_CAP = "fare preview › shows the price-sheet cap for a 200-minute casual ride"
+_REFUND_15 = "refund request › refuses a ride that ended 15 days ago"
+_LIMIT_BANNER = "check-out › shows a banner when the rider is at the bike limit"
+
+
+def _portal_fact(case: int, **changes) -> dict:
+    """One of the hand-made file's four explain facts (0: F-124, 1: F-123,
+    2: F-121, 3: F-122), with `changes` applied."""
+    fact = json.loads(FIDELITY_RESULTS.read_text())["queries"][0]["result"][case]
+    return {**fact, **changes}
+
+
+def _portal_report(facts: list[dict], through_step: str = "c7") -> dict:
+    """`score()` on one explain query for the rider portal returning `facts`."""
+    results = json.loads(FIDELITY_RESULTS.read_text())
+    query = {
+        "id": "q-explain-portal",
+        "surface": "explain",
+        "latency_ms": 1.0,
+        "params": {"entity": "rider-portal"},
+        "result": facts,
+    }
+    run = {**results, "fixture": str(SPIKE_ROOT), "through_step": through_step, "queries": [query]}
+    return score(run, SPIKE_ROOT / "truth")
+
+
+def _run(location: str, project: str | None, document: str = "run/playwright-c7") -> dict:
+    citation = {"document": document, "location": location, "project": project}
+    return {k: v for k, v in citation.items() if v is not None}
+
+
+@pytest.mark.fixture
+def test_g1_one_fact_claimed_at_two_fidelities_is_two_claims_in_either_order():
+    """G1: F-121 claimed `real` (citing the real run) and `mocked` (citing
+    the mocked run) is judged once per claimed fidelity, whichever comes
+    first: real 1/1, mocked 0/1. #35's overall line still counts it once."""
+    right = _portal_fact(2, fidelity="real")
+    wrong = _portal_fact(2, fidelity="mocked", citations=[_run(_REFUND_15, "mocked")])
+    for facts in ([right, wrong], [wrong, right]):
+        report = _portal_report(facts)
+        by_fidelity = report["distinct_executed_by_fidelity"]["by_fidelity"]
+        assert {
+            f: (by_fidelity[f]["strict"]["tp"], by_fidelity[f]["strict"]["n"])
+            for f in (
+                "real",
+                "mocked",
+            )
+        } == {"real": (1, 1), "mocked": (0, 1)}
+        assert report["distinct_executed"]["strict"]["n"] == 1
+
+
+@pytest.mark.fixture
+def test_g2_a_citation_counts_only_for_a_passing_truth_run_by_the_step():
+    """G2: a failed run (F-123's real run), a run that does not exist
+    (`run/playwright-c3`, `run/pytest-c99`) and a run after the result's
+    step count at no fidelity, so a claim resting on one is a hard error.
+    A passing truth run by the step, with or without its test, counts."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    order, at_c7 = _run_step_rank("c7", _step_dates(SPIKE_ROOT), {})
+    _, at_c6 = _run_step_rank("c6", _step_dates(SPIKE_ROOT), {})
+    fidelities = truth.fidelities
+
+    def cited(citation: dict, rank: int) -> set:
+        runs = truth_runs(truth.facts, order, rank)
+        return _citation_fidelities({"citations": [citation]}, fidelities, runs)
+
+    assert cited(_run(_SHEET_CAP, "real"), at_c7) == set()
+    assert cited(_run(_FAREBOX_CAP, "real", "run/playwright-c3"), at_c7) == set()
+    assert cited({"document": "run/pytest-c99"}, at_c7) == set()
+    assert cited(_run(_FAREBOX_CAP, "real"), at_c6) == set()
+    assert cited(_run(_FAREBOX_CAP, "real"), at_c7) == {"real"}
+    assert cited({"document": "run/playwright-c7", "project": "real"}, at_c7) == {"real"}
+    assert cited({"document": "run/pytest-c6"}, at_c6) == {"in-process"}
+
+    claims = [
+        _portal_fact(0, citations=[_run(_SHEET_CAP, "real")]),
+        _portal_fact(0, citations=[_run(_FAREBOX_CAP, "real", "run/playwright-c3")]),
+        _portal_fact(0, fidelity="in-process", citations=[{"document": "run/pytest-c99"}]),
+    ]
+    by_fidelity = _portal_report(claims)["surfaces"]["explain"]["tier"]["fidelity"]["by_fidelity"]
+    assert (by_fidelity["real"]["hard_errors"], by_fidelity["in-process"]["hard_errors"]) == (2, 1)
+    after_the_step = _portal_report([_portal_fact(0)], through_step="c6")
+    assert (
+        after_the_step["surfaces"]["explain"]["tier"]["fidelity"]["by_fidelity"]["real"][
+            "hard_errors"
+        ]
+        == 1
+    )
+    assert (
+        _portal_report([_portal_fact(0)])["surfaces"]["explain"]["tier"]["fidelity"]["by_fidelity"][
+            "real"
+        ]["hard_errors"]
+        == 0
+    )
+
+
+@pytest.mark.fixture
+def test_g3_an_over_claim_above_the_proven_fidelity_is_a_miss():
+    """G3: F-122, proven at `mocked`, claimed `real`. Citing its own test at
+    the real project, where it was skipped, it is a miss at `real` and a
+    hard error; citing the real run with no test, it is a miss and no hard
+    error: a real run at c7 exists, but not one that proves F-122."""
+    at_its_test = _portal_fact(3, fidelity="real", citations=[_run(_LIMIT_BANNER, "real")])
+    fidelity = _portal_report([at_its_test])["surfaces"]["explain"]["tier"]["fidelity"]
+    real = fidelity["by_fidelity"]["real"]
+    assert (real["tp"], real["returned"], real["hard_errors"]) == (0, 1, 1)
+    assert fidelity["confusion"] == {"mocked": {"real": 1}}
+    at_the_run = _portal_fact(
+        3, fidelity="real", citations=[{"document": "run/playwright-c7", "project": "real"}]
+    )
+    real = _portal_report([at_the_run])["surfaces"]["explain"]["tier"]["fidelity"]["by_fidelity"][
+        "real"
+    ]
+    assert (real["tp"], real["returned"], real["hard_errors"]) == (0, 1, 0)
+
+
+@pytest.mark.fixture
+def test_g4_a_non_string_fidelity_or_project_is_absent_not_a_crash():
+    """G4: a list-valued `fidelity` is unqualified; a list-valued `project`
+    is no project, so the claim it carries has no run at its fidelity; a
+    non-string `location` is no location, so the real run alone counts."""
+    listed_fidelity = _portal_fact(0, fidelity=["real"])
+    listed_project = _portal_fact(
+        0,
+        citations=[
+            {"document": "run/playwright-c7", "location": _FAREBOX_CAP, "project": ["real"]}
+        ],
+    )
+    report = _portal_report([listed_fidelity])
+    assert report["surfaces"]["explain"]["tier"]["fidelity"]["unqualified"]["returned"] == 1
+    assert report["distinct_executed_by_fidelity"]["unqualified"]["strict"]["n"] == 1
+    fidelity = _portal_report([listed_project])["surfaces"]["explain"]["tier"]["fidelity"]
+    assert fidelity["by_fidelity"]["real"]["hard_errors"] == 1
+    odd_location = _portal_fact(
+        0,
+        citations=[{"document": "run/playwright-c7", "location": {"line": 12}, "project": "real"}],
+    )
+    fidelity = _portal_report([odd_location])["surfaces"]["explain"]["tier"]["fidelity"]
+    assert fidelity["by_fidelity"]["real"]["hard_errors"] == 0
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#63: the marking corrections #36's measurement found
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.fixture
+def test_a_complement_bound_against_a_negated_bound_is_refused_as_the_vetos_known_cost():
+    """Decided in the asbuilt#63 lens round (conductor): the negation veto
+    stays as it is. "Ride open past 24 hours closed as lost." states F-010
+    ("A ride whose bike is not docked within 24 hours of check-out is
+    closed as lost.") from the bound's other side, and is refused: a known
+    false negative, accepted. Two designs that read a negated `within`
+    bound as its complement each credited a wrong statement. The first,
+    counting an unread negated bound as `beyond`, credited "A ride whose
+    bike is not docked past 24 hours is closed as lost."; the second, with
+    an unknown direction for it, credited "Every ride is closed as lost
+    after 24 hours." This scorer keeps precision at 1.0 and reports
+    recall; the two designs' 22 calibration pairs are asbuilt#66's
+    evidence."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f010 = truth.facts["F-010"]
+    complement = "Ride open past 24 hours closed as lost."
+    for strict in (True, False):
+        assert not _statement_matches(
+            complement, f010.statement, mention_index, None, f010.claim, strict
+        )
+
+
+@pytest.mark.fixture
+def test_f051_states_its_flag_condition():
+    """Item 2: F-051's 409 holds only while the overflow_parking flag is off
+    (F-017, F-018), so the truth says so: a statement carrying the
+    condition is credited under the strict reading, one naming the other
+    state is not, and one dropping it no longer is."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f051 = truth.facts["F-051"]
+    assert f051.statement.endswith("when the overflow_parking flag is off.")
+
+    def matches(candidate: str) -> bool:
+        return _statement_matches(candidate, f051.statement, mention_index, None, f051.claim)
+
+    assert matches(
+        "A check-in at a full station gets HTTP 409 station_full while the overflow_parking "
+        "flag is off."
+    )
+    assert not matches(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code "
+        "station_full when the overflow_parking flag is on."
+    )
+    assert not matches(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full."
+    )
+
+
+@pytest.mark.fixture
+def test_step_tier_follows_the_distinct_target_rule():
+    """Item 3: under `--facts` a fact is executed at a step when a run at or
+    before it lifts it and no demotion applies by then. F-050's flaky c6
+    cites no run, so it stays executed on c1 to c5; F-007, proven from c5,
+    is code before; F-011 is code from its c5 demotion; F-012 is executed
+    from c6; F-123 is documented at c7. A run lifts a fact only before its
+    `valid_to` (lens round): F-001, F-015, F-002 and F-008 are in scope at
+    their `valid_to` step, and `code` there, as on main."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+
+    def tier(fid: str, step: str) -> str:
+        return _expected_tier_at_step(truth.facts[fid], step, truth.fidelities, order)
+
+    assert [tier("F-011", s) for s in ("c1", "c4", "c5", "c6")] == [
+        "executed",
+        "executed",
+        "code",
+        "code",
+    ]
+    assert [tier("F-007", s) for s in ("c1", "c2", "c3", "c4", "c5", "c6")] == [
+        "code",
+        "code",
+        "code",
+        "code",
+        "executed",
+        "executed",
+    ]
+    assert tier("F-050", "c6") == "executed"
+    assert _expected_fidelity_at_step(truth.facts["F-050"], "c6", truth.fidelities, order) == (
+        "in-process"
+    )
+    assert [tier("F-012", s) for s in ("c6", "c7")] == ["executed", "executed"]
+    assert tier("F-123", "c7") == "documented"
+    assert (tier("F-001", "c1"), tier("F-001", "c2")) == ("executed", "code")
+    assert [tier(f, s) for f, s in (("F-015", "c3"), ("F-002", "c4"), ("F-008", "c5"))] == [
+        "code",
+        "code",
+        "code",
+    ]

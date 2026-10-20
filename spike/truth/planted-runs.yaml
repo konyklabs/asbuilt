@@ -1,5 +1,7 @@
-# The three planted run outcomes (asbuilt#7, item 11): one failing test, one skipped
-# test and one flaky test, with the D-013 rule applied to the facts they touch.
+# The planted run outcomes. asbuilt#7, item 11: one failing test, one skipped test
+# and one flaky test, with the D-013 rule applied to the facts they touch. asbuilt#37:
+# four Playwright tests run at c7 against three backend fidelities (P-4 to P-7, keyed
+# by project; truth/fidelities.yaml), with D-014's fidelity rule applied.
 # Wave 2 implements the fixture changes; truth/validate.py checks this file against
 # facts.yaml, contradictions.yaml and truth/PLAN.yaml.
 rules:
@@ -10,6 +12,9 @@ rules:
 - 'This fixture''s reading for flaky tests (D-013 is silent; to confirm with Oleg): a step whose attempts disagree
   is inconclusive. It neither lifts nor demotes, and neither of its runs is cited for the test''s facts; the fact
   keeps the tier its latest conclusive step gives it.'
+- 'D-014: an executed fact is qualified by the strongest fidelity at which a still-valid run passes. A failing run at
+  a higher fidelity than the passing one demotes the fact and opens a fake-vs-real contradiction that the higher
+  fidelity wins; a failure at a lower fidelity than the pass does not demote.'
 runner:
   env: GEARWELL_ATTEMPT
   attempt_1: every suite runs whole with GEARWELL_ATTEMPT=1 and writes runs/<framework>-<step>.json (document run/<framework>-<step>)
@@ -17,6 +22,10 @@ runner:
     (document run/<framework>-<step>-rerun)
   exit: the outcomes below are expected; bench/runs.py treats them as success and any other failure as an error
   plan: truth/PLAN.yaml runs and tests sections carry every outcome below
+  playwright: at a step whose repository has web/playwright.config.ts, the three projects run once, retries 0, written
+    to runs/playwright-<step>.json (JSON reporter, document run/playwright-<step>) and runs/playwright-<step>.xml
+    (JUnit reporter); no rerun. Each entry with runner playwright gives an outcome per step and project, and those
+    outcomes are exactly the ones expected; any other failing Playwright test is unexpected.
 planted:
 - id: P-1
   kind: failing
@@ -29,6 +38,7 @@ planted:
     c4: passed
     c5: failed
     c6: absent
+    c7: absent
   reruns:
     c5: failed
   fixture_change:
@@ -53,6 +63,7 @@ planted:
     c4: skipped
     c5: skipped
     c6: skipped
+    c7: skipped
   fixture_change:
   - add the test to system/tests/unit/test_tollbooth_client.py; the file has no overlays, so it exists c1-c6
   facts:
@@ -69,8 +80,10 @@ planted:
     c4: passed
     c5: passed
     c6: failed
+    c7: failed
   reruns:
     c6: passed
+    c7: passed
   mechanism: the c6 version reads the first event on a bus that a new warm-up fixture seeds with an unrelated event
     when GEARWELL_ATTEMPT is unset or 1; with GEARWELL_ATTEMPT=2 the fixture seeds nothing, so the rerun passes
   fixture_change:
@@ -79,5 +92,54 @@ planted:
     unchanged
   facts:
     F-050: stays executed on its c1-c5 runs (latest conclusive step c5, asserted code unchanged since); run/pytest-c6
-      and run/pytest-c6-rerun are not its carriers; no demotion, no contradiction
+      and run/pytest-c6-rerun are not its carriers; no demotion, no contradiction; c7 keeps the c6 file, so the
+      same holds for run/pytest-c7 and run/pytest-c7-rerun
   contradiction: null
+- id: P-4
+  kind: all-fidelities
+  runner: playwright
+  file: web/tests/refund-request.spec.ts
+  test: refund request › refuses a ride that ended 15 days ago
+  outcomes:
+    c7: {mocked: passed, fake: passed, real: passed}
+  mechanism: the mocked route answers 422 refund_window_expired; the fake follows the Farebox API page's 14 days; the
+    real backend runs farebox's request_refund
+  facts:
+    F-121: 'executed at real: it cites the c7 run of all three projects, and real is the strongest'
+  contradiction: null
+- id: P-5
+  kind: mocked-only
+  runner: playwright
+  file: web/tests/check-out.spec.ts
+  test: check-out › shows a banner when the rider is at the bike limit
+  marker: 'test.skip(backend !== "mocked", "no seeding hook puts a rider at the limit in this backend")'
+  outcomes:
+    c7: {mocked: passed, fake: skipped, real: skipped}
+  mechanism: only the mocked route answers check-out with 409 checkout_limit_reached; the other projects skip the test
+  facts:
+    F-122: 'executed at mocked only, below the real backend (in-process): it ranks below code'
+  contradiction: null
+- id: P-6
+  kind: fake-vs-real
+  runner: playwright
+  file: web/tests/fare-preview.spec.ts
+  test: fare preview › shows the price-sheet cap for a 200-minute casual ride
+  outcomes:
+    c7: {mocked: passed, fake: passed, real: failed}
+  mechanism: the mocked route and the fake both answer from the stale $25.00 cap (wiki/fares-overview#cap,
+    doc/fares-price-sheet); farebox's price_ride caps at $30.00 since c5
+  facts:
+    F-123: 'demoted: tier documented (passed at mocked and fake, and only the fake carried it in code), demoted_by
+      the real project of run/playwright-c7; it rests on wiki/fares-overview#cap and doc/fares-price-sheet'
+  contradiction: X-022 (F-123 vs F-124, kind fake-vs-real, winner F-124)
+- id: P-7
+  kind: real-only
+  runner: playwright
+  file: web/tests/fare-preview.spec.ts
+  test: fare preview › shows the farebox cap for a 200-minute casual ride
+  outcomes:
+    c7: {mocked: failed, fake: failed, real: passed}
+  mechanism: the same preview as P-6, asserting $30.00; the mocked route and the fake show $25.00
+  facts:
+    F-124: 'executed at real; its failures at fake and mocked are below the pass, so they do not demote'
+  contradiction: X-022 (winner)

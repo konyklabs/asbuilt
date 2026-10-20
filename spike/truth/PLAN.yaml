@@ -19,7 +19,8 @@ authoring_rules:
 - Times are America/New_York with their UTC offset; money is USD with two decimals in prose.
 - A test exists in the repository exactly at the steps in its passes_in, fails_in, skipped_in and flaky_in together,
   with that outcome there (truth/planted-runs.yaml specifies the three planted ones); a symbol with per-step values
-  takes each value from that step until the next listed one.
+  takes each value from that step until the next listed one. A Playwright test (framework playwright) lists its
+  outcome per step and project under `outcomes` instead, and a Playwright run its lists per project.
 - 'Noise tickets and noise PRs (noise: true) are written like the others, about their summary only.'
 wiki:
 - slug: gearwell-overview
@@ -90,6 +91,9 @@ wiki:
       states: The most a single ride can cost is $25.00.
       role: stale
       old_value: a $25.00 single-ride cap (must not mention $30.00)
+    - id: F-123
+      states: The single-ride cap the fake farebox and the mocked routes were written from ($25.00).
+      role: rests-on
 - slug: membership-faq
   title: Membership FAQ
   version: 2
@@ -371,6 +375,7 @@ wiki:
     facts:
     - id: F-051
       states: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+    note: The page omits the overflow_parking condition that F-051 now states (asbuilt#63).
 - slug: dockyard-api
   title: Dockyard API
   version: 5
@@ -382,6 +387,7 @@ wiki:
     facts:
     - id: F-051
       states: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+    note: The page omits the overflow_parking condition that F-051 now states (asbuilt#63).
   - anchor: '#station-status'
     facts:
     - id: F-052
@@ -744,6 +750,9 @@ docs:
       states: The most a single ride can cost is $25.00.
       role: stale
       old_value: a $25.00 single-ride cap (must not mention $30.00)
+    - id: F-123
+      states: The single-ride cap the fake farebox and the mocked routes were written from ($25.00).
+      role: rests-on
     - id: F-039
       states: A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee.
       role: stale
@@ -2267,7 +2276,7 @@ code:
     value: 60
     facts:
     - fact: F-063
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: is_enabled
 - path: dockyard/models/station.py
   language: python
@@ -2302,7 +2311,7 @@ code:
     note: rider_id, bike_id, start_station_id, return_station_id, started_at, ended_at, status
     facts:
     - fact: F-054
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/repositories/stations.py
   language: python
   added_in: c1
@@ -2337,11 +2346,11 @@ code:
     value: 2
     facts:
     - fact: F-019
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: check_out
     facts:
     - fact: F-031
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/services/checkin.py
   language: python
   added_in: c1
@@ -2357,9 +2366,9 @@ code:
   - name: can_accept_bike
     facts:
     - fact: F-017
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
     - fact: F-018
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/services/station_status.py
   language: python
   added_in: c1
@@ -2368,7 +2377,7 @@ code:
   - name: station_status
     facts:
     - fact: F-052
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/services/locks.py
   language: python
   added_in: c1
@@ -2383,11 +2392,11 @@ code:
   - name: checkout_endpoint
     facts:
     - fact: F-070
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: checkin_endpoint
     facts:
     - fact: F-051
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/api/stations.py
   language: python
   added_in: c1
@@ -2402,7 +2411,7 @@ code:
   - name: lock_bike_endpoint
     facts:
     - fact: F-067
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/api/errors.py
   language: python
   added_in: c1
@@ -2421,7 +2430,7 @@ code:
   - name: FareboxClient.close_ride
     facts:
     - fact: F-055
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dockyard/migrations/0001_initial.py
   language: python
   added_in: c1
@@ -2450,7 +2459,7 @@ code:
     value: 5
     facts:
     - fact: F-060
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/db.py
   language: python
   added_in: c1
@@ -2468,19 +2477,19 @@ code:
       c6: adds refund_auto_approve (default off)
     facts:
     - fact: F-049
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
     - fact: F-065
-      steps: [c6]
+      steps: [c6, c7]
   - name: CACHE_TTL_SECONDS
     value: 60
     facts:
     - fact: F-063
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: is_enabled
     note: a missing row reads as off
     facts:
     - fact: F-064
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/pricing.py
   language: python
   added_in: c1
@@ -2497,28 +2506,28 @@ code:
     - fact: F-002
       steps: [c2, c3]
     - fact: F-003
-      steps: [c4, c5, c6]
+      steps: [c4, c5, c6, c7]
   - name: MEMBER_RATE
     value: '0.15'
     facts:
     - fact: F-005
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: CASUAL_RATE
     value: '0.25'
     facts:
     - fact: F-006
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: CASUAL_UNLOCK_FEE
     value: '1.00'
     facts:
     - fact: F-004
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: EBIKE_SURCHARGE
     value: '0.10'
     note: per charged minute of an e-bike ride; a member's free minutes are not charged, so carry no surcharge
     facts:
     - fact: F-007
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: SINGLE_RIDE_CAP
     value:
       c1: '25.00'
@@ -2527,7 +2536,9 @@ code:
     - fact: F-008
       steps: [c1, c2, c3, c4]
     - fact: F-009
-      steps: [c5, c6]
+      steps: [c5, c6, c7]
+    - fact: F-124
+      steps: [c7]
   - name: LOST_BIKE_FEE
     value:
       c1: '100.00'
@@ -2536,13 +2547,13 @@ code:
     - fact: F-011
       steps: [c1, c2, c3, c4]
     - fact: F-012
-      steps: [c5, c6]
+      steps: [c5, c6, c7]
   - name: price_ride
     note: min(unlock fee (casual only) + charged minutes x rate x surge multiplier + charged e-bike minutes x surcharge,
       SINGLE_RIDE_CAP)
     facts:
     - fact: F-025
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/events.py
   language: python
   added_in: c1
@@ -2553,7 +2564,7 @@ code:
   - name: publish_ride_completed
     facts:
     - fact: F-057
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: publish_ride_refunded
 - path: farebox/models/rider.py
   language: python
@@ -2578,7 +2589,7 @@ code:
     value: active | grace | lapsed
     facts:
     - fact: F-074
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/models/invoice.py
   language: python
   added_in: c1
@@ -2589,7 +2600,7 @@ code:
     note: amount_cents
     facts:
     - fact: F-072
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/models/payment.py
   language: python
   added_in: c1
@@ -2599,7 +2610,7 @@ code:
     note: amount_cents, status
     facts:
     - fact: F-072
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/models/refund.py
   language: python
   added_in: c1
@@ -2647,9 +2658,9 @@ code:
   - name: close_ride
     facts:
     - fact: F-050
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
     - fact: F-076
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/services/memberships.py
   language: python
   added_in: c1
@@ -2663,15 +2674,15 @@ code:
     - fact: F-015
       steps: [c1, c2]
     - fact: F-016
-      steps: [c3, c4, c5, c6]
+      steps: [c3, c4, c5, c6, c7]
   - name: handle_failed_renewal
     facts:
     - fact: F-075
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: pricing_class
     facts:
     - fact: F-029
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/services/refunds.py
   language: python
   added_in: c1
@@ -2681,24 +2692,26 @@ code:
     value: 14
     facts:
     - fact: F-013
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
+    - fact: F-121
+      steps: [c7]
   - name: AUTO_APPROVE_LIMIT
     value:
       c6: '5.00'
     note: added at c6
     facts:
     - fact: F-014
-      steps: [c6]
+      steps: [c6, c7]
   - name: request_refund
     facts:
     - fact: F-027
       steps: [c1, c2, c3, c4, c5]
     - fact: F-028
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: pay_refund
     facts:
     - fact: F-056
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/services/lost_bikes.py
   language: python
   added_in: c1
@@ -2708,11 +2721,11 @@ code:
     value: 24
     facts:
     - fact: F-010
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: close_lost_rides
     facts:
     - fact: F-026
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/services/invoicing.py
   language: python
   added_in: c1
@@ -2721,7 +2734,7 @@ code:
   - name: build_monthly_invoice
     facts:
     - fact: F-035
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/services/surge.py
   language: python
   added_in: c1
@@ -2735,12 +2748,12 @@ code:
   - name: surge_multiplier
     facts:
     - fact: F-024
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: latest_severity
     note: reads weather_readings
     facts:
     - fact: F-066
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/clients/tollbooth.py
   language: python
   added_in: c1
@@ -2750,21 +2763,21 @@ code:
     value: 3
     facts:
     - fact: F-023
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: BACKOFF_SECONDS
     value: (0.5, 1, 2)
     facts:
     - fact: F-061
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: should_retry
     facts:
     - fact: F-062
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: TollboothClient
   - name: TollboothClient.capture
     facts:
     - fact: F-059
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/api/refunds.py
   language: python
   added_in: c1
@@ -2773,7 +2786,7 @@ code:
   - name: create_refund_endpoint
     facts:
     - fact: F-071
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/api/rides.py
   language: python
   added_in: c1
@@ -2783,7 +2796,7 @@ code:
     note: POST /internal/rides/{id}/close
     facts:
     - fact: F-055
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: close_lost_rides_endpoint
     note: POST /internal/rides/close-lost
 - path: farebox/api/memberships.py
@@ -2800,7 +2813,7 @@ code:
   - name: tollbooth_webhook
     facts:
     - fact: F-075
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: farebox/migrations/0001_initial.py
   language: python
   added_in: c1
@@ -2816,7 +2829,7 @@ code:
     value: monthly 15.00 per month, annual 120.00 per year
     facts:
     - fact: F-030
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dispatch/src/index.ts
   language: typescript
   added_in: c1
@@ -2838,16 +2851,16 @@ code:
     value: nightly-rebalance '0 3 * * *', maintenance-sweep '0 * * * *', weather-poll '*/15 * * * *', timezone America/New_York
     facts:
     - fact: F-087
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
     - fact: F-088
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
     - fact: F-089
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: withJobLock
     note: a database lock named after the job
     facts:
     - fact: F-090
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dispatch/src/jobs/nightlyRebalance.ts
   language: typescript
   added_in: c1
@@ -2861,16 +2874,16 @@ code:
     value: 0.5
     facts:
     - fact: F-032
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: needsRebalance
     facts:
     - fact: F-021
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: nightlyRebalance
     note: calls isStormPaused from c6
     facts:
     - fact: F-022
-      steps: [c6]
+      steps: [c6, c7]
     - fact: F-033
       steps: [c1, c2, c3, c4, c5]
 - path: dispatch/src/jobs/maintenanceSweep.ts
@@ -2882,13 +2895,13 @@ code:
     value: 3
     facts:
     - fact: F-020
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: FAULT_WINDOW_DAYS
     value: 7
   - name: maintenanceSweep
     facts:
     - fact: F-069
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dispatch/src/jobs/weatherPoll.ts
   language: typescript
   added_in: c1
@@ -2904,16 +2917,16 @@ code:
     value: 3
     facts:
     - fact: F-022
-      steps: [c6]
+      steps: [c6, c7]
   - name: MAX_READING_AGE_MINUTES
     value: 60
     facts:
     - fact: F-091
-      steps: [c6]
+      steps: [c6, c7]
   - name: isStormPaused
     facts:
     - fact: F-034
-      steps: [c6]
+      steps: [c6, c7]
 - path: dispatch/src/clients/skyglass.ts
   language: typescript
   added_in: c1
@@ -2926,7 +2939,7 @@ code:
     note: GET /v2/severity?lat&lon
     facts:
     - fact: F-068
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dispatch/src/clients/dockyard.ts
   language: typescript
   added_in: c1
@@ -2936,7 +2949,7 @@ code:
   - name: DockyardClient.lockBike
     facts:
     - fact: F-067
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: DockyardClient.stationFills
 - path: dispatch/src/clients/farebox.ts
   language: typescript
@@ -2947,7 +2960,7 @@ code:
   - name: FareboxClient.closeLostRides
     facts:
     - fact: F-069
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dispatch/src/db/rebalanceOrders.ts
   language: typescript
   added_in: c1
@@ -2963,7 +2976,7 @@ code:
   - name: countFaultReports
     facts:
     - fact: F-073
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: listTickets
     note: returns every row; added in wave 2 for the F-020 boundary assertion (truth/executed-audit.md)
 - path: dispatch/src/db/weatherReadings.ts
@@ -2982,11 +2995,11 @@ code:
     value: dispatch-demand
     facts:
     - fact: F-058
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
   - name: onRideEvent
     facts:
     - fact: F-053
-      steps: [c1, c2, c3, c4, c5, c6]
+      steps: [c1, c2, c3, c4, c5, c6, c7]
 - path: dispatch/src/flags.ts
   language: typescript
   added_in: c1
@@ -2999,63 +3012,97 @@ code:
   purpose: POST /bikes/:id/faults, a rider's fault report.
   symbols:
   - name: postFaultReport
+- path: web/serve.py
+  language: python
+  added_in: c7
+  purpose: Serves the rider portal's pages and its /api routes; --backend real, fake or none.
+  symbols:
+  - name: route_api
+    facts:
+    - fact: F-125
+      steps: [c7]
+  - name: PortalHandler
+  - name: main
+- path: web/fake_farebox.py
+  language: python
+  added_in: c7
+  purpose: A fake of farebox's rider-facing API, written from wiki/farebox-api, wiki/casual-pricing, wiki/fares-overview
+    and doc/fares-price-sheet.
+  symbols:
+  - name: SINGLE_RIDE_CAP_CENTS
+    value: 2500
+    note: a test double's constant; it carries no fact (truth/fidelities.yaml doubles)
+  - name: FakeFarebox
+- path: web/public/portal.js
+  language: javascript
+  added_in: c7
+  purpose: The portal pages' script; calls /api and shows each answer.
+  symbols:
+  - name: CHECKOUT_REFUSALS
+    facts:
+    - fact: F-122
+      steps: [c7]
+  - name: REFUND_REFUSALS
+    facts:
+    - fact: F-121
+      steps: [c7]
 tests:
 - document: code/dispatch/test/maintenanceSweep.test.ts
   id: maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
   framework: vitest
   asserts:
   - fact: F-020
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/dispatch/test/nightlyRebalance.test.ts
   id: nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
   framework: vitest
   asserts:
   - fact: F-021
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/dispatch/test/rideEvents.test.ts
   id: rideEvents > counts ride.completed toward the return station's demand
   framework: vitest
   asserts:
   - fact: F-053
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/dispatch/test/stormPause.test.ts
   id: stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
   framework: vitest
   asserts:
   - fact: F-022
-    steps: [c6]
-  passes_in: [c6]
+    steps: [c6, c7]
+  passes_in: [c6, c7]
 - document: code/tests/e2e/test_checkin.py
   id: tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
   framework: pytest
   asserts:
   - fact: F-018
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/e2e/test_checkin.py
   id: tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
   framework: pytest
   asserts:
   - fact: F-017
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/e2e/test_checkin.py
   id: tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
   framework: pytest
   asserts:
   - fact: F-051
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/e2e/test_checkout.py
   id: tests/e2e/test_checkout.py::test_third_checkout_refused
   framework: pytest
   asserts:
   - fact: F-019
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/e2e/test_close_ride.py
   id: tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed
   framework: pytest
@@ -3063,15 +3110,15 @@ tests:
   - fact: F-050
     steps: [c1, c2, c3, c4, c5]
   passes_in: [c1, c2, c3, c4, c5]
-  flaky_in: [c6]
+  flaky_in: [c6, c7]
   planted: see truth/planted-runs.yaml
 - document: code/tests/e2e/test_pricing.py
   id: tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
   framework: pytest
   asserts:
   - fact: F-004
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/e2e/test_pricing.py
   id: tests/e2e/test_pricing.py::test_member_first_fortyfive_minutes_free
   framework: pytest
@@ -3086,36 +3133,36 @@ tests:
   - fact: F-001
     steps: [c1]
   - fact: F-003
-    steps: [c4, c5, c6]
-  passes_in: [c1, c4, c5, c6]
+    steps: [c4, c5, c6, c7]
+  passes_in: [c1, c4, c5, c6, c7]
 - document: code/tests/e2e/test_refunds.py
   id: tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
   framework: pytest
   asserts:
   - fact: F-013
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/e2e/test_refunds.py
   id: tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
   framework: pytest
   asserts:
   - fact: F-014
-    steps: [c6]
-  passes_in: [c6]
+    steps: [c6, c7]
+  passes_in: [c6, c7]
 - document: code/tests/e2e/test_station_status.py
   id: tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
   framework: pytest
   asserts:
   - fact: F-052
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_flags.py
   id: tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
   framework: pytest
   asserts:
   - fact: F-049
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_lost_bikes.py
   id: tests/unit/test_lost_bikes.py::test_lost_bike_fee_100
   framework: pytest
@@ -3130,15 +3177,15 @@ tests:
   framework: pytest
   asserts:
   - fact: F-012
-    steps: [c6]
-  passes_in: [c6]
+    steps: [c6, c7]
+  passes_in: [c6, c7]
 - document: code/tests/unit/test_lost_bikes.py
   id: tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
   framework: pytest
   asserts:
   - fact: F-010
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_memberships.py
   id: tests/unit/test_memberships.py::test_membership_lapses_3_days_after_failed_renewal
   framework: pytest
@@ -3151,29 +3198,29 @@ tests:
   framework: pytest
   asserts:
   - fact: F-016
-    steps: [c3, c4, c5, c6]
-  passes_in: [c3, c4, c5, c6]
+    steps: [c3, c4, c5, c6, c7]
+  passes_in: [c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_pricing.py
   id: tests/unit/test_pricing.py::test_casual_rate_from_first_minute
   framework: pytest
   asserts:
   - fact: F-006
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_pricing.py
   id: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
   framework: pytest
   asserts:
   - fact: F-007
-    steps: [c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_pricing.py
   id: tests/unit/test_pricing.py::test_member_rate_after_free_minutes
   framework: pytest
   asserts:
   - fact: F-005
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
 - document: code/tests/unit/test_pricing.py
   id: tests/unit/test_pricing.py::test_single_ride_cap_25
   framework: pytest
@@ -3186,8 +3233,8 @@ tests:
   framework: pytest
   asserts:
   - fact: F-009
-    steps: [c5, c6]
-  passes_in: [c5, c6]
+    steps: [c5, c6, c7]
+  passes_in: [c5, c6, c7]
 - document: code/tests/unit/test_tollbooth_client.py
   id: tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx
   framework: pytest
@@ -3195,15 +3242,47 @@ tests:
   - fact: F-062
     steps: []
   passes_in: []
-  skipped_in: [c1, c2, c3, c4, c5, c6]
+  skipped_in: [c1, c2, c3, c4, c5, c6, c7]
   planted: see truth/planted-runs.yaml
 - document: code/tests/unit/test_tollbooth_client.py
   id: tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
   framework: pytest
   asserts:
   - fact: F-023
-    steps: [c1, c2, c3, c4, c5, c6]
-  passes_in: [c1, c2, c3, c4, c5, c6]
+    steps: [c1, c2, c3, c4, c5, c6, c7]
+  passes_in: [c1, c2, c3, c4, c5, c6, c7]
+- document: code/web/tests/check-out.spec.ts
+  id: check-out › shows a banner when the rider is at the bike limit
+  framework: playwright
+  asserts:
+  - fact: F-122
+    steps: [c7]
+  outcomes:
+    c7: {mocked: passed, fake: skipped, real: skipped}
+- document: code/web/tests/fare-preview.spec.ts
+  id: fare preview › shows the farebox cap for a 200-minute casual ride
+  framework: playwright
+  asserts:
+  - fact: F-124
+    steps: [c7]
+  outcomes:
+    c7: {mocked: failed, fake: failed, real: passed}
+- document: code/web/tests/fare-preview.spec.ts
+  id: fare preview › shows the price-sheet cap for a 200-minute casual ride
+  framework: playwright
+  asserts:
+  - fact: F-123
+    steps: [c7]
+  outcomes:
+    c7: {mocked: passed, fake: passed, real: failed}
+- document: code/web/tests/refund-request.spec.ts
+  id: refund request › refuses a ride that ended 15 days ago
+  framework: playwright
+  asserts:
+  - fact: F-121
+    steps: [c7]
+  outcomes:
+    c7: {mocked: passed, fake: passed, real: passed}
 runs:
 - id: run/pytest-c1
   framework: pytest
@@ -3379,6 +3458,34 @@ runs:
   - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
   failed: ['tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed']
   skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
+- id: run/pytest-c7
+  framework: pytest
+  step: c7
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 18 passed, 1 failed, 1 skipped
+  passes:
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_allowed_with_overflow_parking
+  - tests/e2e/test_checkin.py::test_checkin_at_full_station_refused
+  - tests/e2e/test_checkin.py::test_checkin_full_station_returns_409
+  - tests/e2e/test_checkout.py::test_third_checkout_refused
+  - tests/e2e/test_pricing.py::test_casual_ride_charges_one_dollar_unlock_fee
+  - tests/e2e/test_pricing.py::test_member_first_thirty_minutes_free
+  - tests/e2e/test_refunds.py::test_refund_after_14_days_rejected
+  - tests/e2e/test_refunds.py::test_refund_under_five_dollars_auto_approved_when_flag_on
+  - tests/e2e/test_station_status.py::test_station_status_reports_fill_ratio
+  - tests/unit/test_flags.py::test_dynamic_pricing_off_by_default
+  - tests/unit/test_lost_bikes.py::test_lost_bike_fee_150
+  - tests/unit/test_lost_bikes.py::test_ride_open_past_24_hours_closed_as_lost
+  - tests/unit/test_memberships.py::test_membership_lapses_7_days_after_failed_renewal
+  - tests/unit/test_pricing.py::test_casual_rate_from_first_minute
+  - tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
+  - tests/unit/test_pricing.py::test_member_rate_after_free_minutes
+  - tests/unit/test_pricing.py::test_single_ride_cap_30
+  - tests/unit/test_tollbooth_client.py::test_capture_retries_three_times_then_fails
+  failed: ['tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed']
+  skipped: ['tests/unit/test_tollbooth_client.py::test_capture_does_not_retry_a_4xx']
 - id: run/pytest-c6-rerun
   framework: pytest
   step: c6
@@ -3386,6 +3493,16 @@ runs:
   env:
     GEARWELL_ATTEMPT: '2'
   reruns: run/pytest-c6
+  scope: only the tests that failed in attempt 1
+  result: 1 passed
+  passes: ['tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed']
+- id: run/pytest-c7-rerun
+  framework: pytest
+  step: c7
+  attempt: 2
+  env:
+    GEARWELL_ATTEMPT: '2'
+  reruns: run/pytest-c7
   scope: only the tests that failed in attempt 1
   result: 1 passed
   passes: ['tests/e2e/test_close_ride.py::test_close_ride_publishes_ride_completed']
@@ -3456,3 +3573,41 @@ runs:
   - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
   - rideEvents > counts ride.completed toward the return station's demand
   - stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+- id: run/vitest-c7
+  framework: vitest
+  step: c7
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 4 passed
+  passes:
+  - maintenanceSweep > locks a bike with 3 fault reports in 7 days and opens a ticket
+  - nightlyRebalance > orders a rebalance for a station under 20% or over 90% full
+  - rideEvents > counts ride.completed toward the return station's demand
+  - stormPause > pauses rebalancing while the latest Skyglass severity is 3 or more
+- id: run/playwright-c7
+  framework: playwright
+  step: c7
+  attempt: 1
+  env:
+    GEARWELL_ATTEMPT: '1'
+  result: 7 passed, 3 failed, 2 skipped
+  projects:
+    mocked:
+      passes:
+      - check-out › shows a banner when the rider is at the bike limit
+      - fare preview › shows the price-sheet cap for a 200-minute casual ride
+      - refund request › refuses a ride that ended 15 days ago
+      failed: [fare preview › shows the farebox cap for a 200-minute casual ride]
+    fake:
+      passes:
+      - fare preview › shows the price-sheet cap for a 200-minute casual ride
+      - refund request › refuses a ride that ended 15 days ago
+      failed: [fare preview › shows the farebox cap for a 200-minute casual ride]
+      skipped: [check-out › shows a banner when the rider is at the bike limit]
+    real:
+      passes:
+      - fare preview › shows the farebox cap for a 200-minute casual ride
+      - refund request › refuses a ride that ended 15 days ago
+      failed: [fare preview › shows the price-sheet cap for a 200-minute casual ride]
+      skipped: [check-out › shows a banner when the rider is at the bike limit]
