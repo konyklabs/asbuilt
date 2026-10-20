@@ -276,7 +276,39 @@ New in konyklabs/asbuilt#63 (found by #36's measurement):
   the step lifts it and no demotion applies by then (`_runs_at_step`), the
   distinct measure's rule: F-050's flaky c6 keeps it executed on c1 to c5.
   Runs lift a fact only before its `valid_to`: at that step (in scope
-  under the closed window) a retired fact is `code`, as before.
+  under the closed window then, out of scope since #66) a retired fact is
+  `code`, as before.
+
+New in konyklabs/asbuilt#66 (found while building #63):
+
+* Under `--facts` a fact is current at step S when `valid_from` <= S <
+  `valid_to` (`_current_at_step`), the fixture's own half-open window:
+  the step that superseded a fact no longer expects it. Explain's
+  whole-history expectation (`_fact_by_step`) is unchanged.
+* Bound directions agree, negated or not (`_bound_direction_conflict`, a
+  veto before the claim path): where both statements state a duration
+  bound on the same number and unit, the directions they state there
+  (inside: within, less than, under, up to, at most; beyond: past, after,
+  more than, beyond, longer than; "over N" and "the past N" are windows,
+  not read) must be the same. "A refund
+  requested within 14 days is rejected." no longer matches F-013. A
+  duration with no direction word states no direction and never vetoes,
+  so a flip written as a window ("requested in the past 14 days") is
+  credited as before. The veto refuses at the statement level only: the
+  contradiction side's opposing guard credits on a non-match, so it runs
+  without it (`direction_vetoes=False`, the loosest matcher), and a
+  refusal never becomes a credit there (#66's lens round, X-020).
+* Negation scope is not read: the plain negation veto still asks only
+  whether each side is negated, so one negation for another is credited
+  ("A ride is not closed as lost within 24 hours." against F-010). Two
+  designs that read what a negation governs, one-way and two-way, each
+  refused correct statements main credits ("A flag with no feature_flags
+  row is treated as off.", F-064), so neither landed (#66's lens round).
+  Of the 22 pairs written for #63, the hard negatives the bound rule or
+  main refuses and the 2 positives still credited are in the calibration
+  set; the three moved negations and "not docked within 24 minutes" (units
+  are not compared) are known false positives, and the five complement
+  paraphrases stay refused, all pinned in tests/test_score.py.
 """
 
 from __future__ import annotations
@@ -628,6 +660,86 @@ def _outcome_conflict(a: str, b: str) -> bool:
     round)."""
     outcomes_a, outcomes_b = _outcomes(a), _outcomes(b)
     return bool(outcomes_a) and bool(outcomes_b) and not (outcomes_a & outcomes_b)
+
+
+# konyklabs/asbuilt#66: a duration bound is a number and a time unit after a
+# direction word, inside (`within`, `less than`, `under`, `up to`, `at most`)
+# or beyond (`past`, `after`, `more than`, `beyond`, `longer than`): the
+# reader of #63's withdrawn design, on the raw words, with no negation read
+# into the direction. "the past 7 days" names a window, the last seven days,
+# not a bound beyond them, so `past` after "the" is not read; "over" is not
+# read at all, because "over N" names a window in this fixture as often as a
+# bound beyond it (F-099's own truth, "above 5% over 10 minutes"; "3 fault
+# reports over 7 days" for F-020's "within 7 days"), found by #66's lens
+# round.
+_DURATION = r"(?P<n>\d+(?:\.\d+)?)\s+(?P<unit>second|minute|hour|day|week|month|year)s?\b"
+_INSIDE_WORDS = ("within", "less than", "under", "up to", "at most")
+_BEYOND_WORDS = ("past", "after", "more than", "beyond", "longer than")
+_BOUND_RE = re.compile(
+    r"(?<!\bthe\s)\b(?P<dir>" + "|".join(_INSIDE_WORDS + _BEYOND_WORDS) + r")\s+" + _DURATION,
+    re.IGNORECASE,
+)
+
+
+def _bound_directions(text: str) -> dict[tuple[str, str], set[str]]:
+    """(number, unit) -> the directions `text` states a duration bound in
+    there, "inside" or "beyond" (`_BOUND_RE`, after number words are read
+    as digits)."""
+    bounds: dict[tuple[str, str], set[str]] = {}
+    for m in _BOUND_RE.finditer(_prenormalize_numeric_prose(text)):
+        direction = "inside" if m.group("dir").lower() in _INSIDE_WORDS else "beyond"
+        key = (_normalize_number(m.group("n")), m.group("unit").lower())
+        bounds.setdefault(key, set()).add(direction)
+    return bounds
+
+
+def _bound_direction_conflict(a: str, b: str) -> bool:
+    """konyklabs/asbuilt#66: True when both sentences state a duration
+    bound on the same number and unit and the directions they state there
+    differ ("A refund requested within 14 days is rejected." against "more
+    than 14 days after"; "after 7 days is locked" against "within 7 days").
+    The polarity and negation rules compare outcome words and negation, so
+    a flipped bound that keeps the truth's words passed them; a flip
+    written as a window the reader does not take for a bound ("requested
+    in the past 14 days"; "over N" is not read either) still passes, as on
+    main. It refuses at the
+    statement level only (see `_side_matches`). Negated or
+    not, the words decide: "not docked within 24 hours" is an inside bound
+    here, so the complement "open past 24 hours" conflicts. The plain
+    negation veto refuses it (F-010, #63) unless an unrelated negation
+    elsewhere in the sentence pairs with the truth's: the baseline's "open
+    more than 24 hours without the bike being docked ... rides aren't
+    flagged" was credited that way, and is now refused, a correct statement
+    refused (a known cost, counted as a hard false positive; F-010's
+    complement stays its recorded false negative, credited by no rule
+    rather than by accident). A duration with no
+    direction word before it ("open for 24 hours", "a 7-day window",
+    "older than 60 minutes") states no known direction and never conflicts:
+    such a pair is left to the other rules. Known costs, each a correct
+    statement refused; an unmatched correct statement counts as a hard
+    false positive, so each costs precision as well as recall:
+    - the inside-phrased complement of a beyond fact, which states the
+      same boundary from the other side through a connective the reader
+      does not follow: "must be requested within 14 days ... or it is
+      rejected" (F-013), "times out unless it answers within 5 seconds",
+      "waits at most 5 seconds before it times out" (F-060), "must be
+      filed within 14 days ...; otherwise ... 422" (F-071). No connective
+      rule is tried; konyklabs/asbuilt#69 owns it, with units and bounds
+      on money or counts;
+    - a correct statement naming both sides of one boundary against a fact
+      stating one side: "... rejected; within 14 days it is accepted"
+      (F-013), "... closed as lost after 24 hours" (F-010), "... and a
+      reading within 60 minutes pauses it" (F-091). The direction sets
+      must be equal, so a statement still matches itself;
+      konyklabs/asbuilt#69 owns this too. (The equal-set rule is also what
+      refuses the hard negative "past 24 hours ... unless it is not docked
+      within 24 hours" against "not docked within 24 hours", which is not
+      a cost.)
+    Units are not compared ("within 24 minutes" against "within 24 hours"
+    is another key, so no conflict), and bounds on money or counts are not
+    read."""
+    bounds_a, bounds_b = _bound_directions(a), _bound_directions(b)
+    return any(bounds_a[key] != bounds_b[key] for key in bounds_a.keys() & bounds_b.keys())
 
 
 def _names_quantity(
@@ -1039,6 +1151,7 @@ def _statement_matches(
     returned_claim: dict[str, Any] | None = None,
     truth_claim: dict[str, Any] | None = None,
     strict: bool = True,
+    direction_vetoes: bool = True,
 ) -> bool:
     """Number-aware, negation- and entity-mention-guarded text match, now
     claim-first (konyklabs/asbuilt#8: the truth author added a numeric
@@ -1047,7 +1160,14 @@ def _statement_matches(
     and cited document) and `ask` sentence scoring (a Sentence carries no
     claim, so it always takes the plain-statement path). A negation
     mismatch or an entity-mention conflict vetoes the match outright,
-    before anything claim- or number-related is even considered.
+    before anything claim- or number-related is even considered; so, since
+    konyklabs/asbuilt#66, does a duration bound stated in the other
+    direction (`_bound_direction_conflict`), unless
+    `direction_vetoes=False`. A refusal is a refusal only where a match
+    credits: a caller that credits on a NON-match (the contradiction
+    side's opposing guard, `_side_matches`) passes `direction_vetoes=False`,
+    the loosest matcher, so that a new refusal can never turn into a credit
+    there.
 
     When BOTH sides carry a claim AND the returned one is comparable (see
     `_claim_is_comparable` — reproduced bug: an unresolved returned entity
@@ -1080,6 +1200,10 @@ def _statement_matches(
     if _flag_state_conflict(returned_statement, truth_statement, mention_index):
         return False
     if _outcome_conflict(returned_statement, truth_statement):
+        return False
+    if direction_vetoes and _bound_direction_conflict(returned_statement, truth_statement):
+        # konyklabs/asbuilt#66: before the claim path, so an agreeing claim
+        # does not credit a flipped bound either.
         return False
     if _entity_mention_conflict(returned_statement, truth_statement, mention_index):
         return False
@@ -1294,10 +1418,12 @@ def facts_match(
     truth_fact: TruthFact,
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
     strict: bool = True,
+    direction_vetoes: bool = True,
 ) -> bool:
     """(a) shared entity, (b) shared cited document, (c) `_statement_matches`
     on the two statements (number-aware, negation-, mention- and now
-    claim-guarded — konyklabs/asbuilt#8; `strict` as there, #35). Entities
+    claim-guarded — konyklabs/asbuilt#8; `strict` as there, #35;
+    `direction_vetoes` as there, #66). Entities
     here, and the claim's own entity if it carries one, are expected
     already resolved ids (see `resolve_fact_entities`) — `facts_match`
     itself does no name alignment, so a caller working directly with
@@ -1318,6 +1444,7 @@ def facts_match(
         returned.get("claim"),
         truth_fact.claim,
         strict,
+        direction_vetoes,
     )
 
 
@@ -1580,7 +1707,14 @@ def _side_matches(
     the side only when neither the whole statement nor any clause also
     states `opposing`, the pair's other fact: a winner saying "up to 3
     bikes; the code's limit of 2 is a regression" states both sides and
-    picks neither (lens round)."""
+    picks neither (lens round). That guard credits on a NON-match, so it
+    uses the loosest matcher, `direction_vetoes=False` (konyklabs/asbuilt#66):
+    a check whose negative result credits must never gain a refusal, or the
+    bound direction veto, refusing the opposing clause, would turn "states
+    both, picks neither" into a credit (X-020's hedge, "times out after 5
+    seconds; ... waits up to 10 seconds before it times out", found by
+    #66's lens round). It still runs the strict reading, `facts_match`'s
+    default, as it has since #35."""
     if facts_match(side, truth_fact, mention_index):
         return True
     clauses = [c.strip() for c in str(side.get("statement", "")).split(";")]
@@ -1592,7 +1726,7 @@ def _side_matches(
     if opposing is None:
         return True
     return not any(
-        facts_match({**side, "statement": text}, opposing, mention_index)
+        facts_match({**side, "statement": text}, opposing, mention_index, direction_vetoes=False)
         for text in [side.get("statement", ""), *clauses]
     )
 
@@ -3159,24 +3293,36 @@ def _resolve_step_or_sha(value: str, commits: dict[str, Any]) -> str:
 
 
 def _current_at_step(tf: TruthFact, order: dict[str, int], step_rank: int | None) -> bool:
-    """Closed validity window [valid_from, valid_to] at `step_rank`
-    (konyklabs/asbuilt#8 review — this was half-open, excluding `valid_to`
-    itself, until the reviewer's F-011/F-012 reproduction: "F-011 must be
-    expected... at c5", exactly its own `valid_to`). This function's only
-    caller needs "could the connector plausibly find evidence of this fact
-    in the codebase at this step", not "there is exactly one current
-    value" — at a fact's own retirement step, the OLD test's assertion is
-    still literally in the codebase (now failing, demoted) and the NEW
-    code's value isn't proven by a passing test yet; both are legitimate
-    connector targets at once, so both must be in scope there, however
-    "the current value" would be phrased elsewhere. `step_rank=None` (the
-    step didn't resolve) skips the validity filter rather than excluding
-    everything."""
+    """Half-open validity window [valid_from, valid_to) at `step_rank`
+    (konyklabs/asbuilt#66): `valid_to` is the step that superseded the
+    fact, so the fact is not current there. F-001 (`valid_to: c2`) and
+    F-002 (`valid_from: c2`) are not both expected at c2. It is the
+    fixture's own definition: `truth/validate.py`'s `steps_between` is
+    half-open (`STEPS[i:j]`), and it requires a code carrier's PLAN `steps`
+    to equal `steps_between(version, valid_to)`; `truth/PLAN.yaml` lists
+    F-011 on `LOST_BIKE_FEE` at `[c1, c2, c3, c4]`, and
+    `test_lost_bike_fee_100` asserting it at `[c1, c2, c3, c4]` with
+    `fails_in: [c5]`. The truth never carries a fact at its own `valid_to`.
+    The window was closed from the konyklabs/asbuilt#8 review, whose
+    reproduction read "F-011 must be expected... at c5", exactly its own
+    `valid_to`, holding the failing old test and the new code to be both
+    legitimate connector targets there; that reading is superseded by the
+    definition above, because the failing test's value is a contradiction
+    candidate, not a current fact: the truth records it as X-021
+    (run-vs-code, F-011 against F-012, winner F-012, opened at c5). So a
+    statement of a failing test's superseded value at the fact's
+    `valid_to` step ("Lost bike fee $100.00." at c5) is now unmatched, a
+    hard false positive, and counts against `--facts` precision there; it
+    is `code` tier, so executed-tier precision does not move. Used only by
+    `score_test_connector`; explain's whole-history expectation is
+    `_fact_by_step`. `step_rank=None` (the step didn't resolve) skips the
+    validity filter rather than excluding everything, and a `valid_from`
+    or `valid_to` the order doesn't know holds nothing back."""
     if step_rank is None:
         return True
     if tf.valid_from is not None and order.get(tf.valid_from, step_rank) > step_rank:
         return False
-    if tf.valid_to is not None and order.get(tf.valid_to, step_rank) < step_rank:
+    if tf.valid_to is not None and order.get(tf.valid_to, step_rank + 1) <= step_rank:
         return False
     return True
 
@@ -3265,9 +3411,10 @@ def _runs_at_step(
     (konyklabs/asbuilt#63), the distinct measure's rule: a run carrier at or
     before the step that lifts it (`_runs_by_step`), and none once a
     demotion applies at or before it, or once the step reaches the fact's
-    `valid_to` (`_retired_by_step`: the window is closed there, so a
-    retired fact is still in scope at that step, but its runs no longer
-    prove it; F-001 is `code` at c2, as before). F-050's flaky c6 is
+    `valid_to` (`_retired_by_step`: its runs no longer prove it there;
+    F-001 is `code` at c2, as before, though since konyklabs/asbuilt#66
+    `--facts` no longer has it in scope at its `valid_to`, see
+    `_current_at_step`). F-050's flaky c6 is
     inconclusive and cites no run, so its c1 to c5 runs keep it executed
     at c6; F-007, proven from c5, is `code` at c1 to c4; F-011, demoted at
     c5, is `code` from c5. With no step order, a run carrier at exactly

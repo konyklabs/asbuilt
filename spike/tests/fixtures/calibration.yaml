@@ -498,3 +498,153 @@
 - truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
   candidate: "A rider can hold at most 2 bikes at once, so a check-out of a further bike is allowed."
   expect: false
+# -- a flipped duration bound (konyklabs/asbuilt#66 item 1) ----------------
+# Where both statements state a duration bound on the same number and unit,
+# the directions must agree, negated or not. Each hard negative keeps the
+# truth fact's words and flips only the direction word, and was credited
+# before the rule. The positives state the same direction in another word
+# from the same list ("past"), or a word outside the lists ("over", "older
+# than"), which reads as no direction and never vetoes; "the past 7 days"
+# and "over 10 minutes" are windows, not bounds beyond them. The same
+# labels hold in both readings. The label rule (#66's lens round): a bound
+# on the complementary event, the same boundary stated from the other side
+# ("open past 24 hours" for "not docked within 24 hours", "waits at most 5
+# seconds before it times out" for "times out after 5 seconds"), is a
+# complement, true by meaning, refused, and pinned in tests/test_score.py's
+# known-cost tests, never here; the fact's own event with its bound flipped,
+# or a changed outcome or boundary, is a hard negative. A `why` gives the
+# reading where the label is not obvious.
+- truth: "A refund requested more than 14 days after the ride ended is rejected."
+  candidate: "A refund requested within 14 days after the ride ended is rejected."
+  truth_claim: {entity: E-rule-refund-window, attribute: window, value: 14, unit: day}
+  expect: false
+  why: "the fact's own event, the request, with its bound flipped: a hard negative (#66 label rule)"
+- truth: "A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket."
+  candidate: "A bike with 3 fault reports after 7 days is locked and gets a maintenance ticket."
+  truth_claim: {entity: E-rule-fault-threshold, attribute: fault_reports, value: 3, unit: count}
+  expect: false
+  why: "the fact's own event, the reports, with its bound flipped: a hard negative"
+- truth: "Support may waive the lost-bike fee when the bike is found within 72 hours."
+  candidate: "Support may waive the lost-bike fee when the bike is found after 72 hours."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: waiver_window, value: 72, unit: hour}
+  expect: false
+  why: "the fact's own event, the finding, with its bound flipped: a hard negative"
+- truth: "When the latest Skyglass reading is more than 60 minutes old, the storm pause does not pause rebalancing."
+  candidate: "When the latest Skyglass reading is less than 60 minutes old, the storm pause does not pause rebalancing."
+  truth_claim: {entity: E-rule-storm-pause, attribute: max_reading_age, value: 60, unit: minute}
+  expect: false
+  why: "the fact's own event, the reading's age, with its bound flipped: a hard negative"
+- truth: "Each Tollbooth Pay call times out after 5 seconds."
+  candidate: "Each Tollbooth Pay call times out within 5 seconds."
+  truth_claim: {entity: E-int-tollbooth-pay, attribute: timeout, value: 5, unit: second}
+  expect: false
+  why: "the bound now sits on the timing-out itself, flipped: a hard negative, not the complement \"waits at most 5 seconds before it times out\" (pinned as a known cost)"
+- truth: "A refund requested more than 14 days after the ride ended is rejected."
+  candidate: "A refund requested over 14 days after the ride ended is rejected."
+  truth_claim: {entity: E-rule-refund-window, attribute: window, value: 14, unit: day}
+  expect: true
+  why: "\"over N\" is not read (a window in this fixture), so no direction and no veto"
+- truth: "A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket."
+  candidate: "A bike that gets 3 fault reports within 7 days is locked and gets a maintenance ticket."
+  truth_claim: {entity: E-rule-fault-threshold, attribute: fault_reports, value: 3, unit: count}
+  expect: true
+- truth: "A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket."
+  candidate: "A bike with 3 fault reports in the past 7 days is locked and gets a maintenance ticket."
+  truth_claim: {entity: E-rule-fault-threshold, attribute: fault_reports, value: 3, unit: count}
+  expect: true
+  why: "\"the past 7 days\" is a window, not read as a bound"
+- truth: "Support may waive the lost-bike fee when the bike is found within 72 hours."
+  candidate: "If the bike is found within 72 hours, support may waive the lost-bike fee."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: waiver_window, value: 72, unit: hour}
+  expect: true
+- truth: "When the latest Skyglass reading is more than 60 minutes old, the storm pause does not pause rebalancing."
+  candidate: "When the latest Skyglass reading is older than 60 minutes, the storm pause does not pause rebalancing."
+  truth_claim: {entity: E-rule-storm-pause, attribute: max_reading_age, value: 60, unit: minute}
+  expect: true
+  why: "\"older than\" is outside the lists: no direction, no veto"
+- truth: "Each Tollbooth Pay call times out after 5 seconds."
+  candidate: "A Tollbooth Pay call times out past 5 seconds."
+  truth_claim: {entity: E-int-tollbooth-pay, attribute: timeout, value: 5, unit: second}
+  expect: true
+# -- the plain negation veto's hole (konyklabs/asbuilt#66) -----------------
+# The 22 pairs written for asbuilt#63 against F-010, F-060 and an invented fact,
+# labelled by meaning: the 11 hard negatives the scorer refuses (7 by a bound
+# direction, 4 already by main) and the two positives it credits. Not here,
+# all pinned in tests/test_score.py: the five complement paraphrases, true
+# and refused ("Ride open past 24 hours closed as lost.", "A ride open for 24
+# hours is closed as lost."); and four hard negatives still credited, known
+# false positives: three that move F-010's negation onto another word
+# (negation scope is not read; #66 tried two rules and both refused correct
+# statements) and "not docked within 24 minutes" (units are not compared).
+# Labels follow the rule above; the same labels hold in both readings.
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike isn't docked within 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: true
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride is closed as lost when it is not docked within 24 hours."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: true
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride docked within 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the fact's own event with its negation dropped: the opposite case"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 12 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "a complement with another boundary, 12 hours for 24"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 24 hours is not closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the complement with the outcome negated"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 24 hours is never closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the complement with the outcome negated"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "No ride open past 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the complement with the outcome negated"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is not docked past 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the fact's own event, the docking, with its bound flipped (past for within)"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is not docked after 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the fact's own event, the docking, with its bound flipped (after for within)"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open less than 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "the complement event, open, with its bound flipped: open less than 24 hours is the docked case"
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 24 hours is closed as lost unless it is not docked within 24 hours."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+  why: "both directions, and the unless clause reverses the fact"
+- truth: "A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee."
+  candidate: "A bike still out past 24 hours does not cost the rider a $100.00 lost-bike fee."
+  expect: false
+  why: "the complement with the outcome negated"
+- truth: "Each Tollbooth Pay call times out after 5 seconds."
+  candidate: "Each Tollbooth Pay call does not time out within 5 seconds."
+  expect: false
+  why: "says only that no timeout happens inside 5 seconds, not that one happens at 5: it does not state the fact, so it is not a complement"
+# "over N" is a window, not a bound beyond N (#66's lens round): F-099's own
+# truth reads that way, and "over 7 days" restates F-020's "within 7 days".
+- truth: "A payment failure rate above 5% over 10 minutes pages the fares on-call engineer."
+  candidate: "A payment failure rate above 5% within 10 minutes pages the fares on-call engineer."
+  truth_claim: {entity: E-table-payments, attribute: failure_rate_alert, value: 5, unit: percent}
+  expect: true
+- truth: "A bike with 3 fault reports within 7 days is locked and gets a maintenance ticket."
+  candidate: "A bike with 3 fault reports over 7 days is locked and gets a maintenance ticket."
+  truth_claim: {entity: E-rule-fault-threshold, attribute: fault_reports, value: 3, unit: count}
+  expect: true

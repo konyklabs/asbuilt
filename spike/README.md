@@ -264,8 +264,9 @@ uv sync
    across a surface's queries — micro-averaged — before computing ratios,
    and per-category breakdowns bucket by the *truth* fact's category only).
    The matcher itself is calibrated: `bench/score.py --calibrate` runs the
-   140 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
-   (1.0/1.0 in both readings), and `--calibrate
+   166 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
+   (1.0/1.0 in both readings; asbuilt#66 added 13 for bound directions and
+   13 of the 22 written for #63), and `--calibrate
    tests/fixtures/calibration-model-run.yaml` the 91 pairs judged from the
    test connector's first real model run plus targeted pairs per rule
    (asbuilt#17, #35 and #63: precision 1.0, recall 0.56 strict and 0.62
@@ -291,6 +292,25 @@ uv sync
    ("rule:checkout-limit") before alignment, and a side states a fact when
    its whole statement or one of its clauses (split at ";") matches it
    under the same rules.
+   Since asbuilt#66, where both statements state a duration bound on the
+   same number and unit ("within 14 days", "more than 14 days"), the
+   directions must agree, negated or not, so a flipped bound is refused
+   even when the claim agrees, unless the flip is written as a window the
+   reader does not take for a bound ("requested in the past 14 days";
+   "over N" is not read either), which is credited as before. The rule only refuses, at the
+   statement level: where a check credits on a non-match, the
+   contradiction side's opposing guard (a side counts only when no clause
+   also states the pair's other fact), it runs without the rule, the
+   loosest matcher, so a refusal can never turn into a credit there.
+   Negation scope is not read: the negation
+   veto asks only whether each side is negated, so one negation for
+   another ("A ride is not closed as lost within 24 hours." against F-010)
+   stays a recorded false positive, as does "not docked within 24 minutes"
+   against F-010's 24 hours (units are not compared); two designs that
+   read negation scope each refused correct statements. The bound rule's
+   known costs (an inside-phrased complement of a beyond fact, and a
+   correct statement naming both sides of one boundary, each a hard false
+   positive; asbuilt#69) are in `_bound_direction_conflict`'s docstring.
 
    Explain and search print a line per provenance tier (asbuilt#34):
    `tier executed`, `tier code` and `tier documented`, each with precision
@@ -317,8 +337,10 @@ uv sync
    file without `through_step` holds nothing back.
 
    `--facts FILE --step STEP` scores a connector's bag of facts instead of
-   a results file, against the truth facts current at the step that have a
-   carrier of the kind `--truth-filter` names: `tests` (the default, a test
+   a results file, against the truth facts current at the step (from
+   their `valid_from` up to, not including, their `valid_to`: asbuilt#66,
+   the fixture's own window, so the step that superseded a fact no longer
+   expects it) that have a carrier of the kind `--truth-filter` names: `tests` (the default, a test
    file at or before the step: `code/tests/`, `code/dispatch/test/` and,
    since asbuilt#38, the portal's Playwright specs in `code/web/tests/`), `code` (a `code/` file outside the test
    directories, at or before the step) or `documents` (a wiki page, doc,
@@ -326,8 +348,8 @@ uv sync
    one counts). A fact's tier at the step is `executed` when a run at or
    before the step lifts it, no demotion applies by then and the step is
    before the fact's `valid_to` (asbuilt#63; F-050's flaky c6 runs leave
-   it executed on its c1 to c5 runs, and a fact at its own `valid_to` step
-   is `code`); otherwise `code` where code carries it.
+   it executed on its c1 to c5 runs); otherwise `code` where code carries
+   it.
 
    **Backend fidelity** (asbuilt#38, D-014). A returned executed fact
    names the fidelity it claims in its own `fidelity` field (a name from
