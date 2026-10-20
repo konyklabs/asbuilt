@@ -117,6 +117,9 @@ class TruthFact:
     # The strongest backend fidelity at which a cited run passes, on an
     # executed fact only (D-014, asbuilt#37): a name from truth/fidelities.yaml.
     fidelity: str | None = None
+    # The failing run that demoted a once-executed statement (truth/SCHEMA.md),
+    # with its `project` for a Playwright run (asbuilt#38 reads its fidelity).
+    demoted_by: Carrier | None = None
 
 
 @dataclass(frozen=True)
@@ -238,8 +241,17 @@ def load_facts(path: Path) -> dict[str, TruthFact]:
             valid_to=raw.get("valid_to"),
             claim=raw.get("claim"),
             fidelity=raw.get("fidelity"),
+            demoted_by=_demoted_by(raw.get("demoted_by")),
         )
     return facts
+
+
+def _demoted_by(raw: dict | None) -> Carrier | None:
+    if not raw:
+        return None
+    return Carrier(
+        document=raw["document"], location=raw.get("location"), project=raw.get("project")
+    )
 
 
 def load_contradictions(path: Path) -> dict[str, TruthContradiction]:
