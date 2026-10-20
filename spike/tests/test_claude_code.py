@@ -24,6 +24,7 @@ import pytest
 
 import bench.claude_code as claude_code
 from bench.claude_code import (
+    DEFAULT_EFFORT,
     DEFAULT_MAX_TURNS,
     ClaudeCodeClient,
     _failure_reason,
@@ -173,6 +174,47 @@ def test_the_client_path_passes_the_same_turn_cap(tmp_path: Path, monkeypatch: p
     )
     argv = json.loads(args_path.read_text())
     assert argv[argv.index("--max-turns") + 1] == "6"
+
+
+def test_every_call_names_its_effort_and_loads_no_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """roadmap#154: a call that loads the user's own settings runs at their
+    effort (`xhigh` on the first overnight run, 8x slower) with their advisor
+    model, plugins and hooks, so both paths load none and name the effort:
+    `medium` by default, `ASBUILT_EFFORT` otherwise."""
+    args_path = tmp_path / "args.json"
+    monkeypatch.setenv("FAKE_CLAUDE_ARGS_PATH", str(args_path))
+    monkeypatch.delenv("ASBUILT_EFFORT", raising=False)
+    _install_fake_claude(tmp_path, monkeypatch, _ECHO_STDIN_SCRIPT)
+
+    _invoke_claude_code("a prompt", "claude-sonnet-5", schema=None, system_prompt="sys")
+    argv = json.loads(args_path.read_text())
+    assert argv[argv.index("--effort") + 1] == DEFAULT_EFFORT == "medium"
+    # and no settings file of the user's: their effort, advisor, plugins, hooks
+    assert argv[argv.index("--setting-sources") + 1] == ""
+
+    args_path.unlink()
+    monkeypatch.setenv("ASBUILT_EFFORT", "high")
+    ClaudeCodeClient().messages.create(
+        model="claude-sonnet-5", messages=[{"role": "user", "content": "a prompt"}]
+    )
+    argv = json.loads(args_path.read_text())
+    assert argv[argv.index("--effort") + 1] == "high"
+    assert argv[argv.index("--setting-sources") + 1] == ""
+
+
+def test_an_effort_the_cli_would_refuse_is_refused_before_spawning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    args_path = tmp_path / "args.json"
+    monkeypatch.setenv("FAKE_CLAUDE_ARGS_PATH", str(args_path))
+    monkeypatch.setenv("ASBUILT_EFFORT", "extreme")
+    _install_fake_claude(tmp_path, monkeypatch, _ECHO_STDIN_SCRIPT)
+
+    with pytest.raises(ValueError, match="ASBUILT_EFFORT='extreme'"):
+        _invoke_claude_code("a prompt", "claude-sonnet-5", schema=None, system_prompt="sys")
+    assert not args_path.exists()  # the fake CLI never ran
 
 
 def test_timeout_raises_runtime_error_not_a_raw_timeout_expired(

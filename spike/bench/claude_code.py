@@ -117,6 +117,23 @@ DEFAULT_MAX_TURNS = 4
 DEFAULT_RETRY_PAUSE_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 1
 
+# konyklabs/roadmap#154, 2026-10-19: a call loaded the user's own Claude Code
+# settings, so an arm's speed, spend and possibly its answers depended on
+# files outside this repository: the effort they give the model
+# (`effortLevel`, per model under `modelSettings`), an `advisorModel` the
+# model could consult mid-extraction, and the plugins and SessionStart hooks
+# that add context to every prompt. The same stack-B extraction call
+# (wiki/checkout-rules, same prompt and schema) took 172 s and $0.80 at list
+# price with those settings (`xhigh`, and a second model as advisor for
+# $0.63 of it), 16 s and $0.033 with none loaded and `medium`, 15 facts
+# both. Every call now loads no settings files (`--setting-sources ""`) and
+# names its effort: `medium` unless `ASBUILT_EFFORT` says otherwise, refused
+# before the CLI is spawned if the CLI would not accept it; the runner
+# records the level in the results.
+DEFAULT_EFFORT = "medium"
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+_EFFORT_ENV = "ASBUILT_EFFORT"
+
 # konyklabs/roadmap#154, 2026-10-07: both detached arm runs died on the
 # subscription's session limit. The installed CLI reports it as the success
 # variant flagged `is_error`, `api_error_status` 429 and
@@ -158,6 +175,16 @@ def waited_for_reset_seconds() -> float:
     """Seconds this process has spent waiting for usage-limit resets, in
     all, so a caller can snapshot it around a timed call."""
     return _waited_for_reset_seconds
+
+
+def effort_level() -> str:
+    """The effort every call names (`DEFAULT_EFFORT`, or `ASBUILT_EFFORT`)."""
+    level = os.environ.get(_EFFORT_ENV, "").strip() or DEFAULT_EFFORT
+    if level not in EFFORT_LEVELS:
+        raise ValueError(
+            f"{_EFFORT_ENV}={level!r} is not an effort the CLI accepts: " + ", ".join(EFFORT_LEVELS)
+        )
+    return level
 
 
 _RESETS_RE = re.compile(
@@ -541,6 +568,11 @@ def _invoke_claude_code(
         "json",
         "--model",
         model,
+        "--effort",
+        effort_level(),
+        # roadmap#154: no user, project or local settings (see DEFAULT_EFFORT)
+        "--setting-sources",
+        "",
     ]
     if schema is not None:
         args += ["--json-schema", json.dumps(schema)]

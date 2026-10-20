@@ -135,7 +135,11 @@ if str(SPIKE_ROOT) not in sys.path:
 import yaml  # noqa: E402
 
 from bench.build import Timeline  # noqa: E402
-from bench.claude_code import UsageLimitReached, waited_for_reset_seconds  # noqa: E402
+from bench.claude_code import (  # noqa: E402
+    UsageLimitReached,
+    effort_level,
+    waited_for_reset_seconds,
+)
 from bench.llm import BudgetExceeded  # noqa: E402
 from bench.protocol import Category  # noqa: E402
 from bench.reset import reset_arm  # noqa: E402
@@ -573,6 +577,8 @@ def run(
             "through_step": step,
             "phase": "incremental" if incremental else "full",
             "weights": mix["weights"],
+            # roadmap#154: the effort every `claude -p` call of this run named
+            "effort": effort_level(),
             "ingest": _with_wait(_to_jsonable(ingest_report), ingest_waited),
             "queries": queries_out,
             "complete": complete,
