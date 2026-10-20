@@ -115,6 +115,7 @@ RANKED = list(fidelities.get("ranked") or [])
 REAL_BACKEND = fidelities.get("real_backend")
 RUN_FIDELITY = fidelities.get("run_fidelity") or {}
 PROJECTS = dict(RUN_FIDELITY.get("playwright") or {})
+DOUBLES = {path for paths in (fidelities.get("doubles") or {}).values() for path in paths}
 audit_text = (SPIKE / "truth/executed-audit.md").read_text()
 plan_tests = {t["id"]: t for t in plan.get("tests", [])}
 plan_runs = {r["id"]: r for r in plan.get("runs", [])}
@@ -280,7 +281,33 @@ for f in facts_list:
         elif not playwright_run and "project" in c:
             fail(f"{fid}: only a Playwright run carrier names a project")
 
+
 # tier rules
+def check_demotion(fid: str, demoted: dict, runs: list, code_tests: list) -> None:
+    """A demoted fact names a failing PLAN run of one of its tests, and every
+    passing run it keeps is earlier (D-013) or, for a demotion by a run at a
+    higher fidelity, below that fidelity at that step or before (D-014)."""
+    dr = plan_runs.get(demoted.get("document", ""))
+    if not dr:
+        fail(f"{fid}: demoted_by {demoted.get('document')} is not in PLAN runs")
+    elif demoted.get("location") not in run_list(dr, "failed", demoted.get("project")):
+        fail(f"{fid}: demoted_by run does not list {demoted.get('location')} as failed")
+    else:
+        later = STEPS.index(dr["step"])
+        if demoted.get("project"):
+            above = fidelity_rank(carrier_fidelity(demoted))
+            if any(
+                STEPS.index(run_step(r["document"])) > later
+                or fidelity_rank(carrier_fidelity(r)) >= above
+                for r in runs
+            ):
+                fail(f"{fid}: a passing run is cited at or above the demoting fidelity")
+        elif any(STEPS.index(run_step(r["document"])) >= later for r in runs):
+            fail(f"{fid}: a passing run is cited at or after the demoting run")
+        if demoted.get("location") not in {c["location"] for c in code_tests}:
+            fail(f"{fid}: demoted_by names a test that is not one of its carriers")
+
+
 for fid, f in facts.items():
     cs = f["carriers"]
     kinds = [c["document"].split("/", 1)[0] for c in cs]
@@ -294,6 +321,8 @@ for fid, f in facts.items():
     if tier == "executed":
         if not (runs and code_tests and code_src):
             fail(f"{fid}: executed needs a run, a test and the code it exercises")
+        if f.get("demoted_by"):
+            fail(f"{fid}: demoted_by is only valid on a code or documented fact")
         test_locs = {c["location"] for c in code_tests}
         for r in runs:
             if r["location"] not in test_locs:
@@ -341,31 +370,15 @@ for fid, f in facts.items():
     elif tier == "code":
         if not code_src:
             fail(f"{fid}: code tier needs a code/ carrier")
+        elif all(c["document"][5:] in DOUBLES for c in code_src):
+            fail(
+                f"{fid}: carried at code by a test double alone; a double is not the system's code"
+            )
         demoted = f.get("demoted_by")
         if runs and not demoted:
             fail(f"{fid}: has a run and no demoted_by, so its tier should be executed")
         if demoted:
-            dr = plan_runs.get(demoted.get("document", ""))
-            if not dr:
-                fail(f"{fid}: demoted_by {demoted.get('document')} is not in PLAN runs")
-            elif demoted.get("location") not in run_list(dr, "failed", demoted.get("project")):
-                fail(f"{fid}: demoted_by run does not list {demoted.get('location')} as failed")
-            else:
-                later = STEPS.index(dr["step"])
-                if demoted.get("project"):
-                    # D-014: a failure at a higher fidelity demotes; the passes it
-                    # demotes are at lower fidelities, at that step or before.
-                    above = fidelity_rank(carrier_fidelity(demoted))
-                    if any(
-                        STEPS.index(run_step(r["document"])) > later
-                        or fidelity_rank(carrier_fidelity(r)) >= above
-                        for r in runs
-                    ):
-                        fail(f"{fid}: a passing run is cited at or above the demoting fidelity")
-                elif any(STEPS.index(run_step(r["document"])) >= later for r in runs):
-                    fail(f"{fid}: a passing run is cited at or after the demoting run")
-                if demoted.get("location") not in {c["location"] for c in code_tests}:
-                    fail(f"{fid}: demoted_by names a test that is not one of its carriers")
+            check_demotion(fid, demoted, runs, code_tests)
         elif code_tests:
             for c in code_tests:
                 pt = plan_tests.get(c["location"])
@@ -373,8 +386,14 @@ for fid, f in facts.items():
                     fail(
                         f"{fid}: code tier, but its test {c['location']} passes within the validity"
                     )
-    elif f.get("demoted_by"):
-        fail(f"{fid}: demoted_by is only valid on a code-tier fact")
+    elif tier == "documented" and f.get("demoted_by"):
+        # A demoted fact no system code carries rests on the documents it was
+        # written from; it keeps its test and its passing runs as carriers.
+        if code_src:
+            fail(f"{fid}: a demoted documented fact carries no code but its test")
+        if not any(k in DOC_KINDS for k in kinds):
+            fail(f"{fid}: a demoted documented fact needs the documents it rests on")
+        check_demotion(fid, f["demoted_by"], runs, code_tests)
     elif tier == "documented":
         bad = [k for k in kinds if k not in DOC_KINDS]
         if bad:
@@ -744,7 +763,9 @@ for fid, f in facts.items():
             continue
         d = doc_dates[(c["document"], c["location"])]
         vf, vt = f.get("valid_from"), f.get("valid_to")
-        if vf and d < STEP_DATE[vf]:
+        # A demoted fact's documents are what its test was written from, so
+        # they may predate the step the test (and so the fact) arrived at.
+        if vf and d < STEP_DATE[vf] and not f.get("demoted_by"):
             fail(
                 f"{fid}: {c['document']} ({d.date()}) states it before "
                 f"{vf} ({STEP_DATE[vf].date()}) made it true"
@@ -846,6 +867,75 @@ for s in steps_list:
             fail(
                 f"{e}: no code/executed fact with valid_to {s['id']} (the value before the change)"
             )
+
+
+# ---------------------------------------------------------------- demotion and fidelity
+def band(tier: str, fidelity: str | None = None) -> int:
+    """A tier's place in D-014's order (see `standing`)."""
+    if tier == "executed":
+        return 4 if fidelity_rank(fidelity) >= fidelity_rank(REAL_BACKEND) else 2
+    return {"code": 3, "documented": 1}.get(tier, 0)
+
+
+# A demotion never raises a fact's standing: it lands below executed at the
+# strongest fidelity its kept passing runs reached.
+for fid, f in facts.items():
+    if not f.get("demoted_by"):
+        continue
+    kept = [c for c in f["carriers"] if c["document"].startswith("run/")]
+    before = max((carrier_fidelity(c) for c in kept), key=fidelity_rank, default=None)
+    if not kept:
+        fail(f"{fid}: a demoted fact keeps the passing runs it was executed on")
+    elif band(f["tier"]) >= band("executed", before):
+        fail(f"{fid}: demoted to {f['tier']}, which stands at or above executed at {before}")
+
+# D-014's fail-above-pass rule, for every test and runner: at a step where a
+# test passes at some fidelity and fails at a higher one, a fact citing the
+# test is demoted by that failing run, and a fake-vs-real contradiction names it.
+run_outcomes: dict[tuple[str, str], list[tuple[str, str, str, str | None]]] = {}
+for rid, r in runs_plan.items():
+    if r.get("attempt", 1) != 1:
+        continue
+    run_projects = list(r.get("projects") or {}) if r.get("framework") == "playwright" else [None]
+    for project in run_projects:
+        fidelity = carrier_fidelity({"document": rid, "project": project})
+        for field, outcome in (("passes", "passed"), ("failed", "failed")):
+            for loc in run_list(r, field, project):
+                run_outcomes.setdefault((loc, r["step"]), []).append(
+                    (fidelity, outcome, rid, project)
+                )
+fake_vs_real = {
+    fid for x in contradictions if x.get("kind") == "fake-vs-real" for fid in x["facts"]
+}
+for fid, f in facts.items():
+    validity = steps_between(f.get("valid_from"), f.get("valid_to"))
+    test_locs = {
+        c["location"]
+        for c in f["carriers"]
+        if c["document"].startswith("code/") and is_test(c["document"][5:])
+    }
+    for loc in sorted(test_locs):
+        for step in validity:
+            seen = run_outcomes.get((loc, step), [])
+            passed = [fidelity for fidelity, outcome, _, _ in seen if outcome == "passed"]
+            if not passed:
+                continue
+            top = max(map(fidelity_rank, passed))
+            above = [
+                {"document": rid, "project": project, "location": loc}
+                for fidelity, outcome, rid, project in seen
+                if outcome == "failed" and fidelity_rank(fidelity) > top
+            ]
+            demoted = {k: v for k, v in (f.get("demoted_by") or {}).items() if v is not None}
+            if above and (
+                not any(demoted == {k: v for k, v in a.items() if v is not None} for a in above)
+                or fid not in fake_vs_real
+            ):
+                fail(
+                    f"{fid}: {loc} fails at {step} at a higher fidelity than it passes "
+                    f"({above[0]['document']} {above[0]['project'] or ''}), so the fact needs "
+                    "that run as demoted_by and a fake-vs-real contradiction"
+                )
 
 # ---------------------------------------------------------------- contradictions
 losers = set()
@@ -1016,6 +1106,18 @@ def check_expects(where: str, ids: list, category: str | None = None) -> None:
 
 
 queries = mix.get("queries", [])
+registered = mix.get("registered") or {}
+if registered.get("through_step") not in STEPS or len(registered.get("incremental") or []) != 2:
+    fail(f"mix: registered needs a through_step and two incremental steps, got {registered}")
+for q in queries:
+    since = q.get("valid_from")
+    if since is not None and since not in STEPS:
+        fail(f"mix {q.get('id')}: valid_from {since!r} is not a step")
+    named = q.get("entity")
+    eid = alias_owner.get(str(named).strip().casefold()) if named is not None else None
+    added = entities.get(eid, {}).get("valid_from") if eid else None
+    if added in STEPS and STEPS.index(since if since in STEPS else STEPS[0]) < STEPS.index(added):
+        fail(f"mix {q.get('id')}: names {eid}, which exists from {added}; needs valid_from")
 by_surface: dict[str, list[dict]] = {s: [] for s in SURFACES}
 for k, n in Counter(q.get("id") for q in queries).items():
     if n > 1 or not k:

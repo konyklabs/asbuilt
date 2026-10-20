@@ -6,7 +6,8 @@
 # run that demoted a once-executed statement (D-013; truth/planted-runs.yaml).
 # fidelity, on an executed fact only, is the strongest backend fidelity at which
 # a cited run passes (truth/fidelities.yaml); a Playwright run carrier names its
-# project, which fixes that run's fidelity.
+# project, which fixes that run's fidelity. A demoted fact that no system code
+# carries (only a test double did) is documented, on the documents it rests on.
 - id: F-001
   statement: A member's first 30 minutes of every ride are free.
   category: business-logic
@@ -2325,10 +2326,10 @@
     project: mocked
     location: check-out › shows a banner when the rider is at the bike limit
 - id: F-123
-  statement: The fare preview page caps a 200-minute casual ride at $25.00.
+  statement: The fare preview page caps a casual ride at $25.00.
   category: business-logic
   entities: [E-web-rider-portal, E-page-fare-preview, E-rule-single-ride-cap]
-  tier: code
+  tier: documented
   valid_from: c7
   demoted_by:
     document: run/playwright-c7
@@ -2340,9 +2341,12 @@
     value: 25.0
     unit: usd
   carriers:
-  - document: code/web/fake_farebox.py
-    location: SINGLE_RIDE_CAP_CENTS
-    version: c7
+  - document: wiki/fares-overview
+    location: '#cap'
+    version: 5
+  - document: doc/fares-price-sheet
+    location: '#caps-and-fees'
+    version: 1Qm4Vr12
   - document: code/web/tests/fare-preview.spec.ts
     location: fare preview › shows the price-sheet cap for a 200-minute casual ride
     version: c7
@@ -2353,7 +2357,7 @@
     project: fake
     location: fare preview › shows the price-sheet cap for a 200-minute casual ride
 - id: F-124
-  statement: The fare preview page caps a 200-minute casual ride at $30.00.
+  statement: The fare preview page caps a casual ride at $30.00.
   category: business-logic
   entities: [E-web-rider-portal, E-page-fare-preview, E-rule-single-ride-cap]
   tier: executed

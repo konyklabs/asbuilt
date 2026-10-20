@@ -1,12 +1,12 @@
-<testsuites id="" name="" tests="12" failures="3" skipped="2" errors="0" time="18.587525">
-<testsuite name="check-out.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="mocked" tests="1" failures="0" skipped="0" time="0.256" errors="0">
-<testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts" time="0.256">
+<testsuites id="" name="" tests="12" failures="3" skipped="2" errors="0" time="18.699653">
+<testsuite name="check-out.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="mocked" tests="1" failures="0" skipped="0" time="0.251" errors="0">
+<testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts" time="0.251">
 </testcase>
 </testsuite>
-<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="mocked" tests="2" failures="1" skipped="0" time="5.215" errors="0">
-<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.113">
+<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="mocked" tests="2" failures="1" skipped="0" time="5.225" errors="0">
+<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.12">
 </testcase>
-<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.102">
+<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.105">
 <system-out>
 <![CDATA[
 [[ATTACHMENT|test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-mocked/error-context.md]]
@@ -45,11 +45,11 @@
 </failure>
 </testcase>
 </testsuite>
-<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="mocked" tests="1" failures="0" skipped="0" time="0.131" errors="0">
-<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.131">
+<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="mocked" tests="1" failures="0" skipped="0" time="0.133" errors="0">
+<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.133">
 </testcase>
 </testsuite>
-<testsuite name="check-out.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="fake" tests="1" failures="0" skipped="1" time="0.039" errors="0">
+<testsuite name="check-out.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="fake" tests="1" failures="0" skipped="1" time="0.04" errors="0">
 <testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts">
 <properties>
 <property name="skip" value="no seeding hook puts a rider at the limit in this backend">
@@ -59,10 +59,10 @@
 </skipped>
 </testcase>
 </testsuite>
-<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="fake" tests="2" failures="1" skipped="0" time="5.212" errors="0">
-<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.119">
+<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="fake" tests="2" failures="1" skipped="0" time="5.217" errors="0">
+<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.12">
 </testcase>
-<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.093">
+<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.097">
 <system-out>
 <![CDATA[
 [[ATTACHMENT|test-results/fare-preview-fare-preview--dc0bc-or-a-200-minute-casual-ride-fake/error-context.md]]
@@ -101,11 +101,11 @@
 </failure>
 </testcase>
 </testsuite>
-<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="fake" tests="1" failures="0" skipped="0" time="0.127" errors="0">
-<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.127">
+<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="fake" tests="1" failures="0" skipped="0" time="0.149" errors="0">
+<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.149">
 </testcase>
 </testsuite>
-<testsuite name="check-out.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="real" tests="1" failures="0" skipped="1" time="0.038" errors="0">
+<testsuite name="check-out.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="real" tests="1" failures="0" skipped="1" time="0.043" errors="0">
 <testcase name="check-out › shows a banner when the rider is at the bike limit" classname="check-out.spec.ts">
 <properties>
 <property name="skip" value="no seeding hook puts a rider at the limit in this backend">
@@ -115,8 +115,8 @@
 </skipped>
 </testcase>
 </testsuite>
-<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="real" tests="2" failures="1" skipped="0" time="5.232" errors="0">
-<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.103">
+<testsuite name="fare-preview.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="real" tests="2" failures="1" skipped="0" time="5.228" errors="0">
+<testcase name="fare preview › shows the price-sheet cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="5.098">
 <system-out>
 <![CDATA[
 [[ATTACHMENT|test-results/fare-preview-fare-preview--8eaa7-or-a-200-minute-casual-ride-real/error-context.md]]
@@ -154,11 +154,11 @@
 ]]>
 </failure>
 </testcase>
-<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.129">
+<testcase name="fare preview › shows the farebox cap for a 200-minute casual ride" classname="fare-preview.spec.ts" time="0.13">
 </testcase>
 </testsuite>
-<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T13:54:52.340Z" hostname="real" tests="1" failures="0" skipped="0" time="0.112" errors="0">
-<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.112">
+<testsuite name="refund-request.spec.ts" timestamp="2026-10-20T14:12:30.252Z" hostname="real" tests="1" failures="0" skipped="0" time="0.113" errors="0">
+<testcase name="refund request › refuses a ride that ended 15 days ago" classname="refund-request.spec.ts" time="0.113">
 </testcase>
 </testsuite>
 </testsuites>

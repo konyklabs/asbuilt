@@ -129,7 +129,8 @@ planted:
   mechanism: the mocked route and the fake both answer from the stale $25.00 cap (wiki/fares-overview#cap,
     doc/fares-price-sheet); farebox's price_ride caps at $30.00 since c5
   facts:
-    F-123: 'demoted: tier code (passed at mocked and fake), demoted_by the real project of run/playwright-c7'
+    F-123: 'demoted: tier documented (passed at mocked and fake, and only the fake carried it in code), demoted_by
+      the real project of run/playwright-c7; it rests on wiki/fares-overview#cap and doc/fares-price-sheet'
   contradiction: X-022 (F-123 vs F-124, kind fake-vs-real, winner F-124)
 - id: P-7
   kind: real-only

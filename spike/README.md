@@ -47,7 +47,7 @@ turns that into a repository with reproducible SHAs.
 
 Planted, listed in `truth/` before any artefact was written: 125 facts
 (51 business logic, 40 technical implementation, 24 operations, 10 history;
-30 at the `executed` tier, 43 `code`, 52 `documented`), 22 contradictions in
+30 at the `executed` tier, 42 `code`, 53 `documented`), 22 contradictions in
 six kinds (6 wiki-vs-test, 6 doc-vs-code, 4 ticket-vs-code, 4 page-vs-page,
 1 run-vs-code, 1 fake-vs-real), 10 stale pages, and 5 facts whose only
 carrier is a pull-request comment. Carriers: 54 Python modules and 16
@@ -72,8 +72,9 @@ holds three plain HTML pages and one script (`public/`): a fare preview, a
 check-out and a refund request, calling `/api/*`. `web/serve.py` serves them
 and answers `/api` with `--backend real` (dockyard's and farebox's own
 handlers, in its process), `fake` (farebox's routes from `fake_farebox.py`, a
-fake written from the wiki's Farebox API and Fares overview pages and the
-fares price sheet, so it still caps a ride at $25.00) or `none`. The
+fake written from the wiki's Farebox API, Casual rider pricing and Fares
+overview pages and the fares price sheet, so it still caps a ride at
+$25.00) or `none`. The
 Playwright suite (`@playwright/test` 1.64.1, `web/tests/`) runs in three
 projects, `mocked` (routes intercepted in the browser), `fake` and `real`,
 each starting its own backend through `webServer`; `config.metadata` carries
@@ -87,8 +88,10 @@ in `truth/planted-runs.yaml`): the refund window passes in all three
 projects (F-121, `real`); the check-out banner is proven only against mocked
 routes (F-122, `mocked`, which ranks below code); the $25.00 cap passes
 against the mocks and the fake and fails against the real backend, so its
-fact (F-123) is demoted and a `fake-vs-real` contradiction (X-022) opens,
-won by F-124, the $30.00 cap the `real` project proves.
+fact (F-123) is demoted, to `documented` on the stale fares pages the fake
+was written from, since a test double is not Gearwell's code, and a
+`fake-vs-real` contradiction (X-022) opens, won by F-124, the $30.00 cap the
+`real` project proves.
 
 The sizing is the estimate from the tiering comment on
 konyklabs/roadmap#154 and stands until Oleg's local landscape note reweights
@@ -189,9 +192,18 @@ uv sync
      [--budget-tokens N] [--reset]
    ```
 
+   With no `--through-step` a run is D-013's registered benchmark, as
+   `queries/mix.yaml`'s `registered` block states it: through c6, and with
+   `--incremental` c5 then c6, which is what every results file so far was
+   produced against. To run through c7 (the rider portal, asbuilt#37) ask
+   for it: `--through-step c7`, or `--incremental --through-step c7` for c6
+   then c7. A query carrying `valid_from` (the portal's five) is asked only
+   of a run through that step or later, so a c6 run asks the same 62.
+   Scoring a c7 run's executed tier waits for asbuilt#38's per-fidelity rule.
+
    Assembles `build/ingest/` — the ingest-root integrity rule (D-013): never
    the raw fixture, only the built repository's content *through*
-   `--through-step` (default: the fixture's last step, via `Timeline`, never
+   `--through-step` (default: the registered step, via `Timeline`, never
    a git checkout of `system/`), `sources/{wiki,docs,tickets,pulls}` whole,
    and the `runs/*.json` reports at or before that step (by each report's own
    `metadata.step`). `truth/`, `truth/PLAN.yaml`, `queries/` and `tools/` are

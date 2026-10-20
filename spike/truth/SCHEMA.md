@@ -106,12 +106,20 @@ Backend fidelity (D-014, asbuilt#37; the vocabulary is `fidelities.yaml`):
   validity, at which its test passes, and its `fidelity` is the strongest of
   those runs' fidelities. A run's fidelity is the truth's: `fidelities.yaml`
   gives it by framework, and for Playwright by project.
-- A failing run at a higher fidelity than every passing one demotes the fact
-  to `code`: it keeps its passing runs (all below the failing one), names
-  the failing run in `demoted_by` with its `project`, and a `fake-vs-real`
-  contradiction opens, at that run's step, that the fact the higher-fidelity
-  run proves wins.
+- A failing run at a higher fidelity than every passing one demotes the fact:
+  it keeps its passing runs (all below the failing one), names the failing
+  run in `demoted_by` with its `project`, and a `fake-vs-real` contradiction
+  opens, at that run's step, that the fact the higher-fidelity run proves
+  wins. This holds for every test, planted or not, and for any runner whose
+  test runs at two fidelities in one step.
 - A failure at a lower fidelity than a pass does not demote.
+- A demotion never raises a fact's standing under D-014's order (below). A
+  test double (`fidelities.yaml` `doubles`: a fake, a mocked route) is not
+  the system's code and cannot carry a fact at `code` tier. So a demoted
+  fact lands at `code` only when the system's own code carries it (F-011);
+  otherwise it is `documented`, carried by the documents it rests on (the
+  pages the double was written from), keeping its test and its passing runs
+  (F-123). Those documents may predate the fact's `valid_from`.
 
 ## contradictions.yaml
 

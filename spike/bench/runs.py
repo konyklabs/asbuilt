@@ -102,8 +102,11 @@ Playwright failure is a fidelity outcome, not a flaky one. The subprocess gets
 ``GEARWELL_COMMIT=<sha>`` (the config's ``metadata.commit`` and every
 project's ``metadata.backend``), ``GEARWELL_PYTHON`` (this interpreter, for
 ``web/serve.py``) and ``FORCE_COLOR=0``; the JSON and JUnit reports are
-written under bare filenames in ``web/`` (the report-path guard below) and
-moved to ``runs/playwright-<step>.json`` and ``runs/playwright-<step>.xml``.
+written under fresh bare filenames in ``web/`` (the report-path guard
+below), and the run is refused, non-zero, with the committed reports left as
+they are, when a reporter wrote nothing or the run did not complete
+(``_incomplete_playwright_reports``); only then are they moved to
+``runs/playwright-<step>.json`` and ``runs/playwright-<step>.xml``.
 Both are scrubbed of local paths like every report (below), and an absolute
 path in ``config.argv`` (the node binary) becomes its file name; what that
 reaches in a Playwright report is the config's ``rootDir`` and
@@ -132,6 +135,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 SPIKE_ROOT = Path(__file__).resolve().parent.parent
 if str(SPIKE_ROOT) not in sys.path:
@@ -485,6 +489,44 @@ def _run_vitest(
     return True
 
 
+def _incomplete_playwright_reports(returncode: int, json_path: Path, xml_path: Path) -> list[str]:
+    """Why a Playwright run's fresh reports may not replace the committed
+    ones: a reporter wrote nothing, or the run did not complete (an exit
+    other than 0 or 1, a run-level error such as a backend that never
+    started, an interrupted test, no test run at all, a report that does not
+    parse). Empty means both reports are whole."""
+    reasons = []
+    if returncode not in (0, 1):
+        reasons.append(f"playwright exited {returncode}")
+    if not json_path.is_file():
+        reasons.append("no JSON report written")
+    else:
+        try:
+            data = json.loads(json_path.read_text())
+        except json.JSONDecodeError as exc:
+            data = {}
+            reasons.append(f"JSON report does not parse ({exc})")
+        stats = data.get("stats") or {}
+        ran = sum(stats.get(k, 0) for k in ("expected", "unexpected", "flaky", "skipped"))
+        if "suites" not in data or not ran:
+            reasons.append("JSON report shows no completed test")
+        reasons.extend(
+            f"run error: {error.get('message', '').splitlines()[0][:120]}"
+            for error in data.get("errors", [])
+        )
+        if any(status == "interrupted" for _, _, status in playwright_outcomes(data)):
+            reasons.append("a test was interrupted")
+    if not xml_path.is_file():
+        reasons.append("no JUnit report written")
+    else:
+        try:
+            if ElementTree.parse(xml_path).getroot().tag != "testsuites":
+                reasons.append("JUnit report has no <testsuites> root")
+        except ElementTree.ParseError as exc:
+            reasons.append(f"JUnit report does not parse ({exc})")
+    return reasons
+
+
 def _run_playwright(
     repo: Path,
     runs_dir: Path,
@@ -518,20 +560,24 @@ def _run_playwright(
             "FORCE_COLOR": "0",
         }
     )
-    subprocess.run(
+    done = subprocess.run(
         ["npx", "playwright", "test", "--reporter=list,json,junit"], cwd=web_dir, env=env
     )
+    refused = _incomplete_playwright_reports(done.returncode, temp_json, temp_xml)
+    if refused:
+        for temp in (temp_json, temp_xml):
+            temp.unlink(missing_ok=True)
+        print(f"[{step_id}] playwright: refused, the committed reports are kept: {refused}")
+        return False
+    _scrub_json_report(temp_json, repo)
+    _scrub_xml_report(temp_xml, repo)
+    _inject_metadata(temp_json, sha, step_id)
     json_path = runs_dir / f"playwright-{step_id}.json"
     xml_path = runs_dir / f"playwright-{step_id}.xml"
     _collect_report(temp_json, json_path)
     _collect_report(temp_xml, xml_path)
-    _scrub_json_report(json_path, repo)
-    _scrub_xml_report(xml_path, repo)
-    _inject_metadata(json_path, sha, step_id)
 
     unexpected = _unexpected_playwright_outcomes(json_path, step_id, planted)
-    if not xml_path.is_file():
-        unexpected.append("<no JUnit report written>")
     if unexpected:
         print(f"[{step_id}] playwright: unexpected outcome(s): {sorted(set(unexpected))}")
         return False

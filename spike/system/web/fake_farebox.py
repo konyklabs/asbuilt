@@ -1,8 +1,9 @@
 """A fake of farebox's rider-facing API, written from the team wiki, not from farebox.
 
-The routes and error codes follow the Farebox API page; the fare numbers follow
-the Fares overview page and the fares price sheet. It imports nothing from
-farebox, so it answers the way those pages say farebox does.
+The routes and error codes follow the Farebox API page; the unlock fee and the
+per-minute rate follow the Casual rider pricing page; the cap follows the Fares
+overview page and the fares price sheet. It imports nothing from farebox, so it
+answers the way those pages say farebox does.
 """
 
 from __future__ import annotations

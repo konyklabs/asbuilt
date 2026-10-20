@@ -18,7 +18,7 @@
     "grepInvert": null,
     "maxFailures": 0,
     "metadata": {
-      "commit": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb",
+      "commit": "782d8992ac4249943882898abe1876c007869d5b",
       "step": "c7",
       "actualWorkers": 1
     },
@@ -29,7 +29,7 @@
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "backend": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb"
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
         },
         "id": "mocked",
         "name": "mocked",
@@ -45,7 +45,7 @@
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "backend": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb"
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
         },
         "id": "fake",
         "name": "fake",
@@ -61,7 +61,7 @@
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "backend": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb"
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
         },
         "id": "real",
         "name": "real",
@@ -81,7 +81,7 @@
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "backend": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb"
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
         },
         "name": "mocked",
         "testDir": "./web/tests",
@@ -107,7 +107,7 @@
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "backend": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb"
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
         },
         "name": "fake",
         "testDir": "./web/tests",
@@ -133,7 +133,7 @@
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "backend": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb"
+          "backend": "782d8992ac4249943882898abe1876c007869d5b"
         },
         "name": "real",
         "testDir": "./web/tests",
@@ -207,12 +207,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 256,
+                      "duration": 251,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:52.527Z",
+                      "startTime": "2026-10-20T14:12:30.433Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -251,12 +251,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 39,
+                      "duration": 40,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:58.878Z",
+                      "startTime": "2026-10-20T14:12:36.805Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -305,12 +305,12 @@
                       "workerIndex": 4,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 38,
+                      "duration": 43,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:55:04.811Z",
+                      "startTime": "2026-10-20T14:12:42.826Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -366,12 +366,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 113,
+                      "duration": 120,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:53.034Z",
+                      "startTime": "2026-10-20T14:12:30.897Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -400,7 +400,7 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 5102,
+                      "duration": 5105,
                       "error": {
                         "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n",
                         "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n\n    at ./web/tests/fare-preview.spec.ts:15:48",
@@ -424,7 +424,7 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:53.154Z",
+                      "startTime": "2026-10-20T14:12:31.024Z",
                       "annotations": [],
                       "attachments": [
                         {
@@ -464,12 +464,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 119,
+                      "duration": 120,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:58.991Z",
+                      "startTime": "2026-10-20T14:12:36.919Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -498,7 +498,7 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 5093,
+                      "duration": 5097,
                       "error": {
                         "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n",
                         "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$25.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$25.00\"\u001b[22m\n\n    at ./web/tests/fare-preview.spec.ts:15:48",
@@ -522,7 +522,7 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:59.116Z",
+                      "startTime": "2026-10-20T14:12:37.044Z",
                       "annotations": [],
                       "attachments": [
                         {
@@ -562,7 +562,7 @@
                       "workerIndex": 4,
                       "parallelIndex": 0,
                       "status": "failed",
-                      "duration": 5103,
+                      "duration": 5098,
                       "error": {
                         "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$30.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$30.00\"\u001b[22m\n",
                         "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  locator('#fare-amount')\nExpected: \u001b[32m\"$\u001b[7m25\u001b[27m.00\"\u001b[39m\nReceived: \u001b[31m\"$\u001b[7m30\u001b[27m.00\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" locator('#fare-amount') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('#fare-amount')\u001b[22m\n\u001b[2m    - locator resolved to <output id=\"fare-amount\"></output>\u001b[22m\n\u001b[2m    - unexpected value \"\"\u001b[22m\n\u001b[2m    13 \u00d7 locator resolved to <output id=\"fare-amount\">$30.00</output>\u001b[22m\n\u001b[2m       - unexpected value \"$30.00\"\u001b[22m\n\n    at ./web/tests/fare-preview.spec.ts:11:48",
@@ -586,7 +586,7 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:55:04.920Z",
+                      "startTime": "2026-10-20T14:12:42.946Z",
                       "annotations": [],
                       "attachments": [
                         {
@@ -626,12 +626,12 @@
                       "workerIndex": 5,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 129,
+                      "duration": 130,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:55:10.245Z",
+                      "startTime": "2026-10-20T14:12:48.265Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -677,12 +677,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 131,
+                      "duration": 133,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:54:58.482Z",
+                      "startTime": "2026-10-20T14:12:36.376Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -711,12 +711,12 @@
                       "workerIndex": 3,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 127,
+                      "duration": 149,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:55:04.424Z",
+                      "startTime": "2026-10-20T14:12:42.379Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -745,12 +745,12 @@
                       "workerIndex": 5,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 112,
+                      "duration": 113,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-20T13:55:10.451Z",
+                      "startTime": "2026-10-20T14:12:48.472Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -770,15 +770,15 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-10-20T13:54:52.002Z",
-    "duration": 18587.524999999998,
+    "startTime": "2026-10-20T14:12:29.914Z",
+    "duration": 18699.653000000002,
     "expected": 7,
     "skipped": 2,
     "unexpected": 3,
     "flaky": 0
   },
   "metadata": {
-    "commit": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb",
+    "commit": "782d8992ac4249943882898abe1876c007869d5b",
     "step": "c7"
   }
 }

@@ -4,11 +4,19 @@
 # aliases; the scorer resolves both through truth/aliases.yaml, which arms never read.
 # 29 explain (24 by name, 5 by alias), 17 search and 13 ask (5 of them, q-impact-*,
 # are multi-hop impact questions), 5 contradictions, 3 stale; weights are percentages.
-# The rider portal's five queries (asbuilt#37) come last; their facts are valid from
-# c7, so a run through c6 expects nothing of them (bench/score.py, asbuilt#34).
+# The rider portal's five queries (asbuilt#37) come last and carry valid_from: c7;
+# bench/run.py asks a query only of a run through its valid_from or later, so a run
+# through c6 asks the same 62 queries as before c7 existed.
 # explain: expected = every fact tagged with the resolved entity (bench/score.py).
 # contradictions: expected = every X- whose facts carry the entity (every X- when null).
 # stale: expected = every S- whose changed_by step is dated after `since`.
+#
+# registered: D-013's benchmark. A run that names no --through-step ingests through
+# c6, and --incremental ingests c5 then c6, as every 2026-10-20 results file did; c7
+# is ingested only when asked for (--through-step c7).
+registered:
+  through_step: c6
+  incremental: [c5, c6]
 weights:
   explain: 40
   search: 25
@@ -247,15 +255,20 @@ queries:
 - id: q-explain-21
   surface: explain
   entity: rider-portal
+  valid_from: c7
 - id: q-explain-22
   surface: explain
   entity: fare-preview page
+  valid_from: c7
 - id: q-explain-23
   surface: explain
   entity: check-out page
+  valid_from: c7
 - id: q-explain-24
   surface: explain
   entity: refund-request page
+  valid_from: c7
 - id: q-contradictions-05
   surface: contradictions
   entity: fare-preview page
+  valid_from: c7

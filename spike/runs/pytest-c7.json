@@ -1,6 +1,6 @@
 {
-  "created": 1792504488.709756,
-  "duration": 0.032399892807006836,
+  "created": 1792505546.45808,
+  "duration": 0.0330350399017334,
   "exitcode": 1,
   "root": ".",
   "environment": {},
@@ -274,15 +274,15 @@
         ""
       ],
       "setup": {
-        "duration": 0.00013029109686613083,
+        "duration": 0.00012866593897342682,
         "outcome": "passed"
       },
       "call": {
-        "duration": 6.758328527212143e-05,
+        "duration": 6.624963134527206e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 4.545878618955612e-05,
+        "duration": 4.904158413410187e-05,
         "outcome": "passed"
       }
     },
@@ -300,15 +300,15 @@
         ""
       ],
       "setup": {
-        "duration": 6.362516433000565e-05,
+        "duration": 6.499979645013809e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.808325320482254e-05,
+        "duration": 4.829093813896179e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 4.429090768098831e-05,
+        "duration": 3.691669553518295e-05,
         "outcome": "passed"
       }
     },
@@ -326,15 +326,15 @@
         ""
       ],
       "setup": {
-        "duration": 5.191657692193985e-05,
+        "duration": 5.2791088819503784e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 0.00010533258318901062,
+        "duration": 0.0001038750633597374,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.5041943192481995e-05,
+        "duration": 3.6415643990039825e-05,
         "outcome": "passed"
       }
     },
@@ -352,15 +352,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.924926906824112e-05,
+        "duration": 4.875008016824722e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.2208080887794495e-05,
+        "duration": 5.441717803478241e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.408361226320267e-05,
+        "duration": 3.5624951124191284e-05,
         "outcome": "passed"
       }
     },
@@ -378,11 +378,11 @@
         ""
       ],
       "setup": {
-        "duration": 6.32917508482933e-05,
+        "duration": 6.483402103185654e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 0.0001870831474661827,
+        "duration": 0.0001877080649137497,
         "outcome": "failed",
         "crash": {
           "path": "./tests/e2e/test_close_ride.py",
@@ -396,10 +396,10 @@
             "message": "AssertionError"
           }
         ],
-        "longrepr": "system = System(dockyard=App(session=Session(stations=<dockyard.repositories.stations.StationRepository object at 0x107251cd0>,...x.flags.FlagCache object at 0x107250b00>, tollbooth=<farebox.clients.tollbooth.TollboothClient object at 0x1072508a0>))\n\n    @pytest.mark.e2e\n    def test_close_ride_publishes_ride_completed(system):\n        \"\"\"Ten-minute ride, checked in normally: one event lands on the bus.\"\"\"\n        dockyard = system.dockyard\n        dockyard.session.stations.add(Station(id=\"station-1\", name=\"One\", capacity=5, lat=0.0, lon=0.0))\n        dockyard.session.docks.add(\n            Dock(id=\"dock-1\", station_id=\"station-1\", bike_id=None, state=\"empty\")\n        )\n        dockyard.session.bikes.add(Bike(id=\"bike-1\", kind=BikeKind.CLASSIC, status=BikeStatus.IN_RIDE))\n        ride = Ride(\n            id=\"ride-1\",\n            rider_id=\"rider-1\",\n            bike_id=\"bike-1\",\n            start_station_id=\"station-0\",\n            return_station_id=None,\n            started_at=STARTED,\n            ended_at=None,\n            status=\"open\",\n        )\n        dockyard.session.rides.add(ride)\n    \n        status, _body = checkin_endpoint(\n            dockyard.session,\n            dockyard.farebox,\n            ride.id,\n            \"station-1\",\n            ENDED,\n            overflow_parking_enabled=False,\n        )\n    \n        assert status == 200\n        topic, payload = system.farebox.bus.published[0]\n        assert topic == \"ride.events\"\n        assert payload[\"type\"] == \"ride.completed\"\n>       assert payload[\"ride_id\"] == ride.id\nE       AssertionError: assert 'warmup' == 'ride-1'\nE         \nE         - ride-1\nE         + warmup\n\ntests/e2e/test_close_ride.py:65: AssertionError"
+        "longrepr": "system = System(dockyard=App(session=Session(stations=<dockyard.repositories.stations.StationRepository object at 0x10af39cd0>,...x.flags.FlagCache object at 0x10af38b00>, tollbooth=<farebox.clients.tollbooth.TollboothClient object at 0x10af388a0>))\n\n    @pytest.mark.e2e\n    def test_close_ride_publishes_ride_completed(system):\n        \"\"\"Ten-minute ride, checked in normally: one event lands on the bus.\"\"\"\n        dockyard = system.dockyard\n        dockyard.session.stations.add(Station(id=\"station-1\", name=\"One\", capacity=5, lat=0.0, lon=0.0))\n        dockyard.session.docks.add(\n            Dock(id=\"dock-1\", station_id=\"station-1\", bike_id=None, state=\"empty\")\n        )\n        dockyard.session.bikes.add(Bike(id=\"bike-1\", kind=BikeKind.CLASSIC, status=BikeStatus.IN_RIDE))\n        ride = Ride(\n            id=\"ride-1\",\n            rider_id=\"rider-1\",\n            bike_id=\"bike-1\",\n            start_station_id=\"station-0\",\n            return_station_id=None,\n            started_at=STARTED,\n            ended_at=None,\n            status=\"open\",\n        )\n        dockyard.session.rides.add(ride)\n    \n        status, _body = checkin_endpoint(\n            dockyard.session,\n            dockyard.farebox,\n            ride.id,\n            \"station-1\",\n            ENDED,\n            overflow_parking_enabled=False,\n        )\n    \n        assert status == 200\n        topic, payload = system.farebox.bus.published[0]\n        assert topic == \"ride.events\"\n        assert payload[\"type\"] == \"ride.completed\"\n>       assert payload[\"ride_id\"] == ride.id\nE       AssertionError: assert 'warmup' == 'ride-1'\nE         \nE         - ride-1\nE         + warmup\n\ntests/e2e/test_close_ride.py:65: AssertionError"
       },
       "teardown": {
-        "duration": 4.812516272068024e-05,
+        "duration": 5.404185503721237e-05,
         "outcome": "passed"
       }
     },
@@ -417,15 +417,15 @@
         ""
       ],
       "setup": {
-        "duration": 5.395803600549698e-05,
+        "duration": 6.008334457874298e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.420856177806854e-05,
+        "duration": 5.6541524827480316e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.233365714550018e-05,
+        "duration": 3.262516111135483e-05,
         "outcome": "passed"
       }
     },
@@ -443,15 +443,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.6708621084690094e-05,
+        "duration": 4.8667192459106445e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 6.44586980342865e-05,
+        "duration": 6.833299994468689e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.216695040464401e-05,
+        "duration": 3.366637974977493e-05,
         "outcome": "passed"
       }
     },
@@ -469,15 +469,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.6207569539546967e-05,
+        "duration": 5.033425986766815e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.270913243293762e-05,
+        "duration": 6.212480366230011e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.741588443517685e-05,
+        "duration": 3.408361226320267e-05,
         "outcome": "passed"
       }
     },
@@ -495,15 +495,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.683248698711395e-05,
+        "duration": 4.700012505054474e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.8959627747535706e-05,
+        "duration": 4.787463694810867e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.187544643878937e-05,
+        "duration": 3.412459045648575e-05,
         "outcome": "passed"
       }
     },
@@ -521,15 +521,15 @@
         ""
       ],
       "setup": {
-        "duration": 4.479195922613144e-05,
+        "duration": 4.5707449316978455e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.2499974370002747e-05,
+        "duration": 4.341546446084976e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.291666507720947e-05,
+        "duration": 3.4333206713199615e-05,
         "outcome": "passed"
       }
     },
@@ -547,15 +547,15 @@
         ""
       ],
       "setup": {
-        "duration": 3.016740083694458e-05,
+        "duration": 3.224983811378479e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.408268094062805e-05,
+        "duration": 3.49581241607666e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.0292198061943054e-05,
+        "duration": 3.195926547050476e-05,
         "outcome": "passed"
       }
     },
@@ -573,15 +573,15 @@
         ""
       ],
       "setup": {
-        "duration": 3.0083581805229187e-05,
+        "duration": 3.241654485464096e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 5.229189991950989e-05,
+        "duration": 7.337518036365509e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.7665868401527405e-05,
+        "duration": 2.854224294424057e-05,
         "outcome": "passed"
       }
     },
@@ -599,15 +599,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.987496554851532e-05,
+        "duration": 2.899952232837677e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.816707223653793e-05,
+        "duration": 5.137454718351364e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.8500333428382874e-05,
+        "duration": 2.9041431844234467e-05,
         "outcome": "passed"
       }
     },
@@ -625,15 +625,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.958253026008606e-05,
+        "duration": 3.1791627407073975e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.5750679671764374e-05,
+        "duration": 3.7375837564468384e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.0290335416793823e-05,
+        "duration": 3.2291747629642487e-05,
         "outcome": "passed"
       }
     },
@@ -651,15 +651,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.8291717171669006e-05,
+        "duration": 3.233272582292557e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.674998879432678e-05,
+        "duration": 3.808457404375076e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.800021320581436e-05,
+        "duration": 2.9374845325946808e-05,
         "outcome": "passed"
       }
     },
@@ -677,15 +677,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.7458183467388153e-05,
+        "duration": 3.0249357223510742e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.2791867852211e-05,
+        "duration": 3.420934081077576e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.7708709239959717e-05,
+        "duration": 2.7582980692386627e-05,
         "outcome": "passed"
       }
     },
@@ -703,15 +703,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.808310091495514e-05,
+        "duration": 2.9082410037517548e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.00422140955925e-05,
+        "duration": 4.104059189558029e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 3.141723573207855e-05,
+        "duration": 2.9167160391807556e-05,
         "outcome": "passed"
       }
     },
@@ -729,15 +729,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.8499402105808258e-05,
+        "duration": 3.0792318284511566e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 3.341585397720337e-05,
+        "duration": 3.633461892604828e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.8417445719242096e-05,
+        "duration": 2.854224294424057e-05,
         "outcome": "passed"
       }
     },
@@ -755,15 +755,15 @@
         ""
       ],
       "setup": {
-        "duration": 2.824980765581131e-05,
+        "duration": 3.3000484108924866e-05,
         "outcome": "passed"
       },
       "call": {
-        "duration": 4.8541463911533356e-05,
+        "duration": 5.066674202680588e-05,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 2.8042122721672058e-05,
+        "duration": 3.0375085771083832e-05,
         "outcome": "passed"
       }
     },
@@ -782,18 +782,18 @@
         ""
       ],
       "setup": {
-        "duration": 3.8749538362026215e-05,
+        "duration": 3.800075501203537e-05,
         "outcome": "skipped",
         "longrepr": "('./tests/unit/test_tollbooth_client.py', 38, 'Skipped: the transport fake cannot model a declined card yet')"
       },
       "teardown": {
-        "duration": 3.38749960064888e-05,
+        "duration": 3.2791867852211e-05,
         "outcome": "passed"
       }
     }
   ],
   "metadata": {
-    "commit": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb",
+    "commit": "782d8992ac4249943882898abe1876c007869d5b",
     "step": "c7"
   }
 }

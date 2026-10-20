@@ -91,6 +91,9 @@ wiki:
       states: The most a single ride can cost is $25.00.
       role: stale
       old_value: a $25.00 single-ride cap (must not mention $30.00)
+    - id: F-123
+      states: The single-ride cap the fake farebox and the mocked routes were written from ($25.00).
+      role: rests-on
 - slug: membership-faq
   title: Membership FAQ
   version: 2
@@ -745,6 +748,9 @@ docs:
       states: The most a single ride can cost is $25.00.
       role: stale
       old_value: a $25.00 single-ride cap (must not mention $30.00)
+    - id: F-123
+      states: The single-ride cap the fake farebox and the mocked routes were written from ($25.00).
+      role: rests-on
     - id: F-039
       states: A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee.
       role: stale
@@ -3018,13 +3024,12 @@ code:
 - path: web/fake_farebox.py
   language: python
   added_in: c7
-  purpose: A fake of farebox's rider-facing API, written from wiki/farebox-api, wiki/fares-overview and doc/fares-price-sheet.
+  purpose: A fake of farebox's rider-facing API, written from wiki/farebox-api, wiki/casual-pricing, wiki/fares-overview
+    and doc/fares-price-sheet.
   symbols:
   - name: SINGLE_RIDE_CAP_CENTS
     value: 2500
-    facts:
-    - fact: F-123
-      steps: [c7]
+    note: a test double's constant; it carries no fact (truth/fidelities.yaml doubles)
   - name: FakeFarebox
 - path: web/public/portal.js
   language: javascript

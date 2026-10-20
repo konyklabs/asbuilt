@@ -19,3 +19,9 @@ run_fidelity:
     mocked: mocked
     fake: fake
     real: real
+# doubles: the code that stands in for Gearwell's backend below its real backend, by
+# fidelity. A test double is not the system's code: it carries no fact at code tier,
+# and a fact demoted with only a double for code is documented (truth/SCHEMA.md).
+doubles:
+  fake: [web/fake_farebox.py]
+  mocked: [web/tests/fixtures.ts]

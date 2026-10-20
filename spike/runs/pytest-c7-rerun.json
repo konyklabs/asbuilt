@@ -1,6 +1,6 @@
 {
-  "created": 1792504489.14353,
-  "duration": 0.005982875823974609,
+  "created": 1792505546.9060428,
+  "duration": 0.005981922149658203,
   "exitcode": 0,
   "root": ".",
   "environment": {},
@@ -37,21 +37,21 @@
         ""
       ],
       "setup": {
-        "duration": 0.0001544170081615448,
+        "duration": 0.0001499578356742859,
         "outcome": "passed"
       },
       "call": {
-        "duration": 0.00011999998241662979,
+        "duration": 0.00011208280920982361,
         "outcome": "passed"
       },
       "teardown": {
-        "duration": 5.687493830919266e-05,
+        "duration": 4.9209222197532654e-05,
         "outcome": "passed"
       }
     }
   ],
   "metadata": {
-    "commit": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb",
+    "commit": "782d8992ac4249943882898abe1876c007869d5b",
     "step": "c7"
   }
 }

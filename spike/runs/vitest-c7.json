@@ -24,7 +24,7 @@
     "updated": 0,
     "didUpdate": false
   },
-  "startTime": 1792504490753,
+  "startTime": 1792505548691,
   "success": true,
   "testResults": [
     {
@@ -36,15 +36,15 @@
           "fullName": "maintenanceSweep locks a bike with 3 fault reports in 7 days and opens a ticket",
           "status": "passed",
           "title": "locks a bike with 3 fault reports in 7 days and opens a ticket",
-          "duration": 2.5946249999999935,
+          "duration": 3.0154159999999877,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1792504490855,
-      "endTime": 1792504490857.5947,
+      "startTime": 1792505548796,
+      "endTime": 1792505548799.0154,
       "status": "passed",
       "message": "",
       "name": "./dispatch/test/maintenanceSweep.test.ts"
@@ -58,15 +58,15 @@
           "fullName": "nightlyRebalance orders a rebalance for a station under 20% or over 90% full",
           "status": "passed",
           "title": "orders a rebalance for a station under 20% or over 90% full",
-          "duration": 2.40325,
+          "duration": 2.4960419999999885,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1792504490852,
-      "endTime": 1792504490854.4033,
+      "startTime": 1792505548792,
+      "endTime": 1792505548794.496,
       "status": "passed",
       "message": "",
       "name": "./dispatch/test/nightlyRebalance.test.ts"
@@ -80,15 +80,15 @@
           "fullName": "rideEvents counts ride.completed toward the return station's demand",
           "status": "passed",
           "title": "counts ride.completed toward the return station's demand",
-          "duration": 1.535459000000003,
+          "duration": 1.6536250000000052,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1792504490848,
-      "endTime": 1792504490849.5354,
+      "startTime": 1792505548786,
+      "endTime": 1792505548787.6536,
       "status": "passed",
       "message": "",
       "name": "./dispatch/test/rideEvents.test.ts"
@@ -102,22 +102,22 @@
           "fullName": "stormPause pauses rebalancing while the latest Skyglass severity is 3 or more",
           "status": "passed",
           "title": "pauses rebalancing while the latest Skyglass severity is 3 or more",
-          "duration": 2.5214590000000072,
+          "duration": 2.6002090000000067,
           "failureMessages": [],
           "meta": {},
           "tags": [],
           "benchmarks": []
         }
       ],
-      "startTime": 1792504490852,
-      "endTime": 1792504490854.5215,
+      "startTime": 1792505548792,
+      "endTime": 1792505548794.6,
       "status": "passed",
       "message": "",
       "name": "./dispatch/test/stormPause.test.ts"
     }
   ],
   "metadata": {
-    "commit": "4ac89225ea5bedf6f25a69d4228f66d09c33d1fb",
+    "commit": "782d8992ac4249943882898abe1876c007869d5b",
     "step": "c7"
   }
 }
