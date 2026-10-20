@@ -220,7 +220,8 @@ uv sync
    statement rule — are in the module docstring under asbuilt#17.
    Since asbuilt#35 the matcher reads compound number words ("forty-five"
    is 45), never matches an outcome against its opposite ("allowed"
-   against "refused"), and holds a statement to the strict reading: it
+   against "refused", unless the allowed side states an upper bound: "at
+   most 2" is the other half of "a third is refused"), and holds a statement to the strict reading: it
    states its fact, its value and its flag condition on its own, so a
    claim no longer supplies a value the words leave out, and a statement
    that does not name the quantity its agreeing claim is about ("lapses"
@@ -242,7 +243,8 @@ uv sync
    Below the surfaces, `executed tier, distinct facts (explain+search)`
    counts every returned fact claiming `executed` once, by its id or by
    its statement and citations, whichever query returned it, and judges
-   it against every executed truth fact valid by the run's step, not only
+   it against every truth fact valid by the run's step and proven by a run
+   at or before it (executed at that point in the history), not only
    the query's expected ones (asbuilt#35, D-014: the reading the 0.95 bar
    is judged on). It prints the strict reading and, beside it, the lenient
    one, each with its n and its Wilson 95% lower bound; `--json` carries

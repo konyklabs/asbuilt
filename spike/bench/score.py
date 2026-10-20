@@ -218,24 +218,29 @@ D-014):
 * Executed-tier precision over distinct facts (`distinct_executed`): every
   returned fact claiming `executed`, from explain and search, counted once
   by id or by statement and citations, and correct when it matches any
-  executed truth fact valid by the run's step. Printed and stored beside
+  truth fact valid by the run's step with a run carrier at or before it
+  (`_executed_by_step`; the static tier when the step is unknown). Printed and stored beside
   the per-surface lines, which stay, under the strict and the lenient
   reading, each with n and a Wilson 95% lower bound.
 * Compound number words ("forty-five", "forty five", "fortyfive") are one
-  number; opposite outcomes ("allowed"/"refused" and their kin) veto like
-  a flag-state conflict.
-* The strict reading, the default: a claim that agrees in full decides
-  only for a statement that names the claim's quantity (`_names_quantity`,
-  in either reading: "lapses 7 days after" is not a grace period) and,
-  strictly, the fact's value; and a statement must carry the fact's flag
-  condition (`_drops_condition`). The calibration pairs this relabels say
-  so in their own comment or `why`.
+  number, unless the unit word heads a hyphenated modifier ("forty
+  five-minute rides"); opposite outcomes ("allowed"/"refused" and their
+  kin) veto like a flag-state conflict, unless the allowed side states an
+  upper bound (the other half of the same limit).
+* The strict reading, the default: a statement must name the quantity the
+  truth's claim is about (`_names_quantity`, on every path and in either
+  reading: "lapses 7 days after" is not a grace period); a claim that
+  agrees in full decides, strictly, only when the statement names the
+  fact's value; and a statement must carry the fact's flag condition
+  (`_drops_condition`; a flag is named with its separators folded). The
+  calibration pairs this relabels say so in their own comment or `why`.
 * An unmatched fact that would match a truth fact its query already
   credited is `restated`, counted apart from hard false positives and
   unplanted facts.
 * Contradictions: a side's entity names lose a known `<kind>:` prefix
   before alignment, and a side states a fact on its whole statement or on
-  one clause split at ";" (`_side_matches`), under the same rules.
+  one clause split at ";" (`_side_matches`), under the same rules, unless
+  it also states the pair's other fact.
 * ``--calibrate`` reports the strict and the lenient reading; a pair's
   `lenient_expect`, where it has one, is its lenient label.
 """
@@ -244,6 +249,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import functools
 import json
 import math
 import random
@@ -401,18 +407,26 @@ _NUMBER_WORDS = {
 _NUMBER_WORD_RE = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b", re.IGNORECASE)
 # konyklabs/asbuilt#35: a tens word and a unit word make one number, joined
 # by a hyphen, a space or nothing ("forty-five", "forty five", "fortyfive"
-# are 45, not 40 and 5). Composed before the single words are read.
+# are 45, not 40 and 5). Composed before the single words are read. A
+# spaced pair does not merge where the unit word heads a hyphenated
+# modifier: "forty five-minute rides" are 40 rides of 5 minutes, while the
+# hyphenated "forty-five-minute" and the closed "fortyfive-minute", which
+# have no space to split at, are still 45.
 _TENS_WORDS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
 _UNIT_WORDS = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+_TENS_ALT = "|".join(_TENS_WORDS)
+_UNITS_ALT = "|".join(_UNIT_WORDS)
 _COMPOUND_NUMBER_RE = re.compile(
-    r"\b(" + "|".join(_TENS_WORDS) + r")(?:-|\s+)?(" + "|".join(_UNIT_WORDS) + r")\b",
+    rf"\b({_TENS_ALT})(?:-?({_UNITS_ALT})\b|\s+({_UNITS_ALT})\b(?!-))",
     re.IGNORECASE,
 )
 
 
 def _replace_number_words(text: str) -> str:
     text = _COMPOUND_NUMBER_RE.sub(
-        lambda m: str(_NUMBER_WORDS[m.group(1).lower()] + _NUMBER_WORDS[m.group(2).lower()]),
+        lambda m: str(
+            _NUMBER_WORDS[m.group(1).lower()] + _NUMBER_WORDS[(m.group(2) or m.group(3)).lower()]
+        ),
         text,
     )
     return _NUMBER_WORD_RE.sub(lambda m: str(_NUMBER_WORDS[m.group(1).lower()]), text)
@@ -481,12 +495,66 @@ def _flag_states(text: str) -> set[str]:
     return states
 
 
-def _flag_state_conflict(a: str, b: str) -> bool:
+@functools.lru_cache(maxsize=8)
+def _flag_name_patterns(entries: tuple[tuple[str, str], ...]) -> list[tuple[re.Pattern[str], str]]:
+    """konyklabs/asbuilt#35, lens round: every flag name and alias of the
+    mention index as a pattern with separators folded, so `ebike_surcharge`
+    reads "e-bike surcharge" and "ebike surcharge" too."""
+    out = []
+    for pattern_text, entity_id in entries:
+        name = re.sub(r"\\(.)", r"\1", pattern_text.removeprefix(r"\b").removesuffix(r"\b"))
+        letters = _SEPARATOR_FOLD.sub("", name.lower())
+        if letters:
+            body = r"[-_\s]*".join(re.escape(ch) for ch in letters)
+            out.append((re.compile(rf"(?<![a-z0-9]){body}(?![a-z0-9])", re.IGNORECASE), entity_id))
+    return out
+
+
+def _named_flags(
+    text: str, mention_index: list[tuple[re.Pattern[str], str, str]] | None
+) -> dict[str, list[re.Match[str]]]:
+    """Flag entity id -> where `text` names it, separators folded."""
+    if not mention_index:
+        return {}
+    entries = tuple((p.pattern, eid) for p, eid, kind in mention_index if kind == "flag")
+    found: dict[str, list[re.Match[str]]] = {}
+    for pattern, entity_id in _flag_name_patterns(entries):
+        for m in pattern.finditer(text):
+            found.setdefault(entity_id, []).append(m)
+    return found
+
+
+_NAMED_FLAG_STATE_RE = re.compile(
+    r"\s*(?:(?:flag|toggle|setting)\s+)?(?:(?:is|are|was|were|turned|switched|set|toggled)\s+)?"
+    r"(on|off|enabled|disabled)\b" + _STATE_END,
+    re.IGNORECASE,
+)
+
+
+def _named_flag_states(
+    text: str, mention_index: list[tuple[re.Pattern[str], str, str]] | None
+) -> set[str]:
+    """The state a sentence gives a flag it names without the word "flag"
+    ("With the e-bike surcharge enabled, ..."), folded to "on"/"off"."""
+    states: set[str] = set()
+    for matches in _named_flags(text, mention_index).values():
+        for m in matches:
+            after = _NAMED_FLAG_STATE_RE.match(text, m.end())
+            if after:
+                states.add(_FLAG_STATE_WORD[after.group(1).lower()])
+    return states
+
+
+def _flag_state_conflict(
+    a: str, b: str, mention_index: list[tuple[re.Pattern[str], str, str]] | None = None
+) -> bool:
     """True when both sentences name a flag state and share none — "when
     the flag is on" against "even when the flag is off". A sentence naming
     no state never conflicts (the model's "set to False before any override"
-    against the truth's "off by default" is decided by the words)."""
-    states_a, states_b = _flag_states(a), _flag_states(b)
+    against the truth's "off by default" is decided by the words). A state
+    given to a named flag counts too (`_named_flag_states`)."""
+    states_a = _flag_states(a) | _named_flag_states(a, mention_index)
+    states_b = _flag_states(b) | _named_flag_states(b, mention_index)
     return bool(states_a) and bool(states_b) and not (states_a & states_b)
 
 
@@ -508,11 +576,28 @@ def _outcomes(text: str) -> set[str]:
     return {"allowed" if m.group(1) else "refused" for m in _OUTCOME_RE.finditer(text)}
 
 
+# An upper bound stated on the allowed side ("allowed to hold at most 2
+# bikes", "accepted only within 14 days") makes it the other half of the
+# limit the refused side states ("a third check-out is refused"), not its
+# opposite (konyklabs/asbuilt#35, lens round).
+_UPPER_BOUND_RE = re.compile(
+    r"\b(?:at\s+most|up\s+to|no\s+more\s+than|within|maximum\s+of|until|before)\b",
+    re.IGNORECASE,
+)
+
+
 def _outcome_conflict(a: str, b: str) -> bool:
     """True when both sentences name an outcome and share none ("allowed"
-    against "refused"); a sentence naming no outcome never conflicts."""
+    against "refused"); a sentence naming no outcome never conflicts. An
+    allowed-side sentence that states an upper bound and a refused-side
+    one are the two halves of one limit: no conflict, and the numbers and
+    the similarity decide ("accepted within 30 days" against "rejected
+    more than 14 days after" still fails on its number)."""
     outcomes_a, outcomes_b = _outcomes(a), _outcomes(b)
-    return bool(outcomes_a) and bool(outcomes_b) and not (outcomes_a & outcomes_b)
+    if not (outcomes_a and outcomes_b) or outcomes_a & outcomes_b:
+        return False
+    allowed_side = a if outcomes_a == {"allowed"} else b
+    return not _UPPER_BOUND_RE.search(allowed_side)
 
 
 def _names_quantity(
@@ -539,7 +624,10 @@ def _names_quantity(
     return not named or bool(named & stems(returned_statement))
 
 
-_FLAG_WORD_RE = re.compile(r"\b(?:flag|flags|toggle)\b", re.IGNORECASE)
+_FLAG_WORD_RE = re.compile(
+    r"\b(?:flag|flags|toggle|enabled|disabled|(?:turned|switched)\s+(?:on|off))\b",
+    re.IGNORECASE,
+)
 
 
 def _drops_condition(
@@ -555,8 +643,10 @@ def _drops_condition(
     `_flag_states` does not read one). "Checkin at full station refused."
     drops the condition of both F-017 (refused when the flag is off) and
     F-018 (allowed when it is on); "... allowed with overflow parking."
-    keeps it by naming the flag. A conflicting state is
-    `_flag_state_conflict`'s veto, not this one."""
+    keeps it by naming the flag. A flag is named with its separators
+    folded ("With the e-bike surcharge enabled, ..." names ebike_surcharge),
+    and "enabled"/"disabled"/"turned on"/"turned off" count as states. A
+    conflicting state is `_flag_state_conflict`'s veto, not this one."""
     if not _flag_states(truth_statement) or _flag_states(returned_statement):
         return False
     if _FLAG_WORD_RE.search(returned_statement):
@@ -564,7 +654,9 @@ def _drops_condition(
     if not mention_index:
         return True
     truth_flags = _mentioned_entities(truth_statement, mention_index).get("flag", set())
+    truth_flags |= set(_named_flags(truth_statement, mention_index))
     returned_flags = _mentioned_entities(returned_statement, mention_index).get("flag", set())
+    returned_flags |= set(_named_flags(returned_statement, mention_index))
     return not (truth_flags & returned_flags)
 
 
@@ -943,11 +1035,11 @@ def _statement_matches(
     decides.
 
     konyklabs/asbuilt#35, the strict reading: a statement is credited only
-    when it states the fact on its own. An agreeing claim no longer decides
-    for a statement that does not name the quantity the claim is about
-    (`_names_quantity`): that statement says something else, usually more
-    ("lapses 7 days after" for a grace period that ends 7 days after), and
-    is vetoed in either reading. Under `strict` (the default) the statement
+    when it states the fact on its own. A statement that does not name the
+    quantity the truth's claim is about (`_names_quantity`) says something
+    else, usually more ("lapses 7 days after" for a grace period that ends
+    7 days after), and is vetoed in either reading, whether or not it
+    carries a claim of its own. Under `strict` (the default) the statement
     must also carry the fact's flag condition (`_drops_condition`), and an
     agreeing claim decides only when the statement names the value too: a
     claim of 0.25 does not make "Casual rate from 1st minute." say $0.25 per
@@ -955,11 +1047,15 @@ def _statement_matches(
     executed precision's comparison line only."""
     if _has_negation(returned_statement) != _has_negation(truth_statement):
         return False
-    if _flag_state_conflict(returned_statement, truth_statement):
+    if _flag_state_conflict(returned_statement, truth_statement, mention_index):
         return False
     if _outcome_conflict(returned_statement, truth_statement):
         return False
     if _entity_mention_conflict(returned_statement, truth_statement, mention_index):
+        return False
+    if not _names_quantity(returned_statement, truth_statement, truth_claim):
+        # On every path, claim or none: whether an arm sent a claim does
+        # not decide whether its statement over-claims (lens round).
         return False
     if strict and _drops_condition(returned_statement, truth_statement, mention_index):
         return False
@@ -986,17 +1082,13 @@ def _statement_matches(
             # returned claim were absent. Five of the first model run's
             # facts were lost to that veto with statements at 0.42-0.91.
             if _claims_match(returned_claim, truth_claim):
-                # konyklabs/asbuilt#35: the claim must not rescue a statement
-                # that says something else: one not naming the quantity its
-                # agreeing claim is about is an over-claim, whatever its
-                # similarity (`_names_quantity`). Strict: the claim decides
+                # konyklabs/asbuilt#35: the over-claim check above has run
+                # (`_names_quantity`). Strict: the claim decides
                 # only when the statement names the value as well; one that
                 # leaves the value to its claim does not state the fact on
                 # its own. Naming more numbers is fine here (the claim has
                 # pinned the quantity): "every 15 minutes" with "the three
                 # jobs" beside it still states 15.
-                if not _names_quantity(returned_statement, truth_statement, truth_claim):
-                    return False
                 return not strict or truth_numbers <= returned_numbers
             values_agree = _claim_values_match(
                 returned_claim.get("value"),
@@ -1447,22 +1539,31 @@ def _side_matches(
     side: dict[str, Any],
     truth_fact: TruthFact,
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+    opposing: TruthFact | None = None,
 ) -> bool:
     """A contradiction side states `truth_fact` when `facts_match` holds on
     its whole statement or on one of its clauses split at ";": a side's
     longer wording ("GRACE_DAYS is 7; a lapsed-payment membership stays in
     grace for 7 days after a failed renewal.") often carries the fact in
     one clause. Each clause goes through the same rules unchanged; nothing
-    is loosened for contradictions (konyklabs/asbuilt#35)."""
+    is loosened for contradictions (konyklabs/asbuilt#35). A clause credits
+    the side only when neither the whole statement nor any clause also
+    states `opposing`, the pair's other fact: a winner saying "up to 3
+    bikes; the code's limit of 2 is a regression" states both sides and
+    picks neither (lens round)."""
     if facts_match(side, truth_fact, mention_index):
         return True
     clauses = [c.strip() for c in str(side.get("statement", "")).split(";")]
+    clauses = [c for c in clauses if c]
     if len(clauses) < 2:
         return False
-    return any(
-        facts_match({**side, "statement": clause}, truth_fact, mention_index)
-        for clause in clauses
-        if clause
+    if not any(facts_match({**side, "statement": c}, truth_fact, mention_index) for c in clauses):
+        return False
+    if opposing is None:
+        return True
+    return not any(
+        facts_match({**side, "statement": text}, opposing, mention_index)
+        for text in [side.get("statement", ""), *clauses]
     )
 
 
@@ -1932,11 +2033,11 @@ def score_contradictions(
             truth_a, truth_b = truth_facts.get(fa_id), truth_facts.get(fb_id)
             if truth_a is None or truth_b is None:
                 continue
-            order1 = _side_matches(rc_a, truth_a, mention_index) and _side_matches(
-                rc_b, truth_b, mention_index
+            order1 = _side_matches(rc_a, truth_a, mention_index, truth_b) and _side_matches(
+                rc_b, truth_b, mention_index, truth_a
             )
-            order2 = _side_matches(rc_a, truth_b, mention_index) and _side_matches(
-                rc_b, truth_a, mention_index
+            order2 = _side_matches(rc_a, truth_b, mention_index, truth_a) and _side_matches(
+                rc_b, truth_a, mention_index, truth_b
             )
             if not (order1 or order2):
                 continue
@@ -1948,7 +2049,12 @@ def score_contradictions(
                 if (
                     expected_winner is not None
                     and returned_winner is not None
-                    and _side_matches(returned_winner, expected_winner, mention_index)
+                    and _side_matches(
+                        returned_winner,
+                        expected_winner,
+                        mention_index,
+                        truth_b if expected_winner is truth_a else truth_a,
+                    )
                 ):
                     winner_correct += 1
             break
@@ -2300,10 +2406,31 @@ def wilson_lower_bound(successes: int, n: int, z: float = 1.96) -> float | None:
     return (centre - margin) / (1 + z * z / n)
 
 
+_RUN_CARRIER_RE = re.compile(r"run/(?:pytest|vitest)-(.+?)(?:-rerun)?")
+
+
+def _executed_by_step(tf: TruthFact, order: dict[str, int], rank: int | None) -> bool:
+    """Whether `tf` is an executed target for a run ingested through the
+    step of `rank`: it has a run carrier at that step or an earlier one
+    (konyklabs/asbuilt#35, lens round: F-007, proven by its test from c5
+    only, is not one for a run through c4). A fact proven at an earlier
+    step and retired since (F-002's 45 minutes, c2 to c3) still is: the run
+    holds the history. With no rank, the static tier decides, as before."""
+    if rank is None:
+        return tf.tier == _EXECUTED
+    for carrier in tf.carriers:
+        m = _RUN_CARRIER_RE.fullmatch(carrier.document)
+        if m and m.group(1) in order and order[m.group(1)] <= rank:
+            return True
+    return False
+
+
 def distinct_executed(
     returned_facts: list[dict[str, Any]],
     truth_facts: dict[str, TruthFact],
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
+    order: dict[str, int] | None = None,
+    rank: int | None = None,
 ) -> dict[str, Any]:
     """Executed-tier precision over distinct facts (konyklabs/asbuilt#35,
     D-014): every returned fact claiming `executed`, from any query, counted
@@ -2315,8 +2442,9 @@ def distinct_executed(
     accuracy, which is a property of the facts, not of which query returned
     them. Scored under the strict reading and, for comparison, the lenient
     one (`_statement_matches`); each with its n, its Wilson 95% lower bound
-    and the statements judged wrong."""
-    executed = [tf for tf in truth_facts.values() if tf.tier == _EXECUTED]
+    and the statements judged wrong. `order`/`rank` place the run on the
+    history (`_run_step_rank`); the targets are `_executed_by_step`."""
+    executed = [tf for tf in truth_facts.values() if _executed_by_step(tf, order or {}, rank)]
     distinct: dict[tuple[Any, ...], dict[str, Any]] = {}
     for rf in returned_facts:
         if rf.get("tier") == _EXECUTED:
@@ -2546,6 +2674,8 @@ def score(
         [resolve_fact_entities(rf, alias_index, truth.entities) for rf in explain_search_facts],
         facts_by_step,
         mention_index,
+        order,
+        run_rank,
     )
 
     return {

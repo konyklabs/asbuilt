@@ -23,6 +23,7 @@ from bench.score import (
     _entity_mention_conflict,
     _expected_tier_at_step,
     _first_step,
+    _flag_state_conflict,
     _flag_states,
     _has_filter_carrier_by_step,
     _has_negation,
@@ -30,6 +31,7 @@ from bench.score import (
     _mentioned_entities,
     _normalise_unit,
     _number_tokens,
+    _outcome_conflict,
     _resolve_contradiction_entities,
     _resolve_step_or_sha,
     _resolve_temporal_value_to_step,
@@ -39,6 +41,7 @@ from bench.score import (
     _split_camel,
     _split_restated,
     _statement_matches,
+    _step_dates,
     _step_order,
     _temporal_field_matches,
     _text_similarity,
@@ -3146,3 +3149,139 @@ def test_contradiction_side_naming_one_threshold_of_two_is_not_credited():
     assert not _side_matches(rc["a"], truth.facts["F-021"], mention_index)
     expected = {"X-006": truth.contradictions["X-006"]}
     assert score_contradictions([rc], expected, truth.facts, mention_index)["matched"] == 0
+
+
+# --------------------------------------------------------------------------
+# The #35 lens round
+# --------------------------------------------------------------------------
+
+_F019 = "A rider can hold at most 2 bikes at once, so a third check-out is refused."
+_F013 = "A refund requested more than 14 days after the ride ended is rejected."
+
+
+def test_an_allowed_side_stating_an_upper_bound_is_half_of_the_limit():
+    """F1: "allowed to hold at most 2" and "a third is refused" are one
+    limit, not opposites; without a bound, or with a bound at another
+    number, the allowed side is still refused."""
+    for candidate, truth in (
+        ("A rider is allowed to hold at most 2 bikes at once.", _F019),
+        ("Checkout allows a rider at most 2 bikes at once.", _F019),
+        ("Refunds are accepted only within 14 days after the ride ended.", _F013),
+    ):
+        assert _statement_matches(candidate, truth), candidate
+    assert _outcome_conflict("3rd checkout allowed.", _F019)
+    assert not _statement_matches("3rd checkout allowed.", _F019)
+    assert not _statement_matches(
+        "Refunds are accepted within 30 days after the ride ended.", _F013
+    )
+    assert _outcome_conflict(
+        "Checkin at full station allowed with overflow parking.",
+        "A check-in at a full station is refused when the overflow_parking flag is off.",
+    )
+
+
+def test_the_over_claim_is_refused_without_a_claim_too():
+    """F2: whether an arm sent a claim does not decide whether its
+    statement over-claims."""
+    truth = _wiki_truth(
+        "A failed renewal gives a membership a grace period that ends 7 days after the failure.",
+        claim={"entity": "E-x", "attribute": "grace", "value": 7, "unit": "day"},
+    )
+    claimless = _wiki_fact("Membership lapses 7 days after failed renewal.")
+    assert not facts_match(claimless, truth)
+    assert not facts_match(claimless, truth, strict=False)
+    assert facts_match(_wiki_fact("A failed renewal starts a grace period of 7 days."), truth)
+
+
+@pytest.mark.fixture
+def test_a_flag_named_with_other_separators_carries_its_condition_and_state():
+    """F3: "With the e-bike surcharge enabled" names ebike_surcharge and
+    its state; "disabled" there is the opposite state."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f007 = truth.facts["F-007"].statement
+    enabled = (
+        "With the e-bike surcharge enabled, every charged minute of an e-bike ride costs an "
+        "extra $0.10."
+    )
+    disabled = enabled.replace("enabled", "disabled")
+    assert _statement_matches(enabled, f007, mention_index)
+    assert _flag_state_conflict(disabled, f007, mention_index)
+    assert not _statement_matches(disabled, f007, mention_index, strict=False)
+
+
+@pytest.mark.fixture
+def test_a_winner_stating_both_facts_through_its_clauses_is_not_credited():
+    """F4, the deep lens's probe: a winner whose clauses state F-042 (up to
+    3) and F-019 (at most 2) picks neither, so the X-005 winner is not
+    credited; the pair itself still is."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    alias_index, mention_index = build_alias_index(truth), build_mention_index(truth)
+    code = ["code/dockyard/services/checkout.py", "code/tests/e2e/test_checkout.py"]
+    rc = _resolve_contradiction_entities(
+        {
+            "a": _side(
+                "A rider can hold up to 3 bikes at once.",
+                ["rule:checkout-limit"],
+                ["wiki/checkout-rules"],
+            ),
+            "b": _side(_F019, ["rule:checkout-limit"], code),
+            "winner": _side(
+                "A rider can hold up to 3 bikes at once; the code's limit of 2 bikes at once is a "
+                "regression and a third check-out is refused only by mistake.",
+                ["rule:checkout-limit"],
+                ["wiki/checkout-rules", *code],
+            ),
+        },
+        alias_index,
+        truth.entities,
+    )
+    xc = {"X-005": truth.contradictions["X-005"]}
+    report = score_contradictions([rc], xc, truth.facts, mention_index)
+    assert (report["matched"], report["winner_checked"], report["winner_correct"]) == (1, 1, 0)
+    f019, f042 = truth.facts["F-019"], truth.facts["F-042"]
+    assert _side_matches(rc["winner"], f019, mention_index)  # a clause, with no opposing fact
+    assert not _side_matches(rc["winner"], f019, mention_index, f042)
+
+
+@pytest.mark.fixture
+def test_distinct_executed_targets_follow_the_runs_step():
+    """F5: F-007's test proves it from c5, so a run through c4 returning it
+    as executed is wrong; through c6 it is right; with no step, the static
+    tier decides as before. F-002, proven at c2 and c3, stays a target
+    through c6: the run holds the history."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    order, at_c4 = _run_step_rank("c4", _step_dates(SPIKE_ROOT), {})
+    _, at_c6 = _run_step_rank("c6", _step_dates(SPIKE_ROOT), {})
+    ebike = {
+        "statement": truth.facts["F-007"].statement,
+        "entities": ["E-rule-ebike-surcharge"],
+        "tier": "executed",
+        "citations": [{"document": "code/tests/unit/test_pricing.py"}],
+    }
+    forty_five = {
+        "statement": truth.facts["F-002"].statement,
+        "entities": ["E-rule-member-free-minutes"],
+        "tier": "executed",
+        "citations": [{"document": "code/tests/e2e/test_pricing.py"}],
+    }
+
+    def tp(facts, rank):
+        return distinct_executed(facts, truth.facts, mention_index, order, rank)["strict"]["tp"]
+
+    assert tp([ebike], at_c4) == 0
+    assert tp([ebike], at_c6) == 1
+    assert distinct_executed([ebike], truth.facts, mention_index)["strict"]["tp"] == 1
+    assert tp([forty_five], at_c6) == 1
+
+
+def test_a_unit_word_heading_a_hyphenated_modifier_does_not_merge():
+    """F6: "forty five-minute rides" are 40 rides of 5 minutes; the
+    hyphenated "forty-five-minute" and the closed "fortyfive-minute" are
+    still 45."""
+    assert _number_tokens("forty five-minute rides") == {"40", "5"}
+    assert _number_tokens("thirty one-hour slots") == {"30", "1"}
+    assert _number_tokens("a forty-five-minute ride") == {"45"}
+    assert _number_tokens("a fortyfive-minute ride") == {"45"}
+    assert _number_tokens("forty five minutes") == {"45"}
