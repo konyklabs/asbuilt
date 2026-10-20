@@ -496,3 +496,14 @@
 - truth: "When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10."
   candidate: "With the e-bike surcharge disabled, every charged minute of an e-bike ride costs an extra $0.10."
   expect: false
+# The bound must govern the refused side's own number, with nothing past
+# it: a flipped outcome with an incidental "within" or "before" stays refused.
+- truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
+  candidate: "A third check-out is allowed within the 2 bikes at once limit for a rider."
+  expect: false
+- truth: "A check-in at a full station is refused when the overflow_parking flag is off."
+  candidate: "A check-in at a full station is accepted within seconds when the overflow_parking flag is off."
+  expect: false
+- truth: "A refund requested more than 14 days after the ride ended is rejected."
+  candidate: "A refund requested more than 14 days after the ride ended is accepted before review."
+  expect: false

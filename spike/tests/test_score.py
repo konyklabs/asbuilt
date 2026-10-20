@@ -3174,6 +3174,22 @@ def test_an_allowed_side_stating_an_upper_bound_is_half_of_the_limit():
     assert not _statement_matches(
         "Refunds are accepted within 30 days after the ride ended.", _F013
     )
+    # the convergence review's probes: a bound phrase governing no number,
+    # or not the limit, or with an ordinal or "more than" past it
+    for candidate, truth in (
+        ("A third check-out is allowed within the 2 bikes at once limit for a rider.", _F019),
+        (
+            "A check-in at a full station is accepted within seconds when the "
+            "overflow_parking flag is off.",
+            "A check-in at a full station is refused when the overflow_parking flag is off.",
+        ),
+        (
+            "A refund requested more than 14 days after the ride ended is accepted before review.",
+            _F013,
+        ),
+    ):
+        assert _outcome_conflict(candidate, truth), candidate
+        assert not _statement_matches(candidate, truth, strict=False), candidate
     assert _outcome_conflict(
         "Checkin at full station allowed with overflow parking.",
         "A check-in at a full station is refused when the overflow_parking flag is off.",
