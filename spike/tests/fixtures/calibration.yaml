@@ -464,17 +464,7 @@
   candidate_claim: {entity: membership-grace, attribute: grace_days, value: 3, unit: days}
   expect: true
 # -- lens round on asbuilt#35 ---------------------------------------------
-# An allowed side that states an upper bound is the other half of the
-# limit a refused side states, not its opposite; the numbers still decide.
-- truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
-  candidate: "A rider is allowed to hold at most 2 bikes at once."
-  expect: true
-- truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
-  candidate: "Checkout allows a rider at most 2 bikes at once."
-  expect: true
-- truth: "A refund requested more than 14 days after the ride ended is rejected."
-  candidate: "Refunds are accepted only within 14 days after the ride ended."
-  expect: true
+# A flipped outcome stays refused, whatever bound or number it names.
 - truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
   candidate: "3rd checkout allowed."
   expect: false
@@ -496,8 +486,6 @@
 - truth: "When the ebike_surcharge flag is on, every charged minute of an e-bike ride costs an extra $0.10."
   candidate: "With the e-bike surcharge disabled, every charged minute of an e-bike ride costs an extra $0.10."
   expect: false
-# The bound must govern the refused side's own number, with nothing past
-# it: a flipped outcome with an incidental "within" or "before" stays refused.
 - truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
   candidate: "A third check-out is allowed within the 2 bikes at once limit for a rider."
   expect: false
@@ -506,4 +494,7 @@
   expect: false
 - truth: "A refund requested more than 14 days after the ride ended is rejected."
   candidate: "A refund requested more than 14 days after the ride ended is accepted before review."
+  expect: false
+- truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
+  candidate: "A rider can hold at most 2 bikes at once, so a check-out of a further bike is allowed."
   expect: false

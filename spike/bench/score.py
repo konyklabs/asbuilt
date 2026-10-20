@@ -225,8 +225,8 @@ D-014):
 * Compound number words ("forty-five", "forty five", "fortyfive") are one
   number, unless the unit word heads a hyphenated modifier ("forty
   five-minute rides"); opposite outcomes ("allowed"/"refused" and their
-  kin) veto like a flag-state conflict, unless the allowed side states an
-  upper bound (the other half of the same limit).
+  kin) veto like a flag-state conflict, a permitted-side statement of a
+  limit included (a known false negative, accepted).
 * The strict reading, the default: a statement must name the quantity the
   truth's claim is about (`_names_quantity`, on every path and in either
   reading: "lapses 7 days after" is not a grace period); a claim that
@@ -576,59 +576,16 @@ def _outcomes(text: str) -> set[str]:
     return {"allowed" if m.group(1) else "refused" for m in _OUTCOME_RE.finditer(text)}
 
 
-# An allowed side that bounds the fact's own limit ("allowed to hold at
-# most 2 bikes", "accepted only within 14 days") is the other half of the
-# limit the refused side states ("a third check-out is refused"), not its
-# opposite (konyklabs/asbuilt#35, lens round). The bound must govern a
-# number: the phrase immediately followed by one, after number words are
-# read. "within seconds", "before review" or "within the 2 bikes limit"
-# bound nothing.
-_BOUND_NUMBER_RE = re.compile(
-    r"\b(?:at\s+most|up\s+to|no\s+more\s+than|maximum\s+of|(?:only\s+)?within)\s+"
-    r"(\$?\d+(?:\.\d+)?%?)",
-    re.IGNORECASE,
-)
-_EXCEED_RE = re.compile(r"\b(?:more\s+than|over|beyond|exceed(?:s|ed|ing)?)\b", re.IGNORECASE)
-_ORDINAL_WORDS = {
-    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
-    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
-}  # fmt: skip
-_ORDINAL_RE = re.compile(
-    r"\b(?:(" + "|".join(_ORDINAL_WORDS) + r")|(\d+)(?:st|nd|rd|th))\b", re.IGNORECASE
-)
-
-
-def _bounds_the_limit(allowed_side: str, refused_side: str) -> bool:
-    """The allowed side states an upper bound on the refused side's own
-    number and nothing that exceeds it: a bound phrase governing a number
-    (`_BOUND_NUMBER_RE`) that the refused side names, no "more than",
-    "over", "beyond" or "exceeding", and no ordinal past the bound ("a third
-    check-out is allowed within 2" is not "at most 2")."""
-    text = _prenormalize_numeric_prose(allowed_side)
-    bounds = {_normalize_number(m.group(1)) for m in _BOUND_NUMBER_RE.finditer(text)}
-    limits = bounds & _number_tokens(refused_side)
-    if not limits or _EXCEED_RE.search(allowed_side):
-        return False
-    values = [_numeric_claim_value(v) for v in limits]
-    ceiling = max(v for v in values if v is not None)
-    for m in _ORDINAL_RE.finditer(allowed_side):
-        position = _ORDINAL_WORDS[m.group(1).lower()] if m.group(1) else int(m.group(2))
-        if position > ceiling:
-            return False
-    return True
-
-
 def _outcome_conflict(a: str, b: str) -> bool:
     """True when both sentences name an outcome and share none ("allowed"
-    against "refused"); a sentence naming no outcome never conflicts. An
-    allowed side that bounds the refused side's own limit
-    (`_bounds_the_limit`) is the other half of that limit: no conflict,
-    and the numbers and the similarity decide."""
+    against "refused"); a sentence naming no outcome never conflicts. The
+    veto is lexical, so it also refuses a correct statement of a limit from
+    its permitted side ("allowed to hold at most 2 bikes" against "a third
+    check-out is refused"): a known false negative, accepted, because two
+    exceptions for it each let a flipped outcome through (asbuilt#35 lens
+    round)."""
     outcomes_a, outcomes_b = _outcomes(a), _outcomes(b)
-    if not (outcomes_a and outcomes_b) or outcomes_a & outcomes_b:
-        return False
-    allowed_side, refused_side = (a, b) if outcomes_a == {"allowed"} else (b, a)
-    return not _bounds_the_limit(allowed_side, refused_side)
+    return bool(outcomes_a) and bool(outcomes_b) and not (outcomes_a & outcomes_b)
 
 
 def _names_quantity(

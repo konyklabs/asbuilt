@@ -3159,41 +3159,50 @@ _F019 = "A rider can hold at most 2 bikes at once, so a third check-out is refus
 _F013 = "A refund requested more than 14 days after the ride ended is rejected."
 
 
-def test_an_allowed_side_stating_an_upper_bound_is_half_of_the_limit():
-    """F1: "allowed to hold at most 2" and "a third is refused" are one
-    limit, not opposites; without a bound, or with a bound at another
-    number, the allowed side is still refused."""
+_F017 = "A check-in at a full station is refused when the overflow_parking flag is off."
+
+
+def test_a_flipped_outcome_is_refused_whatever_bound_it_names():
+    """Item 3: an allowed side against a refused fact is refused in both
+    readings, whatever bound or number it names: the lens rounds' probes,
+    each of which an exception for bounded statements let through."""
     for candidate, truth in (
-        ("A rider is allowed to hold at most 2 bikes at once.", _F019),
-        ("Checkout allows a rider at most 2 bikes at once.", _F019),
-        ("Refunds are accepted only within 14 days after the ride ended.", _F013),
-    ):
-        assert _statement_matches(candidate, truth), candidate
-    assert _outcome_conflict("3rd checkout allowed.", _F019)
-    assert not _statement_matches("3rd checkout allowed.", _F019)
-    assert not _statement_matches(
-        "Refunds are accepted within 30 days after the ride ended.", _F013
-    )
-    # the convergence review's probes: a bound phrase governing no number,
-    # or not the limit, or with an ordinal or "more than" past it
-    for candidate, truth in (
+        ("3rd checkout allowed.", _F019),
+        ("Checkin at full station allowed with overflow parking.", _F017),
+        ("Refunds are accepted within 30 days after the ride ended.", _F013),
         ("A third check-out is allowed within the 2 bikes at once limit for a rider.", _F019),
         (
             "A check-in at a full station is accepted within seconds when the "
             "overflow_parking flag is off.",
-            "A check-in at a full station is refused when the overflow_parking flag is off.",
+            _F017,
         ),
         (
             "A refund requested more than 14 days after the ride ended is accepted before review.",
             _F013,
         ),
+        (
+            "A rider can hold at most 2 bikes at once, so a check-out of a further bike is "
+            "allowed.",
+            _F019,
+        ),
     ):
         assert _outcome_conflict(candidate, truth), candidate
+        assert not _statement_matches(candidate, truth), candidate
         assert not _statement_matches(candidate, truth, strict=False), candidate
-    assert _outcome_conflict(
-        "Checkin at full station allowed with overflow parking.",
-        "A check-in at a full station is refused when the overflow_parking flag is off.",
-    )
+
+
+def test_a_permitted_side_statement_of_a_limit_is_refused_as_the_vetos_known_cost():
+    """Decided in the asbuilt#35 lens round (conductor, by delegation): the
+    outcome veto is lexical and has no exception. "A rider is allowed to
+    hold at most 2 bikes at once." states F-019 correctly from its
+    permitted side, and is refused: a known false negative, accepted,
+    because telling the permitted side of a limit from its opposite is
+    semantic, two exceptions for it each let a flipped outcome through,
+    and this scorer keeps precision at 1.0 and reports recall."""
+    permitted = "A rider is allowed to hold at most 2 bikes at once."
+    assert _outcome_conflict(permitted, _F019)
+    assert not _statement_matches(permitted, _F019)
+    assert not _statement_matches(permitted, _F019, strict=False)
 
 
 def test_the_over_claim_is_refused_without_a_claim_too():

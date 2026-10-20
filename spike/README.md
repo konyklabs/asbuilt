@@ -220,8 +220,9 @@ uv sync
    statement rule — are in the module docstring under asbuilt#17.
    Since asbuilt#35 the matcher reads compound number words ("forty-five"
    is 45), never matches an outcome against its opposite ("allowed"
-   against "refused", unless the allowed side states an upper bound: "at
-   most 2" is the other half of "a third is refused"), and holds a statement to the strict reading: it
+   against "refused"; the veto is lexical, so it also refuses a
+   permitted-side paraphrase of a limit, "allowed to hold at most 2 bikes"
+   against "a third check-out is refused", as its known cost), and holds a statement to the strict reading: it
    states its fact, its value and its flag condition on its own, so a
    claim no longer supplies a value the words leave out, and a statement
    that does not name the quantity its agreeing claim is about ("lapses"
