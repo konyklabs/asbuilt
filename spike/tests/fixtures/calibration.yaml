@@ -165,7 +165,9 @@
   expect: true
 - truth: "Refunds under $5 are approved without review when the flag is on."
   candidate: "refund -> approved_without_review_under -> $5"
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: "#35 item 4 strict reading: condition dropped"
 - truth: "A membership lapses 7 days after a failed renewal."
   candidate: "membership -> grace_days -> 7"
   expect: true
@@ -192,7 +194,9 @@
   expect: true
 - truth: "An e-bike ride costs an extra $0.10 per minute when the surcharge flag is on."
   candidate: "ebike -> surcharge_per_minute -> $0.10"
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: "#35 item 4 strict reading: condition dropped"
 - truth: "Members pay $0.15 per minute after their free minutes."
   candidate: "member -> per_minute_rate -> $0.15"
   expect: true
@@ -402,3 +406,60 @@
   truth_claim: {entity: E-rule-member-free-minutes, attribute: free_minutes, value: 30, unit: minute}
   candidate_claim: {entity: member-free-minutes, attribute: retries, value: 30, unit: minute}
   expect: false
+
+# -- the hand audit's corrections (konyklabs/asbuilt#35, spike/AUDIT.md) ----
+# `lenient_expect` is the label under the lenient reading where it differs
+# from `expect` (the strict reading, the default); `--calibrate` reports both.
+# Compound number words are one number: "forty-five" is 45, never 40 and 5.
+- truth: "Members ride free for the first 45 minutes."
+  candidate: "Members ride free for the first forty-five minutes."
+  expect: true
+- truth: "A station alarm fires after 40 minutes and repeats 5 times."
+  candidate: "A station alarm fires after forty-five minutes."
+  expect: false
+- truth: "A dock alarm repeats every 24 hours."
+  candidate: "A dock alarm repeats every twentyfour hours."
+  expect: true
+# Opposite outcomes: allowed/approved/accepted against refused/rejected/denied.
+- truth: "A bike return at a full station is refused."
+  candidate: "A bike return at a full station is allowed."
+  expect: false
+- truth: "A refund under $5 is approved without review."
+  candidate: "A refund under $5 is rejected without review."
+  expect: false
+- truth: "A bike return at a full station is refused."
+  candidate: "Returning a bike at a full station is rejected."
+  expect: true
+# The strict reading: a statement states its fact's condition on its own.
+- truth: "Overnight parking at a station is allowed when the night_parking flag is on."
+  candidate: "Overnight parking at a station is allowed."
+  expect: false
+  lenient_expect: true
+- truth: "Overnight parking at a station is allowed when the night_parking flag is on."
+  candidate: "With the flag on, overnight parking at a station is allowed."
+  expect: true
+# The strict reading: a statement names its value; an agreeing claim does
+# not supply it. Claims as in the claim-first section above.
+- truth: "A rider without a membership pays $0.25 per minute."
+  candidate: "Casual rate per minute."
+  truth_claim: {entity: E-rule-per-minute-rate, attribute: casual_rate_per_minute, value: 0.25, unit: usd}
+  candidate_claim: {entity: per-minute-rate, attribute: casual_rate, value: 0.25, unit: usd}
+  expect: false
+  lenient_expect: true
+- truth: "A rider without a membership pays $0.25 per minute."
+  candidate: "The casual rate is $0.25 a minute."
+  truth_claim: {entity: E-rule-per-minute-rate, attribute: casual_rate_per_minute, value: 0.25, unit: usd}
+  candidate_claim: {entity: per-minute-rate, attribute: casual_rate, value: 0.25, unit: usd}
+  expect: true
+# An over-claim: the claim agrees on the grace period, the statement says
+# the membership lapses, which is not the quantity the fact is about.
+- truth: "A failed payment starts a grace period that ends 3 days later."
+  candidate: "Membership lapses 3 days after a failed payment."
+  truth_claim: {entity: E-rule-membership-grace, attribute: grace, value: 3, unit: day}
+  candidate_claim: {entity: membership-grace, attribute: grace_days, value: 3, unit: days}
+  expect: false
+- truth: "A failed payment starts a grace period that ends 3 days later."
+  candidate: "The grace after a failed payment is 3 days."
+  truth_claim: {entity: E-rule-membership-grace, attribute: grace, value: 3, unit: day}
+  candidate_claim: {entity: membership-grace, attribute: grace_days, value: 3, unit: days}
+  expect: true

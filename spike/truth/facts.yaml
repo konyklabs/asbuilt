@@ -201,14 +201,6 @@
   - document: code/tests/unit/test_pricing.py
     location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
     version: c1
-  - document: run/pytest-c1
-    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
-  - document: run/pytest-c2
-    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
-  - document: run/pytest-c3
-    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
-  - document: run/pytest-c4
-    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
   - document: run/pytest-c5
     location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on
   - document: run/pytest-c6

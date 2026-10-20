@@ -30,14 +30,18 @@ from bench.score import (
     _mentioned_entities,
     _normalise_unit,
     _number_tokens,
+    _resolve_contradiction_entities,
     _resolve_step_or_sha,
     _resolve_temporal_value_to_step,
     _run_step_rank,
     _shares_matching_version,
+    _side_matches,
     _split_camel,
+    _split_restated,
     _statement_matches,
     _step_order,
     _temporal_field_matches,
+    _text_similarity,
     _without_http_codes,
     aggregate_reports,
     align_entities,
@@ -46,6 +50,7 @@ from bench.score import (
     build_mention_index,
     calibrate,
     classify_unmatched,
+    distinct_executed,
     facts_match,
     load_calibration,
     main,
@@ -63,6 +68,7 @@ from bench.score import (
     score_fact_query,
     score_stale,
     score_test_connector,
+    wilson_lower_bound,
 )
 from bench.truth import (
     Carrier,
@@ -2022,9 +2028,12 @@ def test_boundary_numbers_ok_requires_subset_and_membership():
 
 
 def test_facts_match_claim_first_overrides_dissimilar_statement_text():
-    """Both sides carry a claim: the match is decided by the claim alone —
-    a completely different statement text is irrelevant once the claim
-    agrees, and a matching statement doesn't save a disagreeing claim."""
+    """Both sides carry a claim: the match is decided by the claim — a
+    statement well under the similarity threshold is credited once the
+    claim agrees, and a matching statement doesn't save a disagreeing
+    claim. Since konyklabs/asbuilt#35 the statement must still name the
+    claim's quantity and value: a text sharing nothing with the fact is not
+    rescued by its claim."""
     truth_fact = TruthFact(
         id="F-1",
         statement="A member's first 30 minutes of every ride are free.",
@@ -2034,18 +2043,26 @@ def test_facts_match_claim_first_overrides_dissimilar_statement_text():
         carriers=(Carrier(document="wiki/x"),),
         claim={"entity": "E-x", "attribute": "free_minutes", "value": 30, "unit": "minute"},
     )
+    claim = {
+        "attribute": "free_minutes",
+        "value": 30,
+        "unit": "minute",
+        "_resolved_entities": ["E-x"],
+    }
     returned_matching_claim = {
-        "statement": "Totally different phrasing sharing hardly any vocabulary.",
+        "statement": "Billing skips 30 free minutes per membership ride today here.",
         "entities": ["E-x"],
         "citations": [{"document": "wiki/x"}],
-        "claim": {
-            "attribute": "free_minutes",
-            "value": 30,
-            "unit": "minute",
-            "_resolved_entities": ["E-x"],
-        },
+        "claim": claim,
     }
+    assert _text_similarity(returned_matching_claim["statement"], truth_fact.statement) < 0.6
     assert facts_match(returned_matching_claim, truth_fact)
+    returned_unrelated_text = {
+        **returned_matching_claim,
+        "statement": "Totally different phrasing sharing hardly any vocabulary.",
+    }
+    assert not facts_match(returned_unrelated_text, truth_fact)
+    assert not facts_match(returned_unrelated_text, truth_fact, strict=False)
 
     returned_disagreeing_claim = {
         "statement": "A member's first 30 minutes of every ride are free.",
@@ -2212,14 +2229,18 @@ def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
     competing number of the fact's own kind and close paraphrases under
     the similarity threshold, all listed on #17. Raising this floor by
     changing the matcher needs a judged pair in each direction, never the
-    model's output alone."""
+    model's output alone. asbuilt#35 relabelled five pairs under the strict
+    reading (two dropping the flag condition, two leaving the value to the
+    claim, one over-claim: each pair's `why`) and added the F-077 paraphrase
+    the over-claim rule misses in both readings, which moved the floor from
+    35/55 to 30/51."""
     pairs = load_calibration(SPIKE_ROOT / "tests/fixtures/calibration-model-run.yaml")
-    assert len(pairs) == 90
+    assert len(pairs) == 91
     truth = load_truth(SPIKE_ROOT / "truth")
     report = calibrate(pairs, build_mention_index(truth), build_alias_index(truth), truth.entities)
     assert report["fp"] == 0, report["misclassified"]
     assert report["precision"] == 1.0
-    assert report["recall"] >= 0.63, report["misclassified"]
+    assert report["recall"] >= 0.58, report["misclassified"]
     assert report["recall"] < 0.9  # an honest floor: see the docstring
     # every targeted rule pair (both directions) must hold exactly
     rule_pairs = [p for p in pairs if str(p.get("source", "")).startswith("rule-")]
@@ -2228,6 +2249,13 @@ def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
         m for m in report["misclassified"] if str(m.get("source", "")).startswith("rule-")
     ]
     assert missed_rule_pairs == []
+    # the lenient reading keeps the asbuilt#17 labels except the over-claim,
+    # wrong in both readings, and misses F-077: 35/55 then, 34/55 now
+    lenient = calibrate(
+        pairs, build_mention_index(truth), build_alias_index(truth), truth.entities, strict=False
+    )
+    assert lenient["fp"] == 0, lenient["misclassified"]
+    assert lenient["recall"] >= 0.61, lenient["misclassified"]
 
 
 def _wiki_truth(statement: str, claim: dict | None = None, entities=("E-x",)) -> TruthFact:
@@ -2257,12 +2285,16 @@ def test_off_is_a_flag_state_not_a_negation():
     """ "the flag is off" used to read as a negated sentence, so a candidate
     saying the same thing without the word was vetoed as a polarity flip
     (three facts of the first model run). The state is compared on its own:
-    a candidate naming no state matches, one naming the opposite state
-    does not (the polarity-flip test above still holds through this)."""
+    a candidate naming no state is not vetoed as a flip, one naming the
+    opposite state is (the polarity-flip test above still holds through
+    this). Since konyklabs/asbuilt#35 the strict reading no longer credits
+    the stateless candidate: it drops the fact's condition; the lenient
+    reading still does."""
     truth = _wiki_truth(
         "A check-in at a full station is refused when the overflow_parking flag is off."
     )
-    assert facts_match(_wiki_fact("Check-in at a full station is refused."), truth)
+    assert facts_match(_wiki_fact("Check-in at a full station is refused."), truth, strict=False)
+    assert not facts_match(_wiki_fact("Check-in at a full station is refused."), truth)
     assert facts_match(
         _wiki_fact("With the overflow parking flag off, a check-in at a full station is refused."),
         truth,
@@ -2855,3 +2887,262 @@ def test_score_holds_back_truth_naming_a_step_the_fixture_does_not_list(tmp_path
         "stale": 1,
     }
     assert capsys.readouterr().err == ""
+
+
+# --------------------------------------------------------------------------
+# The hand audit's corrections (konyklabs/asbuilt#35, spike/AUDIT.md)
+# --------------------------------------------------------------------------
+
+
+def test_compound_number_words_are_one_number():
+    """Item 2: "forty-five" is 45, not 40 and 5, joined by a hyphen, a space
+    or nothing; the test connector's "fortyfive" comes from a test name."""
+    assert _number_tokens("A member's first forty-five minutes are free.") == {"45"}
+    assert _number_tokens("open for twenty four hours") == {"24"}
+    assert _number_tokens("Member 1st fortyfive minutes free.") == {"1", "45"}
+    assert _number_tokens("ninety-nine, twenty, three") == {"99", "20", "3"}
+    assert _number_tokens("the forty-five-minute example ride") == {"45"}
+    # a comma or "and" between the words leaves two numbers
+    assert _number_tokens("forty, five") == {"40", "5"}
+    assert _number_tokens("forty and five") == {"40", "5"}
+    assert _statement_matches(
+        "A member's first forty-five minutes of every ride are free.",
+        "A member's first 45 minutes of every ride are free.",
+    )
+    assert not _statement_matches(
+        "A member's first forty-five minutes of every ride are free.",
+        "A member's first 40 minutes of every ride are free.",
+    )
+
+
+def test_allowed_and_refused_are_opposite_outcomes():
+    """Item 3: an outcome and its antonym never match, however alike the
+    rest of the sentence; outcomes of one kind in different words do."""
+    assert not _statement_matches(
+        "A refund under $5 is approved.", "A refund under $5 is rejected."
+    )
+    assert not _statement_matches(
+        "Checkin at a full station allowed.", "A check-in at a full station is refused."
+    )
+    assert _statement_matches(
+        "A check-in at a full station is rejected.", "A check-in at a full station is refused."
+    )
+
+
+@pytest.mark.fixture
+def test_overflow_parking_pair_is_matched_on_polarity_and_condition():
+    """Items 3 and 4 on the audit's own pair (AUDIT.md, "Polarity"): the
+    "allowed" sentence matches F-018 (allowed when the flag is on) and not
+    F-017 (refused when it is off); the terse "refused" sentence names no
+    condition, so the strict reading credits it with neither, and the
+    lenient reading with both, as before."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f017, f018 = truth.facts["F-017"].statement, truth.facts["F-018"].statement
+    allowed = "Checkin at full station allowed with overflow parking."
+    refused = "Checkin at full station refused."
+    assert _statement_matches(allowed, f018, mention_index)
+    assert not _statement_matches(allowed, f017, mention_index)
+    assert not _statement_matches(allowed, f017, mention_index, strict=False)
+    assert not _statement_matches(refused, f017, mention_index)
+    assert not _statement_matches(refused, f018, mention_index)
+    assert _statement_matches(refused, f017, mention_index, strict=False)
+    assert _statement_matches(refused, f018, mention_index, strict=False)
+
+
+def test_a_claim_does_not_rescue_an_over_claim():
+    """Item 4: the claim agrees (7 days of grace), but the statement says
+    the membership lapses, which the grace period's assertion never proves;
+    it does not name the quantity the fact is about, so no reading credits
+    it. A statement naming the grace period is credited by the same claim."""
+    truth = _wiki_truth(
+        "A failed renewal gives a membership a grace period that ends 7 days after the failure.",
+        claim={"entity": "E-x", "attribute": "grace", "value": 7, "unit": "day"},
+    )
+    claim = {"attribute": "grace_days", "value": 7, "unit": "days", "_resolved_entities": ["E-x"]}
+    over_claim = _wiki_fact("Membership lapses 7 days after failed renewal.", claim)
+    assert not facts_match(over_claim, truth)
+    assert not facts_match(over_claim, truth, strict=False)
+    assert facts_match(
+        _wiki_fact("Membership grace ends 7 days after a failed renewal.", claim), truth
+    )
+
+
+def test_strict_reading_wants_the_value_in_the_statement():
+    """Item 4: "Casual rate from 1st minute." with a claim of $0.25 leaves
+    the value to its claim; the strict reading does not credit it, the
+    lenient one does (the claim agrees in full)."""
+    truth = _wiki_truth(
+        "A rider without a membership pays $0.25 per minute from the first minute of the ride.",
+        claim={
+            "entity": "E-x",
+            "attribute": "casual_rate_per_minute",
+            "value": 0.25,
+            "unit": "usd",
+        },
+    )
+    claim = {
+        "attribute": "casual_rate",
+        "value": 0.25,
+        "unit": "usd",
+        "_resolved_entities": ["E-x"],
+    }
+    assert not facts_match(_wiki_fact("Casual rate from 1st minute.", claim), truth)
+    assert facts_match(_wiki_fact("Casual rate from 1st minute.", claim), truth, strict=False)
+    assert facts_match(_wiki_fact("Casual rate $0.25 from 1st minute.", claim), truth)
+
+
+def test_wilson_lower_bound():
+    """26 of 27 passes 0.95 at a Wilson 95% lower bound of 0.82 (D-014)."""
+    assert round(wilson_lower_bound(26, 27), 3) == 0.817
+    assert round(wilson_lower_bound(20, 27), 3) == 0.553
+    assert wilson_lower_bound(0, 0) is None
+
+
+def test_distinct_executed_counts_each_fact_once_against_any_executed_truth_fact():
+    """Item 1: every returned executed fact counted once, by id or by its
+    statement and citations, whichever query returned it, and correct when
+    it matches any executed truth fact — not only one its query expected."""
+    planted = _wiki_truth("A single ride costs at most $30.00.")
+    planted = TruthFact(**{**planted.__dict__, "tier": "executed"})
+    documented = TruthFact(**{**planted.__dict__, "id": "F-2", "tier": "documented"})
+    hit = {**_wiki_fact("Single ride cap $30.00."), "tier": "executed", "id": "f-1"}
+    restated = {**hit, "statement": "A single ride is capped at $30.00."}  # same id
+    unnamed = {**_wiki_fact("A single ride costs at most $30.00."), "tier": "executed"}
+    wrong = {**_wiki_fact("A single ride costs at most $25.00."), "tier": "executed"}
+    other_tier = {**_wiki_fact("A single ride costs at most $30.00."), "tier": "code"}
+    returned = [hit, restated, unnamed, dict(unnamed), wrong, other_tier]
+    report = distinct_executed(returned, {"F-1": planted})
+    assert report["strict"]["n"] == 3
+    assert report["strict"]["tp"] == 2
+    assert report["strict"]["wrong"] == ["A single ride costs at most $25.00."]
+    assert report["strict"]["wilson_lower"] == wilson_lower_bound(2, 3)
+    assert distinct_executed(returned, {"F-2": documented})["strict"]["tp"] == 0
+
+
+def test_score_reports_distinct_executed_across_explain_and_search(capsys):
+    """Item 1 through `score()`: the hand-built run returns its one executed
+    fact on explain and on search; the distinct reading counts it once, and
+    the line is printed beside the per-surface lines."""
+    report = score(_hand_built_results(), MINI_ROOT / "truth")
+    assert report["surfaces"]["explain"]["tier"]["returned_executed"] == 1
+    assert report["surfaces"]["search"]["tier"]["returned_executed"] == 1
+    distinct = report["distinct_executed"]
+    assert {r: (d["tp"], d["n"]) for r, d in distinct.items()} == {
+        "strict": (1, 1),
+        "lenient": (1, 1),
+    }
+    print_report(report)
+    assert (
+        "executed tier, distinct facts (explain+search): strict precision=1.000 (1/1, "
+        "Wilson 95% lower=0.207) | lenient precision=1.000 (1/1, Wilson 95% lower=0.207)"
+    ) in capsys.readouterr().out
+    agg = aggregate_reports([report, report])
+    assert agg["distinct_executed"]["strict"] == {"median": 1.0, "min": 1.0, "max": 1.0}
+
+
+def test_a_restated_fact_is_counted_apart_from_hard_false_positives():
+    """Item 6: a second returned fact that would match the truth fact the
+    query already credited is `restated`, not a hard false positive; an
+    unmatched fact naming the right entity and document at another value
+    still is one."""
+    truth = _wiki_truth("A single ride costs at most $30.00.")
+    first = _wiki_fact("A single ride costs at most $30.00.")
+    second = _wiki_fact("The most a single ride can cost is $30.00.")
+    other = _wiki_fact("A single ride costs at most $25.00.")
+    outcome = score_fact_query([first, second, other], {"F-1": truth}, None, _identity_index("E-x"))
+    assert outcome["tp"] == 1
+    assert outcome["restated"] == 1
+    assert outcome["hard_false_positives"] == 1
+    restated, rest = _split_restated([second, other], {"F-1"}, {"F-1": truth})
+    assert restated == [second]
+    assert rest == [other]
+
+
+def test_invented_calibration_set_is_perfect_under_both_readings():
+    """Item 4: the invented set, with the #35 pairs and relabels, holds at
+    1.0/1.0 under the strict reading and the lenient one; each relabelled
+    pair says which strict rule decides it and keeps its lenient label."""
+    pairs = load_calibration(SPIKE_ROOT / DEFAULT_CALIBRATION)
+    truth = load_truth(SPIKE_ROOT / "truth")
+    indexes = (build_mention_index(truth), build_alias_index(truth), truth.entities)
+    for strict in (True, False):
+        report = calibrate(pairs, *indexes, strict=strict)
+        assert (report["precision"], report["recall"]) == (1.0, 1.0), report["misclassified"]
+    relabelled = [p for p in pairs if str(p.get("why", "")).startswith("#35 item 4")]
+    assert len(relabelled) == 2
+    assert all(p["expect"] is False and p["lenient_expect"] is True for p in relabelled)
+
+
+def _side(statement: str, entities: list[str], documents: list[str]) -> dict:
+    return {
+        "statement": statement,
+        "entities": entities,
+        "category": "business-logic",
+        "citations": [{"document": d} for d in documents],
+    }
+
+
+@pytest.mark.fixture
+def test_contradiction_side_with_a_kind_prefix_and_a_clause_is_credited():
+    """Item 5, the baseline's X-002 pair: its sides name the entity
+    "rule:membership-grace-period", which only resolves once the known kind
+    prefix is stripped, and the test side states F-016 in its second clause
+    only ("GRACE_DAYS is 7; a lapsed-payment membership stays in grace for 7
+    days after a failed renewal.")."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    alias_index, mention_index = build_alias_index(truth), build_mention_index(truth)
+    rc = {
+        "a": _side(
+            "GRACE_DAYS is 7; a lapsed-payment membership stays in grace for 7 days after a "
+            "failed renewal.",
+            ["rule:membership-grace-period"],
+            ["code/farebox/services/memberships.py", "run/pytest-c3"],
+        ),
+        "b": _side(
+            "A member who misses a renewal gets a 3-day grace period to fix their payment "
+            "method before anything lapses.",
+            ["rule:membership-grace-period"],
+            ["wiki/membership-faq"],
+        ),
+    }
+    expected = {"X-002": truth.contradictions["X-002"]}
+    resolved = _resolve_contradiction_entities(rc, alias_index, truth.entities)
+    assert resolved["a"]["entities"] == ["E-rule-membership-grace"]
+    assert _side_matches(resolved["a"], truth.facts["F-016"], mention_index)
+    assert not facts_match(resolved["a"], truth.facts["F-016"], mention_index)  # whole wording
+    assert score_contradictions([resolved], expected, truth.facts, mention_index)["matched"] == 1
+    unstripped = {k: resolve_fact_entities(v, alias_index, truth.entities) for k, v in rc.items()}
+    assert unstripped["a"]["entities"] == []
+    assert score_contradictions([unstripped], expected, truth.facts, mention_index)["matched"] == 0
+
+
+@pytest.mark.fixture
+def test_contradiction_side_naming_one_threshold_of_two_is_not_credited():
+    """Item 5, hard negative (the baseline's X-006 pair): F-021 has two
+    thresholds (under 20% or over 90%); a side naming only the 20% one does
+    not state it, so the pair is not credited, though its wiki side states
+    F-047 and nothing is loosened for contradictions."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    alias_index, mention_index = build_alias_index(truth), build_mention_index(truth)
+    entities = ["rule:rebalance-trigger", "job:nightly-rebalance"]
+    rc = _resolve_contradiction_entities(
+        {
+            "a": _side(
+                "A station is flagged for rebalance once it falls under 20% full (LOW_FILL = 0.2).",
+                entities,
+                ["code/dispatch/src/jobs/nightlyRebalance.ts"],
+            ),
+            "b": _side(
+                "A station gets flagged for a rebalance order once it drops under 25% full.",
+                entities,
+                ["wiki/rebalancing-overview"],
+            ),
+        },
+        alias_index,
+        truth.entities,
+    )
+    assert _side_matches(rc["b"], truth.facts["F-047"], mention_index)
+    assert not _side_matches(rc["a"], truth.facts["F-021"], mention_index)
+    expected = {"X-006": truth.contradictions["X-006"]}
+    assert score_contradictions([rc], expected, truth.facts, mention_index)["matched"] == 0

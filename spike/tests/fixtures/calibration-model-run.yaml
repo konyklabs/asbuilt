@@ -404,7 +404,9 @@
   source: rules
   test: test_checkin_at_full_station_refused
   candidate: Checkin at full station refused.
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: condition dropped (F-018 is the opposite with the flag on)'
 - truth_id: F-051
   truth: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
   source: rules
@@ -527,7 +529,8 @@
   source: rules
   test: test_membership_lapses_7_days_after_failed_renewal
   candidate: Membership lapses 7 days after failed renewal.
-  expect: true
+  expect: false
+  why: '#35 item 4 over-claim (the test asserts a grace period that ends 7 days after, not a lapse)'
   truth_claim:
     entity: E-rule-membership-grace
     attribute: grace
@@ -543,7 +546,9 @@
   source: rules
   test: test_member_rate_after_free_minutes
   candidate: Member rate after free minutes.
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: value only in the claim ($0.15)'
   truth_claim:
     entity: E-rule-per-minute-rate
     attribute: member_rate_per_minute
@@ -559,7 +564,9 @@
   source: rules
   test: test_casual_rate_from_first_minute
   candidate: Casual rate from 1st minute.
-  expect: true
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: value only in the claim ($0.25)'
   truth_claim:
     entity: E-rule-per-minute-rate
     attribute: casual_rate_per_minute
@@ -1143,10 +1150,11 @@
     unit: null
 - truth_id: F-017
   truth: A check-in at a full station is refused when the overflow_parking flag is off.
-  source: rule-positive
+  source: rule-negative
   candidate: Check-in at a full station is refused.
-  expect: true
-  why: the same fact without naming the flag state
+  expect: false
+  lenient_expect: true
+  why: '#35 item 4 strict reading: condition dropped (asbuilt#17 credited it: naming no state is still no flip)'
 - truth_id: F-017
   truth: A check-in at a full station is refused when the overflow_parking flag is off.
   source: rule-negative
@@ -1284,3 +1292,21 @@
     attribute: snapshot_interval
     value: 14
     unit: day
+- truth_id: F-077
+  truth: Each Tollbooth Pay call times out after 10 seconds.
+  source: stack-b-model
+  candidate: Each outbound call to Tollbooth Pay is configured to wait 10 seconds before giving up.
+  expect: true
+  why: 'a correct paraphrase (stack B run 2, 2026-10-20) the #35 item 4 over-claim rule misses in both
+    readings: its agreeing claim decides, and the statement never names the timeout; the rule''s known
+    cost, kept here so recall shows it'
+  truth_claim:
+    entity: E-int-tollbooth-pay
+    attribute: timeout
+    value: 10
+    unit: second
+  candidate_claim:
+    entity: tollbooth client
+    attribute: request_timeout
+    value: 10
+    unit: second
