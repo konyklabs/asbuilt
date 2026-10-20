@@ -3,13 +3,47 @@ never past what the test's assertion actually proves (D-013: "a passing test
 proves exactly what it asserted, extraction never generalises past the
 assertion").
 
+**Fifth pass** (asbuilt#36, D-014): a Python statement is built from what the
+test's assertions assert, not from its name. The hand audit of stack B
+(asbuilt#5) found the name sentence over-claiming: `test_membership_lapses_
+7_days_after_failed_renewal` asserts `GRACE_DAYS == 7`, a `GRACE` status and
+a `grace_ends_at`, yet the statement said "lapses". The rules, in
+`_python_statement`:
+
+- The name may choose words, never add a behaviour. Each content word of
+  the name must be supported by the test's own code (`_test_vocabulary`:
+  the names, attributes, keywords, string literals and callee parameter
+  names it uses, the constants it references), by an outcome its
+  assertions check (`_outcome_support`: a 4xx status or error code supports
+  "refused", a 2xx "allowed", any status "returns", `is False` "off"), or,
+  for an asserted value no constant names, by sitting next to that value in
+  the name (`_label_words`: "unlock fee" beside the asserted $1.00). A
+  number in the name must be one the test uses.
+- A fully supported name is the statement, with every asserted constant's
+  value stated in it (`_insert_values`: "The member rate after free minutes
+  is $0.15.") and the flag conditions the assertions depend on
+  (`_conditions`: "... with overflow_parking off"), and the earlier
+  successful calls a refused call depends on (`_prior_calls_condition`:
+  "Third checkout refused with 2 bikes checked out.").
+- Otherwise the statement is the assertions themselves, rendered
+  (`_assertion_sentence`): constants by name and value, computed dates as
+  "N days after X", enum states, statuses and bare counts as exactly what
+  they are, after the call the assertions read, under the same conditions.
+
+Number words are digits and ordinals stay words ("first", "third": a
+position, not a quantity). TypeScript statements are unchanged (the it-title).
+A value constant named exactly as a flag the test's calls set
+(`EBIKE_SURCHARGE` beside `ebike_surcharge_enabled`) gets no claim: the claim
+would give the flag a dollar value, and the code has no other name for it.
+
 **Second pass** (asbuilt#8 integration review): the first pass templated a
 Python statement from a single chosen literal (the last literal-bearing
 assert), which guessed wrong often enough to be a majority of the returned
 false positives. This pass never picks one literal arbitrarily:
 
-1. **Third pass correction**: `Rule.statement` is ONE sentence, built only
-   from the test's own *name* (`test_` stripped, underscores split, number
+1. **Third pass correction** (its name sentence superseded by the fifth
+   pass above; `detail` is unchanged): `Rule.statement` is ONE sentence,
+   built only from the test's own *name* (`test_` stripped, underscores split, number
    words and ordinals normalised to digits — "thirty" -> 30, "third" ->
    "3rd" — and a `<number> dollar(s)` pair folded to `$x.00`; a bare
    trailing numeric token, usually the test's own example value, is
@@ -96,7 +130,14 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from connectors.tests.collect import AssertExpr, Skeleton
+from connectors.tests.collect import (
+    AssertExpr,
+    Skeleton,
+    _approximate_param_id,
+    _decorator_name_and_call,
+    _kw_value,
+    _parametrize_cases,
+)
 
 SourceLookup = Callable[[str], "str | None"]
 
@@ -128,9 +169,10 @@ class Rule:
     coefficient over the statement's own words — appending every assertion
     clause to it (the second pass's design) pushed even a correct name
     sentence's overlap ratio below the match threshold once enough
-    unrelated clause words piled on. `statement` is now the name sentence
-    (Python) or "<describe> <it title>." (Vitest) alone; every assertion
-    clause, the API/error clause and the event clause move to `detail` — a
+    unrelated clause words piled on. `statement` is one sentence (Python:
+    from the assertions, fifth pass; Vitest: "<describe> <it title>.");
+    every assertion clause, the API/error clause and the event clause move
+    to `detail` — a
     plain string, semicolon-joined, carried in the output for arms and
     human readers but never matched against truth."""
 
@@ -201,18 +243,12 @@ _NUMBER_WORD_RE = re.compile(r"\b(" + "|".join(_NUMBER_WORDS) + r")\b", re.IGNOR
 _TRAILING_NUMBER_RE = re.compile(r"_-?\d+$")
 
 
-def _ordinal_suffix(n: int) -> str:
-    if 10 <= n % 100 <= 20:
-        return "th"
-    return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-
-
 def _test_subject_phrase(skeleton: Skeleton) -> str:
     """The test's own name, humanised, trailing example value dropped —
     "lost bike fee" from `test_lost_bike_fee_100` — used as the entity/
     attribute source for the fallback claim (module docstring point 2's
     "third pass" addendum) and as the money-substitution context for
-    `_name_sentence` below. Not the same as `_subject_noun` (the FILE's own
+    `_name_words` below. Not the same as `_subject_noun` (the FILE's own
     name, e.g. "lost bikes") — this one is per-test."""
     name = skeleton.name
     if name.startswith("test_"):
@@ -239,34 +275,32 @@ def _primary_literal_assert(skeleton: Skeleton) -> AssertExpr | None:
     return None
 
 
-def _name_sentence(skeleton: Skeleton) -> str:
-    """Sentence 1: the test's own name, humanised — see module docstring
-    point 1. A trailing bare numeric token (`..._150`) is now KEPT as a
-    plain digit ("Lost bike fee 150.") unless the test's own primary
-    literal-bearing assert compares a money or cents-shaped expression, in
-    which case the digit is replaced by that assert's own properly
-    formatted money value ("Lost bike fee $150.00.") — the two are the same
-    number by the fixture's own naming convention, and only the money form
-    is what the second sentence's own clause repeats, so keeping the bare
-    digit too would add a duplicate, differently-spelled number for no gain
-    (third pass correction: the earlier version dropped the digit
-    unconditionally, which meant a test whose only literal-bearing assert
-    isn't itself money-shaped — a plain "$150.00 vs $100.00" example that
-    happens to route through a computed expression — lost its number
-    entirely)."""
+_TENS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+_COMPOUND_NUMBER_WORD_RE = re.compile(
+    "^(" + "|".join(_TENS) + ")(one|two|three|four|five|six|seven|eight|nine)$"
+)
+
+
+def _name_words(skeleton: Skeleton) -> list[str]:
+    """The test's own name as words: `test_` stripped, number words as
+    digits (a closed compound too: "fortyfive" is 45, as the scorer reads
+    it), ordinals kept as words ("first", "third": a position, which the
+    scorer does not count as a quantity), and `<number> dollar(s)` folded
+    to `$x.00`. A trailing bare digit that names the value a money or
+    cents-shaped assert proves becomes that value ("Lost bike fee
+    $150.00"), as the third pass did."""
     name = skeleton.name
     if name.startswith("test_"):
         name = name[len("test_") :]
-    tokens = [t for t in name.split("_") if t]
 
     words: list[str] = []
-    for tok in tokens:
+    for tok in (t for t in name.split("_") if t):
         low = tok.lower()
-        if low in _NUMBER_WORDS:
+        compound = _COMPOUND_NUMBER_WORD_RE.match(low)
+        if compound:
+            words.append(str(_NUMBER_WORDS[compound.group(1)] + _NUMBER_WORDS[compound.group(2)]))
+        elif low in _NUMBER_WORDS:
             words.append(str(_NUMBER_WORDS[low]))
-        elif low in _ORDINAL_WORDS:
-            n = _ORDINAL_WORDS[low]
-            words.append(f"{n}{_ordinal_suffix(n)}")
         else:
             words.append(tok)
 
@@ -294,8 +328,11 @@ def _name_sentence(skeleton: Skeleton) -> str:
                 display, _ = _format_literal(literal, money=True, cents=cents)
                 if display.startswith("$"):
                     merged[-1] = display
+    return merged
 
-    text = " ".join(merged).strip()
+
+def _sentence(text: str) -> str:
+    text = " ".join(text.split()).strip()
     if not text:
         return ""
     text = text[0].upper() + text[1:]
@@ -980,6 +1017,856 @@ def _fallback_claim(skeleton: Skeleton) -> dict[str, Any] | None:
     }
 
 
+# ------------------------------------------- the statement (fifth pass, #36)
+
+# Words a test's name may use without its code saying them: articles,
+# prepositions, connectives, negation and positions ("first", "third").
+_FUNCTION_WORDS = frozenset(
+    {
+        "a", "an", "the", "at", "of", "to", "for", "from", "in", "into", "with",
+        "without", "after", "before", "when", "while", "if", "unless", "under", "over",
+        "past", "by", "as", "then", "and", "or", "is", "are", "be", "not", "no", "never",
+        "does", "do", "every", "each", "per", "than", "more", "less", "least", "most",
+        "only", "any", "all", "within", "until", "times", "once", "twice",
+        *_ORDINAL_WORDS,
+    }
+)  # fmt: skip
+# An outcome the name states is supported when an assertion checks it: a
+# 4xx/5xx status, an error code or `pytest.raises` checks a refusal; a 2xx
+# status checks an acceptance; any status checks a response.
+_REFUSAL_STEMS = frozenset({"refus", "reject", "deny", "deni", "declin", "fail", "error"})
+_ALLOW_STEMS = frozenset({"allow", "accept", "approv", "succeed", "permit"})
+_RESPONSE_STEMS = frozenset({"return", "respond", "report"})
+_CONDITION_WORDS = ("when", "while", "if", "unless", "with")
+_IDENT_SPLIT_RE = re.compile(r"[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])")
+_FLAG_PARAM_SUFFIX = "_enabled"
+
+
+def _stem(word: str) -> str:
+    """A deliberately tiny stemmer for comparing a name's word with the
+    code's: "refused"/"refuse", "retries"/"retry", "closed"/"close" agree;
+    "checkin" and "checkout" do not."""
+    w = word.lower()
+    if w.endswith("ies") and len(w) > 4:
+        return w[:-3] + "y"
+    for suffix in ("ing", "ed", "es", "s"):
+        if w.endswith(suffix) and len(w) - len(suffix) >= 3:
+            w = w[: -len(suffix)]
+            break
+    if w.endswith("e") and len(w) > 3:
+        w = w[:-1]
+    return w
+
+
+def _ident_words(text: str) -> list[str]:
+    return [w.lower() for w in _IDENT_SPLIT_RE.split(text) if w]
+
+
+def _test_function(
+    skeleton: Skeleton, source_lookup: SourceLookup | None
+) -> tuple[ast.FunctionDef | None, ast.Module | None]:
+    """The test's own function and module, parsed from the step's source;
+    (None, None) without a lookup (the statement then rests on the
+    skeleton's assertions alone)."""
+    source = source_lookup(skeleton.file) if source_lookup else None
+    if source is None:
+        return None, None
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None, None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == skeleton.name:
+            return node, tree
+    return None, tree
+
+
+def _callee_params(
+    name: str,
+    skeleton: Skeleton,
+    module: ast.Module | None,
+    source_lookup: SourceLookup | None,
+) -> list[str]:
+    """The parameter names of `name`, defined in the test's module or one
+    hop into an imported module, so a positional `True` reads as the
+    parameter it binds (`ebike_surcharge_enabled`)."""
+    trees = [module] if module is not None else []
+    for path in _candidate_paths(skeleton) if source_lookup else []:
+        source = source_lookup(path)
+        if source is None:
+            continue
+        try:
+            trees.append(ast.parse(source))
+        except SyntaxError:
+            continue
+    for tree in trees:
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == name:
+                return [a.arg for a in node.args.args]
+    return []
+
+
+def _call_name(call: ast.Call) -> str:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return ""
+
+
+def _flag_settings(call: ast.Call, params: list[str]) -> dict[str, bool]:
+    """Flags a call sets: a `<flag>_enabled` parameter given a bool literal,
+    by keyword or by position."""
+    settings: dict[str, bool] = {}
+    for kw in call.keywords:
+        if (
+            kw.arg
+            and kw.arg.endswith(_FLAG_PARAM_SUFFIX)
+            and isinstance(kw.value, ast.Constant)
+            and isinstance(kw.value.value, bool)
+        ):
+            settings[kw.arg[: -len(_FLAG_PARAM_SUFFIX)]] = kw.value.value
+    for param, arg in zip(params, call.args, strict=False):
+        if (
+            param.endswith(_FLAG_PARAM_SUFFIX)
+            and isinstance(arg, ast.Constant)
+            and isinstance(arg.value, bool)
+        ):
+            settings[param[: -len(_FLAG_PARAM_SUFFIX)]] = arg.value
+    return settings
+
+
+def _code_of(func: ast.FunctionDef) -> list[ast.AST]:
+    """The test's code: its parameters and body, never its docstring (prose
+    the test does not check) or its decorators (a skip reason)."""
+    body = func.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]
+    return [func.args, *body]
+
+
+def _test_calls(func: ast.FunctionDef) -> list[ast.Call]:
+    return [n for root in _code_of(func) for n in ast.walk(root) if isinstance(n, ast.Call)]
+
+
+def _settings_reader(
+    skeleton: Skeleton, module: ast.Module | None, source_lookup: SourceLookup | None
+) -> Callable[[ast.Call], dict[str, bool]]:
+    params_cache: dict[str, list[str]] = {}
+
+    def settings_of(call: ast.Call) -> dict[str, bool]:
+        name = _call_name(call)
+        if name not in params_cache:
+            params_cache[name] = _callee_params(name, skeleton, module, source_lookup)
+        return _flag_settings(call, params_cache[name])
+
+    return settings_of
+
+
+def _flags_set(skeleton: Skeleton, source_lookup: SourceLookup | None) -> set[str]:
+    """Every flag a call in the test sets, either way."""
+    func, module = _test_function(skeleton, source_lookup)
+    if func is None:
+        return set()
+    settings_of = _settings_reader(skeleton, module, source_lookup)
+    return {flag for call in _test_calls(func) for flag in settings_of(call)}
+
+
+def _conditions(
+    skeleton: Skeleton,
+    func: ast.FunctionDef | None,
+    module: ast.Module | None,
+    source_lookup: SourceLookup | None,
+) -> dict[str, bool]:
+    """The flag conditions the test sets up: a flag a call in this test
+    sets, where the module's tests set it both ways (a flag held one way
+    across the whole module is the fixture's background, not a condition
+    under test). A flag set both ways in this test takes its first
+    setting, the test's leading scenario."""
+    if func is None or module is None:
+        return {}
+    settings_of = _settings_reader(skeleton, module, source_lookup)
+    seen: dict[str, set[bool]] = {}
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            for call in _test_calls(node):
+                for flag, value in settings_of(call).items():
+                    seen.setdefault(flag, set()).add(value)
+    conditions: dict[str, bool] = {}
+    for call in sorted(_test_calls(func), key=lambda c: (c.lineno, c.col_offset)):
+        for flag, value in settings_of(call).items():
+            if seen.get(flag) == {True, False}:
+                conditions.setdefault(flag, value)
+    return conditions
+
+
+def _parametrize_binding(skeleton: Skeleton, func: ast.FunctionDef | None) -> dict[str, Any]:
+    """This case's parameter values, matched on the case id `collect.py`
+    gave it."""
+    if func is None or skeleton.parametrize_id is None:
+        return {}
+    for dec in func.decorator_list:
+        name, call = _decorator_name_and_call(dec)
+        if not name.endswith("parametrize") or call is None or not call.args:
+            continue
+        cases = _parametrize_cases(call) or []
+        ids = _kw_value(call, "ids")
+        try:
+            argnames = ast.literal_eval(call.args[0])
+        except (ValueError, TypeError):
+            return {}
+        names = (
+            [n.strip() for n in argnames.split(",")]
+            if isinstance(argnames, str)
+            else list(argnames)
+        )
+        for i, case in enumerate(cases):
+            case_id = (
+                str(ids[i])
+                if isinstance(ids, (list, tuple)) and i < len(ids)
+                else _approximate_param_id(case)
+            )
+            if case_id != skeleton.parametrize_id:
+                continue
+            values = case.elts if isinstance(case, ast.Tuple) and len(names) > 1 else [case]
+            binding: dict[str, Any] = {}
+            for argname, value in zip(names, values, strict=False):
+                try:
+                    binding[argname] = ast.literal_eval(value)
+                except (ValueError, TypeError):
+                    binding[argname] = ast.unparse(value)
+            return binding
+    return {}
+
+
+def _constant_values(
+    skeleton: Skeleton, source_lookup: SourceLookup | None
+) -> dict[str, tuple[Any, str | None]]:
+    """Every ALL_CAPS name the test uses that resolves to a scalar, with
+    its unit: the asserted constants' values go into the statement, and any
+    of them backs a number the test's name states."""
+    if source_lookup is None:
+        return {}
+    finder = find_python_constant if skeleton.language == "python" else _find_ts_constant
+    values: dict[str, tuple[Any, str | None]] = {}
+    for name in skeleton.constants:
+        for path in _candidate_paths(skeleton):
+            source = source_lookup(path)
+            found = finder(source, name) if source is not None else None
+            if found is not None:
+                value, is_decimal = found
+                values[name] = (value, infer_unit(name, is_decimal=is_decimal))
+                break
+    return values
+
+
+def _numbers_in(nodes: list[ast.AST], constants: dict[str, tuple[Any, str | None]]) -> set[float]:
+    """Every number written in `nodes` (a `Decimal("0.15")` string too) and
+    every resolved constant they name; an integer also counts as cents
+    (15000 backs a name's "$150.00")."""
+    numbers: set[float] = set()
+
+    def add(value: Any) -> None:
+        if isinstance(value, bool):
+            return
+        if isinstance(value, (int, float)):
+            numbers.add(float(value))
+            if isinstance(value, int):
+                numbers.add(value / 100)
+        elif isinstance(value, str):
+            try:
+                numbers.add(float(value))
+            except ValueError:
+                pass
+
+    for root in nodes:
+        for node in ast.walk(root):
+            if isinstance(node, ast.Constant):
+                add(node.value)
+            elif isinstance(node, ast.Name) and node.id in constants:
+                add(constants[node.id][0])
+    return numbers
+
+
+def _parse_asserts(skeleton: Skeleton) -> list[ast.expr]:
+    parsed = []
+    for assertion in skeleton.asserts:
+        try:
+            parsed.append(ast.parse(assertion.source, mode="eval").body)
+        except SyntaxError:
+            continue
+    return parsed
+
+
+def _status_values(skeleton: Skeleton) -> list[int]:
+    statuses: list[int] = []
+    for assertion in skeleton.asserts:
+        left, right = assertion.left or "", assertion.right or ""
+        for literal, other in (
+            (assertion.right_literal, left),
+            (assertion.left_literal, right),
+        ):
+            if (
+                isinstance(literal, int)
+                and not isinstance(literal, bool)
+                and _is_http_status_shaped(literal)
+                and _looks_like_status_slot(other)
+            ):
+                statuses.append(literal)
+        tuple_status = _extract_tuple_status(right) or _extract_tuple_status(left)
+        if tuple_status is not None:
+            statuses.append(tuple_status)
+    return statuses
+
+
+def _outcome_support(skeleton: Skeleton, func: ast.FunctionDef | None) -> set[str]:
+    """Stems of the outcome words the assertions check (module docstring,
+    fifth pass)."""
+    stems: set[str] = set()
+    statuses = _status_values(skeleton)
+    if statuses:
+        stems |= _RESPONSE_STEMS
+    if any(400 <= s < 600 for s in statuses):
+        stems |= _REFUSAL_STEMS
+    if any(200 <= s < 300 for s in statuses):
+        stems |= _ALLOW_STEMS
+    if any(
+        _ERROR_DICT_RE.search(a.source) or (_has_word(a.left or "", "error") and a.right_literal)
+        for a in skeleton.asserts
+    ):
+        stems |= _REFUSAL_STEMS
+    if func is not None and any(_call_name(c) == "raises" for c in _test_calls(func)):
+        stems |= _REFUSAL_STEMS
+    for node in _parse_asserts(skeleton):
+        if isinstance(node, ast.Compare) and isinstance(node.comparators[-1], ast.Constant):
+            value = node.comparators[-1].value
+            if value is False:
+                stems |= {"off", "disabl", "fals"}
+            elif value is True:
+                stems |= {"on", "enabl", "tru"}
+    return stems
+
+
+def _test_vocabulary(
+    skeleton: Skeleton,
+    func: ast.FunctionDef | None,
+    module: ast.Module | None,
+    source_lookup: SourceLookup | None,
+    conditions: dict[str, bool],
+    binding: dict[str, Any],
+) -> set[str]:
+    """Stems of every word the test's own code uses: assertion text, called
+    names, constants, parameters, the test module's own subject ("close
+    ride" for `test_close_ride.py`) and, with the source, every name,
+    attribute, keyword, string literal and the parameter names its
+    positional arguments bind. A flag condition supports "flag" and its
+    state."""
+    texts: list[str] = [a.source for a in skeleton.asserts]
+    texts += [*skeleton.calls, *skeleton.constants, *skeleton.fixtures, *binding]
+    texts.append(_subject_noun(skeleton))
+    if func is not None:
+        for node in (n for root in _code_of(func) for n in ast.walk(root)):
+            if isinstance(node, ast.Name):
+                texts.append(node.id)
+            elif isinstance(node, ast.Attribute):
+                texts.append(node.attr)
+            elif isinstance(node, ast.keyword) and node.arg:
+                texts.append(node.arg)
+            elif isinstance(node, ast.arg):
+                texts.append(node.arg)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                texts.append(node.value)
+            elif isinstance(node, ast.Call):
+                params = _callee_params(_call_name(node), skeleton, module, source_lookup)
+                texts.extend(params[: len(node.args)])
+    stems = {_stem(w) for text in texts for w in _ident_words(text)}
+    if conditions:
+        stems.add("flag")
+        stems |= {"on" if value else "off" for value in conditions.values()}
+    return stems
+
+
+_NAME_NUMBER_RE = re.compile(r"^\$?(\d+(?:\.\d+)?)$")
+_STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
+
+
+def _number_value(word: str) -> float | None:
+    m = _NAME_NUMBER_RE.match(word)
+    return float(m.group(1)) if m else None
+
+
+def _number_supported(word: str, numbers: set[float]) -> bool:
+    cls = _STATUS_CLASS_RE.match(word)
+    if cls:
+        low = int(cls.group(1)) * 100
+        return any(low <= n < low + 100 for n in numbers)
+    value = _number_value(word)
+    return value is not None and any(abs(value - n) < 1e-9 for n in numbers)
+
+
+def _is_content(word: str) -> bool:
+    return (
+        word.lower() not in _FUNCTION_WORDS
+        and _number_value(word) is None
+        and not _STATUS_CLASS_RE.match(word)
+    )
+
+
+def _label_words(
+    words: list[str],
+    supported: list[bool],
+    asserted: set[float],
+    constant_asserted: set[float],
+) -> list[bool]:
+    """A number in the name that an assertion proves, and that no asserted
+    constant names, lends support to the run of content words beside it, up
+    to a function word or another number: they label the value ("charges
+    $1.00 unlock fee" for an asserted amount of 100 cents). A value an
+    asserted constant names is labelled by the constant, never by the name:
+    "lapses 7 days" beside `GRACE_DAYS == 7` stays unsupported."""
+    out = list(supported)
+    for i, word in enumerate(words):
+        value = _number_value(word)
+        if value is None or not any(abs(value - n) < 1e-9 for n in asserted):
+            continue
+        if any(abs(value - n) < 1e-9 for n in constant_asserted):
+            continue
+        for step in (-1, 1):
+            j = i + step
+            while 0 <= j < len(words) and _is_content(words[j]):
+                out[j] = True
+                j += step
+    return out
+
+
+def _constant_clauses(
+    skeleton: Skeleton, constants: dict[str, tuple[Any, str | None]]
+) -> list[tuple[str, Any, str | None]]:
+    """(name, value, unit) for each `CONSTANT == literal` assertion, in
+    source order: the constant names the quantity, the test pins its value."""
+    found: list[tuple[str, Any, str | None]] = []
+    for assertion in skeleton.asserts:
+        if assertion.op != "==":
+            continue
+        for side, literal in (
+            (assertion.left, assertion.right_literal),
+            (assertion.right, assertion.left_literal),
+        ):
+            name = (side or "").strip()
+            if literal is not None and name in constants and name not in [n for n, _, _ in found]:
+                value, unit = constants[name]
+                found.append((name, value, unit))
+    return found
+
+
+_UNIT_PLURAL = {"day": "days", "hour": "hours", "minute": "minutes", "second": "seconds"}
+
+
+def _value_text(value: Any, unit: str | None) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if unit == "usd" and isinstance(value, (int, float)):
+        return _format_money(float(value))
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if unit in _UNIT_PLURAL:
+        return f"{value} {unit if value == 1 else _UNIT_PLURAL[unit]}"
+    return str(value)
+
+
+def _constant_phrase(name: str, unit: str | None) -> str:
+    words = _ident_words(name)
+    for suffix, suffix_unit in _UNIT_SUFFIXES:
+        if suffix_unit == unit and name.upper().endswith(suffix):
+            words = _ident_words(name[: -len(suffix)])
+            break
+    return " ".join(words)
+
+
+# --------------------------------------------------- rendering an assertion
+
+_TIMEDELTA_UNITS = ("weeks", "days", "hours", "minutes", "seconds")
+_COMPARE_WORDS: dict[type, str] = {
+    ast.Eq: "is",
+    ast.NotEq: "is not",
+    ast.Lt: "is under",
+    ast.LtE: "is at most",
+    ast.Gt: "is over",
+    ast.GtE: "is at least",
+    ast.In: "is in",
+    ast.NotIn: "is not in",
+    ast.Is: "is",
+    ast.IsNot: "is not",
+}
+
+
+class _Renderer:
+    """An assertion as words: names split and lower-cased, resolved
+    constants and parametrize values as their values, `timedelta(days=N)`
+    as "N days", `X + timedelta(...)` as "N days after X", an enum member
+    as its own name, cents as dollars."""
+
+    def __init__(self, constants: dict[str, tuple[Any, str | None]], binding: dict[str, Any]):
+        self.constants = constants
+        self.binding = binding
+
+    def expr(self, node: ast.expr) -> str:
+        if isinstance(node, ast.Constant):
+            return str(node.value).lower() if isinstance(node.value, bool) else str(node.value)
+        if isinstance(node, ast.Name):
+            if node.id in self.binding:
+                return str(self.binding[node.id])
+            if node.id in self.constants:
+                return _value_text(*self.constants[node.id])
+            return " ".join(_ident_words(node.id))
+        if isinstance(node, ast.Attribute):
+            if (
+                isinstance(node.value, ast.Name)
+                and node.value.id[:1].isupper()
+                and node.attr.isupper()
+            ):
+                return node.attr.lower()
+            return f"{self.expr(node.value)} {' '.join(_ident_words(node.attr))}"
+        if isinstance(node, ast.Subscript):
+            key = node.slice
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                return f"{self.expr(node.value)} {key.value}"
+            return ast.unparse(node)
+        if isinstance(node, ast.Call):
+            return self.call(node)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+            if isinstance(node.right, ast.Call) and _call_name(node.right) == "timedelta":
+                word = "after" if isinstance(node.op, ast.Add) else "before"
+                return f"{self.call(node.right)} {word} {self.expr(node.left)}"
+            word = "plus" if isinstance(node.op, ast.Add) else "minus"
+            return f"{self.expr(node.left)} {word} {self.expr(node.right)}"
+        return ast.unparse(node)
+
+    def call(self, node: ast.Call) -> str:
+        name = _call_name(node)
+        if name == "timedelta":
+            parts = []
+            for kw in node.keywords:
+                if kw.arg in _TIMEDELTA_UNITS:
+                    amount = self.expr(kw.value).split(" ")[0]
+                    unit = kw.arg if amount != "1" else kw.arg[:-1]
+                    parts.append(f"{amount} {unit}")
+            return " and ".join(parts) or ast.unparse(node)
+        if name == "Decimal" and node.args:
+            return self.expr(node.args[0])
+        if name == "len" and node.args:
+            return f"the number of {self.expr(node.args[0])}"
+        return " ".join(_ident_words(name))
+
+    def compare(self, node: ast.Compare) -> str:
+        if len(node.ops) != 1:
+            return ast.unparse(node)
+        left, right, op = node.left, node.comparators[0], type(node.ops[0])
+        verb = _COMPARE_WORDS.get(op, "is")
+        if (
+            isinstance(left, ast.Name)
+            and left.id in self.constants
+            and isinstance(right, (ast.Constant, ast.Call))
+        ):
+            value, unit = self.constants[left.id]
+            return f"the {_constant_phrase(left.id, unit)} {verb} {_value_text(value, unit)}"
+        left_text, right_text = self.expr(left), self.expr(right)
+        cents_literal = (
+            isinstance(right, ast.Constant)
+            and isinstance(right.value, int)
+            and not isinstance(right.value, bool)
+        )
+        if cents_literal and _is_cents(left_text):
+            right_text = _format_money(right.value / 100)
+            left_text = " ".join(w for w in left_text.split() if w not in ("cent", "cents"))
+        article = "the " if left_text[:1].isalpha() and not isinstance(left, ast.Constant) else ""
+        if verb == "is" and left_text.endswith(" at"):
+            return f"{article}{left_text[: -len(' at')]} {right_text}"
+        return f"{article}{left_text} {verb} {right_text}"
+
+    def assertion(self, node: ast.expr) -> str:
+        if isinstance(node, ast.Compare):
+            return self.compare(node)
+        return f"{self.expr(node)} holds"
+
+
+def _raises_clauses(func: ast.FunctionDef | None, renderer: _Renderer) -> list[str]:
+    """`with pytest.raises(E): x.f(...)` checks that f raises E."""
+    clauses: list[str] = []
+    if func is None:
+        return clauses
+    for node in ast.walk(func):
+        if not isinstance(node, ast.With):
+            continue
+        for item in node.items:
+            ctx = item.context_expr
+            if isinstance(ctx, ast.Call) and _call_name(ctx) == "raises" and ctx.args:
+                inner = [c for stmt in node.body for c in ast.walk(stmt) if isinstance(c, ast.Call)]
+                subject = renderer.call(inner[0]) if inner else "the call"
+                clauses.append(f"{subject} raises {ast.unparse(ctx.args[0])}")
+    return clauses
+
+
+def _action(func: ast.FunctionDef | None, skeleton: Skeleton) -> str | None:
+    """The call the assertions read, rendered as "after <call>": the last
+    top-level call before the first assertion whose result an assertion
+    reads or which is handed a name an assertion reads."""
+    if func is None:
+        return None
+    read: set[str] = set()
+    for node in _parse_asserts(skeleton):
+        read |= {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+    action = None
+    for stmt in func.body:
+        if isinstance(stmt, ast.Assert):
+            break
+        call = getattr(stmt, "value", None)
+        if not isinstance(call, ast.Call):
+            continue
+        targets: set[str] = set()
+        if isinstance(stmt, ast.Assign):
+            targets = {n.id for t in stmt.targets for n in ast.walk(t) if isinstance(n, ast.Name)}
+        args = {n.id for a in call.args for n in ast.walk(a) if isinstance(n, ast.Name)}
+        if targets & read or (isinstance(stmt, ast.Expr) and args & read):
+            action = " ".join(_ident_words(_call_name(call)))
+    return action
+
+
+_CALL_SUFFIX_WORDS = ("endpoint", "handler", "view", "route", "api")
+_PARTICLES = ("out", "in", "up", "off", "on", "down")
+
+
+def _participle(call_words: list[str]) -> str | None:
+    """A call named for a verb and its particle as the state it leaves:
+    `checkout` -> "checked out", `checkin` -> "checked in". Only a regular
+    verb with a particle: anything else has no participle here."""
+    if len(call_words) != 1:
+        return None
+    word = call_words[0]
+    for particle in _PARTICLES:
+        verb = word[: -len(particle)]
+        if word.endswith(particle) and len(verb) >= 3:
+            return f"{verb}{'d' if verb.endswith('e') else 'ed'} {particle}"
+    return None
+
+
+def _status_of(node: ast.expr) -> tuple[str, int] | None:
+    """(name, status) for an assertion on a call's status: `first[0] == 201`,
+    `third == (409, {...})`, or `status == 409` where `status` is unpacked
+    from the call."""
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+        return None
+    if not isinstance(node.ops[0], ast.Eq):
+        return None
+    left, right = node.left, node.comparators[0]
+    if isinstance(right, ast.Tuple) and right.elts:
+        right = right.elts[0]
+    if not (
+        isinstance(right, ast.Constant)
+        and isinstance(right.value, int)
+        and not isinstance(right.value, bool)
+        and _is_http_status_shaped(right.value)
+    ):
+        return None
+    if isinstance(left, ast.Subscript):
+        left = left.value
+    return (left.id, right.value) if isinstance(left, ast.Name) else None
+
+
+def _prior_calls_condition(
+    skeleton: Skeleton,
+    func: ast.FunctionDef | None,
+    module: ast.Module | None,
+    source_lookup: SourceLookup | None,
+) -> str | None:
+    """The calls a refused call depends on: when the test asserts that
+    several calls of one function succeed (2xx) and the next is refused
+    (4xx), the earlier successes are the condition it sets up, counted and
+    named by the argument that differs between the calls ("2 bikes checked
+    out" for `checkout_endpoint(..., "bike-1", ...)`, `"bike-2"`; the
+    parameter is `bike_id`)."""
+    if func is None:
+        return None
+    produced: dict[str, ast.Call] = {}
+    statuses: dict[int, tuple[ast.Call, int]] = {}  # by call, in assertion order
+    for stmt in func.body:
+        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
+            for target in stmt.targets:
+                for name in (n for n in ast.walk(target) if isinstance(n, ast.Name)):
+                    produced[name.id] = stmt.value
+        elif isinstance(stmt, ast.Assert):
+            found = _status_of(stmt.test)
+            if found and found[0] in produced:
+                call = produced[found[0]]
+                statuses.setdefault(id(call), (call, found[1]))
+    sequence = list(statuses.values())
+    if len(sequence) < 2:
+        return None
+    *earlier, (last_call, last_status) = sequence
+    name = _call_name(last_call)
+    if not 400 <= last_status < 500:
+        return None
+    if any(_call_name(c) != name or not 200 <= st < 300 for c, st in earlier):
+        return None
+    calls = [c for c, _ in earlier] + [last_call]
+    params = _callee_params(name, skeleton, module, source_lookup)
+    varying = [
+        i
+        for i in range(min(len(c.args) for c in calls))
+        if len({ast.unparse(c.args[i]) for c in calls}) == len(calls)
+    ]
+    if not varying or varying[0] >= len(params):
+        return None
+    noun_words = [w for w in _ident_words(params[varying[0]]) if w != "id"]
+    call_words = [w for w in _ident_words(name) if w not in _CALL_SUFFIX_WORDS]
+    participle = _participle(call_words)
+    if not noun_words or participle is None:
+        return None
+    count = len(earlier)
+    noun = " ".join(noun_words) + ("" if count == 1 else "s")
+    return f"{count} {noun} {participle}"
+
+
+def _condition_text(conditions: dict[str, bool]) -> str:
+    return " and ".join(f"{flag} {'on' if value else 'off'}" for flag, value in conditions.items())
+
+
+def _assertion_sentence(
+    skeleton: Skeleton,
+    func: ast.FunctionDef | None,
+    constants: dict[str, tuple[Any, str | None]],
+    binding: dict[str, Any],
+    conditions: dict[str, bool],
+    prior: str | None = None,
+) -> str:
+    """The statement when the name says more than the assertions check:
+    every assertion, rendered, after the call they read, under the test's
+    conditions and parametrize values. A bare status or count is stated as
+    exactly that."""
+    renderer = _Renderer(constants, binding)
+    clauses: list[str] = []
+    for node in _parse_asserts(skeleton):
+        clause = renderer.assertion(node)
+        if clause not in clauses:
+            clauses.append(clause)
+    clauses += _raises_clauses(func, renderer)
+    if not clauses:
+        return ""
+    body = clauses[0] if len(clauses) == 1 else ", ".join(clauses[:-1]) + " and " + clauses[-1]
+    action = _action(func, skeleton)
+    text = f"after {action}, {body}" if action else body
+    if conditions:
+        text += f" with {_condition_text(conditions)}"
+    if prior:
+        text += f" {'and' if conditions else 'with'} {prior}"
+    if binding:
+        text += " for " + " and ".join(f"{k} {v}" for k, v in binding.items())
+    return _sentence(text)
+
+
+def _with_conditions(words: list[str], conditions: dict[str, bool]) -> list[str]:
+    """The conditions said in the name's own words where it names the flag
+    ("allowed with overflow parking" -> "... overflow parking on"), else
+    appended; a name that already says "flag on/off" keeps its own."""
+    out = list(words)
+    lowered = [w.lower() for w in out]
+    if "flag" in lowered and any(w in ("on", "off") for w in lowered):
+        return out
+    rest: dict[str, bool] = {}
+    for flag, value in conditions.items():
+        flag_words = flag.lower().split("_")
+        n = len(flag_words)
+        at = next(
+            (i for i in range(len(lowered) - n + 1) if lowered[i : i + n] == flag_words), None
+        )
+        if at is None:
+            rest[flag] = value
+        else:
+            out.insert(at + n, "on" if value else "off")
+            lowered.insert(at + n, "on" if value else "off")
+    if rest:
+        out += ["with", _condition_text(rest)]
+    return out
+
+
+def _insert_values(words: list[str], clauses: list[tuple[str, Any, str | None]]) -> list[str]:
+    """Each asserted constant's value in the name sentence: a number the name
+    already states becomes the constant's formatted value ("cap 30" ->
+    "cap $30.00"); otherwise "is <value>" goes before the name's condition
+    ("The ebike surcharge is $0.10 when flag on")."""
+    out = list(words)
+    pending: list[str] = []
+    for _, value, unit in clauses:
+        numeric = value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        at = next(
+            (
+                i
+                for i, w in enumerate(out)
+                if numeric is not None
+                and _number_value(w) is not None
+                and abs(_number_value(w) - float(numeric)) < 1e-9
+            ),
+            None,
+        )
+        if at is not None:
+            out[at] = _value_text(value, unit) if unit == "usd" else out[at]
+        else:
+            pending.append(_value_text(value, unit))
+    if not pending:
+        return out
+    cut = next((i for i, w in enumerate(out) if i > 0 and w.lower() in _CONDITION_WORDS), len(out))
+    return ["the", *out[:cut], "is", " and ".join(pending), *out[cut:]]
+
+
+def _python_statement(skeleton: Skeleton, source_lookup: SourceLookup | None) -> str:
+    """The statement from what the assertions assert (module docstring,
+    fifth pass)."""
+    func, module = _test_function(skeleton, source_lookup)
+    constants = _constant_values(skeleton, source_lookup)
+    binding = _parametrize_binding(skeleton, func)
+    conditions = _conditions(skeleton, func, module, source_lookup)
+    prior = _prior_calls_condition(skeleton, func, module, source_lookup)
+    constant_clauses = _constant_clauses(skeleton, constants)
+
+    words = _name_words(skeleton)
+    vocabulary = _test_vocabulary(skeleton, func, module, source_lookup, conditions, binding)
+    vocabulary |= _outcome_support(skeleton, func)
+    numbers = _numbers_in(
+        _code_of(func) if func is not None else _parse_asserts(skeleton), constants
+    )
+    numbers |= {float(v) for v in binding.values() if isinstance(v, (int, float))}
+    asserted = _numbers_in(_parse_asserts(skeleton), constants)
+    constant_asserted = {float(v) for _, v, _ in constant_clauses if isinstance(v, (int, float))}
+
+    def is_supported(word: str) -> bool:
+        if _number_value(word) is not None or _STATUS_CLASS_RE.match(word):
+            return _number_supported(word, numbers)
+        return not _is_content(word) or _stem(word) in vocabulary
+
+    supported = _label_words(words, [is_supported(w) for w in words], asserted, constant_asserted)
+
+    if words and all(supported) and any(_is_content(w) for w in words):
+        words = _insert_values(words, constant_clauses)
+        if not constant_clauses:
+            # A constant's value holds whatever the calls set up; only an
+            # assertion on a call's result depends on the call's flags.
+            words = _with_conditions(words, conditions)
+            if prior:
+                words += ["and" if words[-2:-1] == ["with"] else "with", prior]
+        if binding:
+            words += ["for", " and ".join(f"{k} {v}" for k, v in binding.items())]
+        return _sentence(" ".join(words))
+    statement = _assertion_sentence(skeleton, func, constants, binding, conditions, prior)
+    if statement:
+        return statement
+    return _sentence(" ".join(words) + " runs without raising") if words else ""
+
+
 # ------------------------------------------------------------------- top
 
 
@@ -989,7 +1876,14 @@ def extract(skeleton: Skeleton, source_lookup: SourceLookup | None = None) -> Ru
     service = _service_from_imports(skeleton.imports)
     category = _category(skeleton)
     constants = _resolve_constants(skeleton, source_lookup)
-    claims = tuple(claim for _, claim, _ in constants)
+    flags = _flags_set(skeleton, source_lookup) if skeleton.language == "python" else set()
+    # A value constant named exactly as a flag the test's calls set
+    # (`EBIKE_SURCHARGE` beside `ebike_surcharge_enabled`) would claim its
+    # value for the flag, which is on or off, never $0.10. The code gives the
+    # value no other name, so it gets no claim (asbuilt#36); the statement
+    # still states the value.
+    flag_named = {name for name, _, _ in constants if name.lower() in flags}
+    claims = tuple(claim for name, claim, _ in constants if name not in flag_named)
 
     if skeleton.language != "python":
         statement = _ts_statement(skeleton)
@@ -1010,18 +1904,17 @@ def extract(skeleton: Skeleton, source_lookup: SourceLookup | None = None) -> Ru
             detail=detail,
         )
 
-    sentence1 = _name_sentence(skeleton)
     clauses, extra_entities = _assert_clauses(skeleton)
     detail = _join_detail(clauses)
     if not clauses and skeleton.docstring:
         detail = _clean_docstring(skeleton.docstring)
-    statement = sentence1
+    statement = _python_statement(skeleton, source_lookup)
     if not statement and skeleton.asserts:
         statement = f"The test asserts: {skeleton.asserts[-1].source}."
     if not statement:
         return None
 
-    fallback_claim = None if claims else _fallback_claim(skeleton)
+    fallback_claim = None if claims or flag_named else _fallback_claim(skeleton)
     if fallback_claim is not None:
         claims = (fallback_claim,)
 

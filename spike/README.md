@@ -448,16 +448,35 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   collects at any history step via `bench.build.Timeline`, materialized to a
   temp directory.
 - **Extraction.** `extract_rules.py` is a deterministic extractor: one
-  ONE-SENTENCE `statement` per test, never past its own assertion, built
-  from the test's own name (e.g. `test_lost_bike_fee_150` → "Lost bike fee
-  $150.00." — the name's own trailing number upgraded to its primary
-  assert's money value); every assertion clause, API/error clause and event
-  clause instead goes into a separate `detail` field (semicolon-joined,
-  carried for arms and readers but never matched against truth — appending
-  them to `statement` itself was tried and reverted: the matcher's
-  similarity is a word-overlap coefficient over the whole statement, and
-  enough unrelated clause words pushed even a correct name sentence below
-  its threshold). Claims come from module-level constants the test's own
+  ONE-SENTENCE `statement` per test, built from what its assertions assert
+  (asbuilt#36, D-013: a passing test proves exactly that). The test's name
+  may choose the words but never adds a behaviour: each content word of the
+  name must be backed by the test's own code (its names, attributes,
+  keywords, string literals, the parameter names its arguments bind), by an
+  outcome an assertion checks (a 4xx status or error code backs "refused",
+  a 2xx "allowed"), or by labelling a value an assertion proves that no
+  constant names ("unlock fee" beside an asserted 100 cents). A backed name
+  is the statement, with each asserted constant's value stated in it ("The
+  member rate after free minutes is $0.15.") and the flag the assertions'
+  calls set, when the module's tests set it both ways ("Checkin at full
+  station refused with overflow_parking off."), and the earlier successful
+  calls a refused one depends on ("Third checkout refused with 2 bikes
+  checked out."). A value constant named as a flag the test sets
+  (`EBIKE_SURCHARGE`, `ebike_surcharge_enabled`) gets no claim, which would
+  otherwise give the flag a dollar value. Otherwise the statement is
+  the assertions rendered: `test_membership_lapses_7_days_after_failed_
+  renewal`, which asserts `GRACE_DAYS == 7`, a `GRACE` status and a
+  `grace_ends_at`, says "After handle failed renewal, the grace is 7 days,
+  the membership status is grace and the membership grace ends 7 days after
+  failed at.", not "lapses". Vitest statements are still `<describe> <it
+  title>`. Every assertion clause, API/error clause and event clause also
+  goes into a separate `detail` field (semicolon-joined, carried for arms
+  and readers but never matched against truth). Measured with #35's scorer
+  (`--facts`, `--truth-filter tests`), executed-tier precision rose from
+  14/21 to 18/21 at c1 to c4, 13/20 to 18/20 at c5 and 15/23 to 20/23 at c6,
+  recall with it; short of 0.95, and the remaining misses are listed in the
+  pull request. Which extractor ships by default waits for the model
+  extractor's runs (asbuilt#36, item 3); until then it is rules. Claims come from module-level constants the test's own
   assertions reference first, falling back — conservatively, only when
   confident (a sole or name-word-matching money/cents/count comparison,
   never an HTTP status or a bare length) — to a claim derived from the
@@ -470,8 +489,9 @@ candidate facts, per D-013's provenance tiers. It has two halves:
   the general rule the test proves, keeps the scenario in `detail`, wants
   the claim as the rule's own quantity in the code's unit rather than a
   total the test computed, names the system's entity kinds, allows a
-  status code only when the fact is about the response, and makes no call
-  for a skipped test (its rules guess stays). **`claude-code`** (the default) is one
+  status code only when the fact is about the response, states D-013's rule
+  with an over-claiming test name as its negative example (asbuilt#36), and
+  makes no call for a skipped test (its rules guess stays). **`claude-code`** (the default) is one
   `claude -p` subprocess per skeleton, capped at four turns (asbuilt#23:
   the structured-output tool call may follow a sentence of prose on a
   second turn, and a cap of one killed a real run; a schema-invalid answer
