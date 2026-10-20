@@ -3639,7 +3639,8 @@ def test_g3_an_over_claim_above_the_proven_fidelity_is_a_miss():
 @pytest.mark.fixture
 def test_g4_a_non_string_fidelity_or_project_is_absent_not_a_crash():
     """G4: a list-valued `fidelity` is unqualified; a list-valued `project`
-    is no project, so the claim it carries has no run at its fidelity."""
+    is no project, so the claim it carries has no run at its fidelity; a
+    non-string `location` is no location, so the real run alone counts."""
     listed_fidelity = _portal_fact(0, fidelity=["real"])
     listed_project = _portal_fact(
         0,
@@ -3652,3 +3653,9 @@ def test_g4_a_non_string_fidelity_or_project_is_absent_not_a_crash():
     assert report["distinct_executed_by_fidelity"]["unqualified"]["strict"]["n"] == 1
     fidelity = _portal_report([listed_project])["surfaces"]["explain"]["tier"]["fidelity"]
     assert fidelity["by_fidelity"]["real"]["hard_errors"] == 1
+    odd_location = _portal_fact(
+        0,
+        citations=[{"document": "run/playwright-c7", "location": {"line": 12}, "project": "real"}],
+    )
+    fidelity = _portal_report([odd_location])["surfaces"]["explain"]["tier"]["fidelity"]
+    assert fidelity["by_fidelity"]["real"]["hard_errors"] == 0

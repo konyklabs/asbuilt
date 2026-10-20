@@ -1740,13 +1740,15 @@ def _citation_fidelities(rf: dict[str, Any], fidelities: Fidelities, runs: Truth
     citation counts only when it names a run the truth has (`truth_runs`:
     at or before the run's step), and, when it names a test (`location`),
     one that passed there: a failed run, a run that does not exist and a
-    run after the step count at no fidelity."""
+    run after the step count at no fidelity. A `project` or `location` that
+    is not a string is treated as absent."""
     out: set[str] = set()
     for c in rf.get("citations") or []:
         project = c.get("project") if isinstance(c.get("project"), str) else None
+        location = c.get("location") if isinstance(c.get("location"), str) else None
         document = str(c.get("document", ""))
         passed = runs.get((document, project))
-        if passed is None or (c.get("location") is not None and c.get("location") not in passed):
+        if passed is None or (location is not None and location not in passed):
             continue
         fidelity = fidelities.of_carrier(Carrier(document=document, project=project))
         if fidelity is not None:
