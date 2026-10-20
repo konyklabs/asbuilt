@@ -208,15 +208,31 @@ uv sync
    across a surface's queries — micro-averaged — before computing ratios,
    and per-category breakdowns bucket by the *truth* fact's category only).
    The matcher itself is calibrated: `bench/score.py --calibrate` runs the
-   118 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
+   130 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
    (1.0/1.0), and `--calibrate tests/fixtures/calibration-model-run.yaml`
-   the 89 pairs judged from the test connector's first real model run plus
-   targeted pairs per rule (asbuilt#17: precision 1.0, recall 0.64 by
-   design — the misses are narratives of a test scenario, not matcher
-   defects). The rules a fuller statement is held to — HTTP codes set
+   the 91 pairs judged from the test connector's first real model run plus
+   targeted pairs per rule (asbuilt#17 and #35: precision 1.0, recall 0.59
+   strict and 0.62 lenient by design — the misses are narratives of a test
+   scenario, not matcher defects, and one paraphrase the over-claim rule
+   misses, kept to show its cost). The rules a fuller statement is held to — HTTP codes set
    aside, extra numbers only of a kind the fact does not use, flag state as
    its own polarity, a claim naming the entity its own way handed to the
    statement rule — are in the module docstring under asbuilt#17.
+   Since asbuilt#35 the matcher reads compound number words ("forty-five"
+   is 45), never matches an outcome against its opposite ("allowed"
+   against "refused"; the veto is lexical, so it also refuses a
+   permitted-side paraphrase of a limit, "allowed to hold at most 2 bikes"
+   against "a third check-out is refused", as its known cost), and holds a statement to the strict reading: it
+   states its fact, its value and its flag condition on its own, so a
+   claim no longer supplies a value the words leave out, and a statement
+   that does not name the quantity its agreeing claim is about ("lapses"
+   for a grace period) is not credited at all. `--calibrate` prints the
+   strict reading and the lenient one; a pair the two readings decide
+   differently carries `lenient_expect` and a `why` naming the strict rule.
+   A contradiction side's entity names lose a known kind prefix
+   ("rule:checkout-limit") before alignment, and a side states a fact when
+   its whole statement or one of its clauses (split at ";") matches it
+   under the same rules.
 
    Explain and search print a line per provenance tier (asbuilt#34):
    `tier executed`, `tier code` and `tier documented`, each with precision
@@ -225,6 +241,18 @@ uv sync
    the expected facts of that tier). `--json` carries them under the
    surface's `tier` (`precision_code`, `recall_documented`, and the counts
    beside them), and several runs print their median, minimum and maximum.
+   Below the surfaces, `executed tier, distinct facts (explain+search)`
+   counts every returned fact claiming `executed` once, by its id or by
+   its statement and citations, whichever query returned it, and judges
+   it against every truth fact valid by the run's step and proven by a run
+   at or before it (executed at that point in the history), not only
+   the query's expected ones (asbuilt#35, D-014: the reading the 0.95 bar
+   is judged on). It prints the strict reading and, beside it, the lenient
+   one, each with its n and its Wilson 95% lower bound; `--json` carries
+   both under `distinct_executed`, with the statements judged wrong.
+   Explain and search also count `restated` facts: an unmatched fact that
+   would match a truth fact its query already credited, counted apart
+   from hard false positives and unplanted facts.
    Expected sets honour the results file's `through_step`: a truth fact
    valid from a later step, a contradiction one of whose facts is, and a
    page made stale by a later step are not expected of the run. A results

@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -89,3 +92,36 @@ def test_build_reproduces_the_shas_recorded_in_runs(tmp_path: Path):
     for step, shas in expected_by_step.items():
         assert len(shas) == 1, f"{step}: conflicting SHAs recorded across runs/*.json: {shas}"
         assert commits[step]["sha"] == next(iter(shas)), step
+
+
+def test_validate_rejects_a_run_cited_where_the_test_does_not_assert_the_fact(tmp_path: Path):
+    """asbuilt#35 item 7: an executed fact's runs are the steps where its
+    test passes AND asserts it. F-007's test passes c1..c6 but carries the
+    member assertion only from c5, so citing run/pytest-c4 is rejected; the
+    fixture as committed passes."""
+    _skip_if_no_real_fixture()
+    for rel in ("truth", "system/history/steps.yaml", "queries/mix.yaml"):
+        src, dest = SPIKE_ROOT / rel, tmp_path / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dest, ignore=shutil.ignore_patterns("__pycache__"))
+        else:
+            shutil.copy(src, dest)
+    validate = [sys.executable, str(tmp_path / "truth" / "validate.py")]
+    ok = subprocess.run(validate, capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stdout
+    facts = tmp_path / "truth" / "facts.yaml"
+    run_c5 = (
+        "  - document: run/pytest-c5\n"
+        "    location: tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on\n"
+    )
+    text = facts.read_text()
+    assert text.count(run_c5) == 1
+    facts.write_text(text.replace(run_c5, run_c5.replace("c5", "c4") + run_c5))
+    bad = subprocess.run(validate, capture_output=True, text=True)
+    assert bad.returncode == 1
+    assert (
+        "F-007: runs of tests/unit/test_pricing.py::test_ebike_surcharge_when_flag_on at "
+        "['c4', 'c5', 'c6'], but it passes and asserts the fact within the validity at "
+        "['c5', 'c6']"
+    ) in bad.stdout

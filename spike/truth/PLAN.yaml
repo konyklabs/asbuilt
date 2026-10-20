@@ -3165,7 +3165,7 @@ tests:
   framework: pytest
   asserts:
   - fact: F-007
-    steps: [c1, c2, c3, c4, c5, c6]
+    steps: [c5, c6]
   passes_in: [c1, c2, c3, c4, c5, c6]
 - document: code/tests/unit/test_pricing.py
   id: tests/unit/test_pricing.py::test_member_rate_after_free_minutes

@@ -190,12 +190,18 @@ for fid, f in facts.items():
             pt = plan_tests.get(loc)
             if not pt:
                 continue  # reported with the PLAN resolution below
-            want = set(validity) & set(pt["passes_in"])
+            # A run proves the fact only at a step where the test both
+            # passes and asserts it (asbuilt#35: F-007's member assertion is
+            # in the test at c5 and c6 only, though the test passes c1..c6).
+            asserted = {
+                s for e in pt.get("asserts", []) if e.get("fact") == fid for s in e["steps"]
+            }
+            want = set(validity) & set(pt["passes_in"]) & asserted
             got = {run_step(r["document"]) for r in runs if r["location"] == loc}
             if got != want:
                 fail(
-                    f"{fid}: runs of {loc} at {sorted(got)}, "
-                    f"but it passes within the validity at {sorted(want)}"
+                    f"{fid}: runs of {loc} at {sorted(got)}, but it passes and asserts "
+                    f"the fact within the validity at {sorted(want)}"
                 )
             if not got:
                 fail(f"{fid}: executed, but {loc} never passes within the validity")
