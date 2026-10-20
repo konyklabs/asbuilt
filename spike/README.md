@@ -288,7 +288,11 @@ uv sync
    A contradiction side's entity names lose a known kind prefix
    ("rule:checkout-limit") before alignment, and a side states a fact when
    its whole statement or one of its clauses (split at ";") matches it
-   under the same rules.
+   under the same rules. Since asbuilt#63 a negated duration bound and its
+   complement are one boundary: "not docked within 24 hours" and "open
+   past 24 hours" (same number and unit) do not trip the negation veto,
+   while the bound flipped, another number or unit, the outcome negated
+   and a negation that may govern more than the bound stay refused.
 
    Explain and search print a line per provenance tier (asbuilt#34):
    `tier executed`, `tier code` and `tier documented`, each with precision
@@ -321,7 +325,10 @@ uv sync
    since asbuilt#38, the portal's Playwright specs in `code/web/tests/`), `code` (a `code/` file outside the test
    directories, at or before the step) or `documents` (a wiki page, doc,
    ticket or pull request; their versions are not history steps, so any
-   one counts).
+   one counts). A fact's tier at the step is `executed` when a run at or
+   before the step lifts it and no demotion applies by then (asbuilt#63,
+   the distinct measure's rule; F-050's flaky c6 runs leave it executed
+   on its c1 to c5 runs); otherwise `code` where code carries it.
 
    **Backend fidelity** (asbuilt#38, D-014). A returned executed fact
    names the fidelity it claims in its own `fidelity` field (a name from

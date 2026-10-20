@@ -498,3 +498,95 @@
 - truth: "A rider can hold at most 2 bikes at once, so a third check-out is refused."
   candidate: "A rider can hold at most 2 bikes at once, so a check-out of a further bike is allowed."
   expect: false
+
+# -- a negated duration bound and its complement (konyklabs/asbuilt#63) ---
+# "not ... within N unit" and "past / more than / over N unit" (same N and
+# unit) are one boundary; the negation is the bound's direction, not the
+# sentence's polarity. Hard negatives: the bound flipped, another number or
+# unit, the outcome negated, a negation governing the outcome instead of the
+# bound, an "unless", and the ambiguous "not docked after 24 hours", which
+# the rule leaves to the plain veto. The same labels hold in both readings.
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "Ride open past 24 hours closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: true
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is still undocked more than 24 hours after check-out is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: true
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike isn't docked within 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: true
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride is closed as lost when it is not docked within 24 hours."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: true
+- truth: "A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee."
+  candidate: "A bike still out past 24 hours costs the rider a $100.00 lost-bike fee."
+  expect: true
+- truth: "Each Tollbooth Pay call times out after 5 seconds."
+  candidate: "Each Tollbooth Pay call times out when it does not answer within 5 seconds."
+  expect: true
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride docked within 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 12 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 24 hours is not closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 24 hours is never closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "No ride open past 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride is not closed as lost within 24 hours."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is not docked within 24 hours is not closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is docked within 24 hours of check-out is not closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is not docked past 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride whose bike is not docked after 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride not docked within 24 minutes is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open for 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open less than 24 hours is closed as lost."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A ride whose bike is not docked within 24 hours of check-out is closed as lost."
+  candidate: "A ride open past 24 hours is closed as lost unless it is not docked within 24 hours."
+  truth_claim: {entity: E-rule-lost-bike-fee, attribute: lost_after, value: 24, unit: hour}
+  expect: false
+- truth: "A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee."
+  candidate: "A bike still out past 24 hours does not cost the rider a $100.00 lost-bike fee."
+  expect: false
+- truth: "Each Tollbooth Pay call times out after 5 seconds."
+  candidate: "Each Tollbooth Pay call does not time out within 5 seconds."
+  expect: false

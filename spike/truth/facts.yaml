@@ -1198,7 +1198,7 @@
     location: '#producers'
     version: 3
 - id: F-051
-  statement: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+  statement: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full when the overflow_parking flag is off.
   category: technical-implementation
   entities: [E-dockyard, E-endpoint-checkin, E-rule-station-capacity]
   tier: executed

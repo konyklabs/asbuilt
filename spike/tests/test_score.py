@@ -3659,3 +3659,116 @@ def test_g4_a_non_string_fidelity_or_project_is_absent_not_a_crash():
     )
     fidelity = _portal_report([odd_location])["surfaces"]["explain"]["tier"]["fidelity"]
     assert fidelity["by_fidelity"]["real"]["hard_errors"] == 0
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#63: the marking corrections #36's measurement found
+# --------------------------------------------------------------------------
+
+_F010_RIGHT = (
+    "Ride open past 24 hours closed as lost.",
+    "A ride whose bike is still undocked more than 24 hours after check-out is closed as lost.",
+    "A ride whose bike isn't docked within 24 hours is closed as lost.",
+    "A ride is closed as lost when it is not docked within 24 hours.",
+)
+_F010_WRONG = (
+    "A ride docked within 24 hours is closed as lost.",
+    "A ride open past 12 hours is closed as lost.",
+    "A ride open past 24 hours is not closed as lost.",
+    "A ride open past 24 hours is never closed as lost.",
+    "No ride open past 24 hours is closed as lost.",
+    "A ride is not closed as lost within 24 hours.",
+    "A ride whose bike is not docked within 24 hours is not closed as lost.",
+    "A ride whose bike is docked within 24 hours of check-out is not closed as lost.",
+    "A ride whose bike is not docked past 24 hours is closed as lost.",
+    "A ride not docked within 24 minutes is closed as lost.",
+    "A ride open for 24 hours is closed as lost.",
+    "A ride open less than 24 hours is closed as lost.",
+    "A ride open past 24 hours is closed as lost unless it is not docked within 24 hours.",
+)
+
+
+@pytest.mark.fixture
+def test_a_negated_bound_and_its_complement_are_one_boundary():
+    """Item 1: "not docked within 24 hours" and "open past 24 hours" state
+    F-010's boundary from its two sides, so the negation veto does not fire
+    between them. The bound flipped, another number or unit, the outcome
+    negated, a negation governing the outcome rather than the bound, and an
+    "unless" stay refused, in both readings. Several of these wrong
+    statements were credited by the plain veto, which compared only whether
+    each side was negated at all."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f010 = truth.facts["F-010"]
+    for strict in (True, False):
+        for candidate in _F010_RIGHT:
+            assert _statement_matches(
+                candidate, f010.statement, mention_index, None, f010.claim, strict
+            ), candidate
+        for candidate in _F010_WRONG:
+            assert not _statement_matches(
+                candidate, f010.statement, mention_index, None, f010.claim, strict
+            ), candidate
+
+
+@pytest.mark.fixture
+def test_f051_states_its_flag_condition():
+    """Item 2: F-051's 409 holds only while the overflow_parking flag is off
+    (F-017, F-018), so the truth says so: a statement carrying the
+    condition is credited under the strict reading, one naming the other
+    state is not, and one dropping it no longer is."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f051 = truth.facts["F-051"]
+    assert f051.statement.endswith("when the overflow_parking flag is off.")
+
+    def matches(candidate: str) -> bool:
+        return _statement_matches(candidate, f051.statement, mention_index, None, f051.claim)
+
+    assert matches(
+        "A check-in at a full station gets HTTP 409 station_full while the overflow_parking "
+        "flag is off."
+    )
+    assert not matches(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code "
+        "station_full when the overflow_parking flag is on."
+    )
+    assert not matches(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full."
+    )
+
+
+@pytest.mark.fixture
+def test_step_tier_follows_the_distinct_target_rule():
+    """Item 3: under `--facts` a fact is executed at a step when a run at or
+    before it lifts it and no demotion applies by then. F-050's flaky c6
+    cites no run, so it stays executed on c1 to c5; F-007, proven from c5,
+    is code before; F-011 is code from its c5 demotion; F-012 is executed
+    from c6; F-123 is documented at c7."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+
+    def tier(fid: str, step: str) -> str:
+        return _expected_tier_at_step(truth.facts[fid], step, truth.fidelities, order)
+
+    assert [tier("F-011", s) for s in ("c1", "c4", "c5", "c6")] == [
+        "executed",
+        "executed",
+        "code",
+        "code",
+    ]
+    assert [tier("F-007", s) for s in ("c1", "c2", "c3", "c4", "c5", "c6")] == [
+        "code",
+        "code",
+        "code",
+        "code",
+        "executed",
+        "executed",
+    ]
+    assert tier("F-050", "c6") == "executed"
+    assert _expected_fidelity_at_step(truth.facts["F-050"], "c6", truth.fidelities, order) == (
+        "in-process"
+    )
+    assert [tier("F-012", s) for s in ("c6", "c7")] == ["executed", "executed"]
+    assert tier("F-123", "c7") == "documented"

@@ -269,6 +269,26 @@ New in konyklabs/asbuilt#38 (backend fidelity, D-014; truth/fidelities.yaml):
 * Contradictions are counted per truth kind (`by_kind`); the report
   prints the `fake-vs-real` line, found and winner, and `--facts` scores
   its candidates against those pairs too.
+
+New in konyklabs/asbuilt#63 (found by #36's measurement):
+
+* A negated duration bound and its complement are one boundary
+  (`_polarity_conflict`): "not docked within 24 hours" against "open past
+  24 hours" does not trip the negation veto. The negation is read as the
+  bound's direction only when it heads a short `within` clause whose
+  words the other statement does not use elsewhere; then the two must
+  agree on the remaining negation, state each bound read that way, and
+  agree on direction and unit wherever they name the same number. A bound
+  whose negation may govern more keeps it, with an unknown direction. A
+  pair with no negated bound gets the plain veto, unchanged. The plain
+  veto compared only whether each side was negated at all, so it credited
+  "A ride open past 24 hours is not closed as lost." against F-010; this
+  reading refuses it.
+* Under `--facts` a fact is executed at a step when a run at or before
+  the step lifts it and no demotion applies by then (`_runs_at_step`), the
+  distinct measure's rule: F-050's flaky c6 keeps it executed on c1 to c5,
+  and a fact retired at a step (`valid_to`, in scope there) is executed on
+  its earlier runs.
 """
 
 from __future__ import annotations
@@ -695,6 +715,115 @@ def _has_negation(text: str) -> bool:
     return bool(_NEGATION_RE.search(text))
 
 
+# konyklabs/asbuilt#63: a negated duration bound and its complement are one
+# boundary. "not docked within 24 hours" and "open past 24 hours" state the
+# same limit from its two sides, so the negation that makes the first is not
+# a polarity of the sentence: it is read as the bound's direction instead.
+# A bound is a duration (a number and a time unit) after a direction word:
+# inside (`within`, `less than`, `under`, `up to`, `at most`) or beyond
+# (`past`, `after`, `more than`, `over`, `beyond`, `longer than`). A
+# negation counts as the bound's when it heads a `within` clause of at most
+# five words with no conjunction or relative word in between, and none of
+# those words appears in the other statement outside its own bounds. If one
+# does, the negation may govern what the other statement asserts ("is not
+# closed as lost within 24 hours"), so it stays a negation and the bound's
+# direction is unknown, agreeing with no stated one. Once read, the two statements
+# must agree on the remaining negation and on every bound they share a
+# number with: its direction and its unit. A pair with no negated `within`
+# bound on either side is judged by the plain veto, as before.
+_DURATION = r"(?P<n>\d+(?:\.\d+)?)\s+(?P<unit>second|minute|hour|day|week|month|year)s?\b"
+_INSIDE_WORDS = ("within", "less than", "under", "up to", "at most")
+_BEYOND_WORDS = ("past", "after", "more than", "over", "beyond", "longer than")
+_BOUND_RE = re.compile(
+    r"\b(?P<dir>" + "|".join(_INSIDE_WORDS + _BEYOND_WORDS) + r")\s+" + _DURATION,
+    re.IGNORECASE,
+)
+_NEGATED_WITHIN_RE = re.compile(
+    r"(?:\b(?:not|never|no|cannot)\b|\b\w+n't\b)(?P<gap>(?:\s+[\w-]+){0,5}?)\s+(?P<within>within)\s+"
+    + _DURATION,
+    re.IGNORECASE,
+)
+_CLAUSE_WORDS = frozenset(
+    "and or but that which who whose when where if unless while because so then than".split()
+)
+_GAP_STOPWORDS = frozenset(
+    "a an the is are was be been its it of to at in on by as for still".split()
+)
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in _words(text) if w not in _GAP_STOPWORDS}
+
+
+_Bound = tuple[str, str, str]
+
+
+def _bound_reading(text: str, other: str) -> tuple[bool, set[_Bound], set[_Bound], bool]:
+    """(negated, bounds, read) of `text` against `other`. Each negated
+    `within` bound that is the bound's own (see above) is read as a
+    `beyond` bound and its negation dropped (`read`). One whose negation
+    may govern more than the bound (a gap word the other statement uses
+    outside its bounds) keeps its negation, and its bound's direction is
+    `unknown`: it agrees with no stated direction at that number, so
+    neither reading can credit a statement through it. `negated` is whether any negation
+    remains, an "unless" counting as one once a bound was read; `bounds`
+    is every (direction, number, unit). A text with no negated bound keeps
+    exactly `_has_negation`'s reading; the last value says whether it has
+    one at all."""
+    prose = _prenormalize_numeric_prose(text)
+    other_outside = _content_words(
+        _BOUND_RE.sub(" ", _NEGATED_WITHIN_RE.sub(" ", _prenormalize_numeric_prose(other)))
+    )
+    read: set[_Bound] = set()
+    bounds: set[_Bound] = set()
+    kept: list[str] = []
+    last = 0
+    negated_bound = False
+    for m in _NEGATED_WITHIN_RE.finditer(prose):
+        gap = m.group("gap").split()
+        if {w.lower() for w in gap} & _CLAUSE_WORDS:
+            continue  # the negation is another clause's; `within` is a plain bound
+        negated_bound = True
+        bound = (_normalize_number(m.group("n")), m.group("unit").lower())
+        if _content_words(" ".join(gap)) & other_outside:
+            bounds.add(("unknown", *bound))
+            kept.append(prose[last : m.start("within")])
+        else:
+            read.add(("beyond", *bound))
+            kept.append(prose[last : m.start()])
+        last = m.end()
+    kept.append(prose[last:])
+    rest = " ".join(kept)
+    if read:
+        negated = _has_negation(rest) or bool(re.search(r"\bunless\b", rest, re.IGNORECASE))
+    else:
+        negated = _has_negation(text)
+    bounds |= read
+    for m in _BOUND_RE.finditer(rest):
+        direction = "inside" if m.group("dir").lower() in _INSIDE_WORDS else "beyond"
+        bounds.add((direction, _normalize_number(m.group("n")), m.group("unit").lower()))
+    return negated, bounds, read, negated_bound
+
+
+def _polarity_conflict(a: str, b: str) -> bool:
+    """The negation veto, with a negated duration bound read as its
+    complement (konyklabs/asbuilt#63): the two statements disagree on the
+    remaining negation, a bound read from a negation is not stated by the
+    other statement too (it is one boundary from two sides, or nothing), or
+    they name one number as bounds in different directions or units. A pair
+    with no negated bound on either side gets the plain veto, unchanged."""
+    negated_a, bounds_a, read_a, has_a = _bound_reading(a, b)
+    negated_b, bounds_b, read_b, has_b = _bound_reading(b, a)
+    if not (has_a or has_b):
+        # No negated bound on either side: the plain veto, unchanged.
+        return _has_negation(a) != _has_negation(b)
+    if negated_a != negated_b:
+        return True
+    if not read_a <= bounds_b or not read_b <= bounds_a:
+        return True
+    return any(n == m and (d, u) != (e, v) for d, n, u in bounds_a for e, m, v in bounds_b)
+
+
 _MENTION_KINDS = {"team", "service", "integration", "queue", "job", "flag"}
 
 # konyklabs/asbuilt#7 review: a bare single-word team name/alias ("fleet")
@@ -1067,7 +1196,7 @@ def _statement_matches(
     claim of 0.25 does not make "Casual rate from 1st minute." say $0.25 per
     minute. `strict=False` is the lenient reading, kept for the distinct
     executed precision's comparison line only."""
-    if _has_negation(returned_statement) != _has_negation(truth_statement):
+    if _polarity_conflict(returned_statement, truth_statement):
         return False
     if _flag_state_conflict(returned_statement, truth_statement, mention_index):
         return False
@@ -3229,12 +3358,8 @@ def _expected_tier_at_step(
     fidelities: Fidelities | None = None,
     order: dict[str, int] | None = None,
 ) -> str:
-    """`executed` if the fact has a `run/pytest-<step_id>`,
-    `run/vitest-<step_id>` or `run/playwright-<step_id>` carrier — an EXACT
-    match, or a "-rerun"-suffixed variant ("a rerun carrier counts" —
-    konyklabs/asbuilt#8 review) — that lifts it (`_run_counts`: a demoted
-    fact's passes below the demoting fidelity do not, konyklabs/asbuilt#38);
-    `code` otherwise, when the fact has a `code/` carrier. Under the `tests`
+    """`executed` when a run lifts the fact at the step (`_runs_at_step`);
+    otherwise `code`, when the fact has a `code/` carrier. Under the `tests`
     and `code` filters every expected fact has one (that is what put it in
     scope); under `documents` a fact with none keeps its own static tier,
     `documented` in the fixture, rather than being labelled `code`
@@ -3257,7 +3382,20 @@ def _runs_at_step(
     fidelities: Fidelities | None = None,
     order: dict[str, int] | None = None,
 ) -> list[Carrier]:
+    """The runs that lift `tf` at `step_id`. With the step on the history
+    (konyklabs/asbuilt#63), the distinct measure's rule: a run carrier at or
+    before the step that lifts it (`_runs_by_step`), and none once a
+    demotion applies at or before it. F-050's flaky c6 is inconclusive and
+    cites no run, so its c1 to c5 runs keep it executed at c6; F-007, proven
+    from c5, is `code` at c1 to c4; F-011, demoted at c5, is `code` from c5.
+    With no step order, a run carrier at exactly the step, or a "-rerun"
+    of it ("a rerun carrier counts", konyklabs/asbuilt#8 review), as
+    before."""
     rank = (order or {}).get(step_id)
+    if rank is not None:
+        if _demoted_by_step(tf, order, rank):
+            return []
+        return _runs_by_step(tf, order or {}, rank, fidelities)
     runs = []
     for c in tf.carriers:
         for framework in ("pytest", "vitest", "playwright"):
@@ -3276,7 +3414,7 @@ def _expected_fidelity_at_step(
     order: dict[str, int] | None = None,
 ) -> str | None:
     """The strongest fidelity of the runs that lift `tf` at `step_id`
-    (konyklabs/asbuilt#38); None when none does."""
+    (konyklabs/asbuilt#38, `_runs_at_step`); None when none does."""
     return max(
         (fidelities.of_carrier(c) for c in _runs_at_step(tf, step_id, fidelities, order)),
         key=fidelities.rank,
