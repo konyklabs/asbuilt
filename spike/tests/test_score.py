@@ -2765,3 +2765,93 @@ def test_score_test_connector_documents_filter_is_step_current(tmp_path):
     at_c2 = score_test_connector([], truth_dir, "c2", commits, "documents")
     assert [m["id"] for m in at_c1["missed"]] == ["F-old"]
     assert sorted(m["id"] for m in at_c2["missed"]) == ["F-new", "F-old"]
+
+
+def _append_truth(root, facts: str = "", contradictions: str = "", stale: str = "") -> None:
+    truth_dir = root / "truth"
+    for name, text in (
+        ("facts.yaml", facts),
+        ("contradictions.yaml", contradictions),
+        ("stale.yaml", stale),
+    ):
+        path = truth_dir / name
+        path.write_text(path.read_text() + text)
+
+
+def test_score_keeps_a_retired_fact_expected_on_explain(tmp_path):
+    """`valid_to` is deliberately not checked: explain expects a fact's
+    whole history, so a value retired at c1 is still expected of a run
+    through c2."""
+    _write_step_truth(tmp_path)
+    _append_truth(
+        tmp_path,
+        facts=(
+            "- id: F-retired\n"
+            "  statement: The x window is 1 day.\n"
+            "  category: business-logic\n"
+            "  entities: [E-x]\n"
+            "  tier: documented\n"
+            "  valid_to: c1\n"
+            "  carriers:\n"
+            "    - document: wiki/z\n"
+        ),
+    )
+    report = score(_step_results(tmp_path, "c2"), tmp_path / "truth")
+    assert report["surfaces"]["explain"]["expected"] == 3  # F-old, F-new, F-retired
+
+
+def test_score_holds_back_truth_naming_a_step_the_fixture_does_not_list(tmp_path, capsys):
+    """A truth checkout ahead of the run's fixture (a c7 the fixture's
+    steps.yaml doesn't have): the fact, the contradiction it is in and the
+    page it makes stale are not expected of a run with a known
+    through_step, and stderr names the step. Without a through_step
+    nothing is held back and nothing is said."""
+    _write_step_truth(tmp_path)
+    _append_truth(
+        tmp_path,
+        facts=(
+            "- id: F-ahead\n"
+            "  statement: The x window is 9 days.\n"
+            "  category: business-logic\n"
+            "  entities: [E-x]\n"
+            "  tier: documented\n"
+            "  valid_from: c7\n"
+            "  carriers:\n"
+            "    - document: wiki/z\n"
+        ),
+        contradictions="- id: X-ahead\n  facts: [F-old, F-ahead]\n  kind: wiki-vs-test\n",
+        stale="- id: S-ahead\n  document: wiki/x\n  states: F-old\n  changed_by: c7\n",
+    )
+    truth_dir = tmp_path / "truth"
+
+    def results(through_step: str | None) -> dict:
+        r = _step_results(tmp_path, through_step)
+        r["queries"][1]["params"]["expects"].append("F-ahead")  # search
+        r["queries"][2]["params"]["expects"].append("F-ahead")  # ask
+        return r
+
+    at_c2 = score(results("c2"), truth_dir)
+    assert _expected_by_surface(at_c2) == {
+        "explain": 2,
+        "search": 2,
+        "ask": 1,
+        "contradictions": 2,
+        "stale": 1,
+    }
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "warning: truth names step(s) c7 that the run's fixture does not list; held back "
+        "as later than through_step c2: 1 facts, 1 contradictions, 1 stale pages\n"
+    )
+
+    unfiltered = score(results(None), truth_dir)
+    assert _expected_by_surface(unfiltered) == {
+        "explain": 3,
+        "search": 3,
+        "ask": 2,
+        "contradictions": 4,
+        # score_stale itself never expects a page whose step has no date
+        "stale": 1,
+    }
+    assert capsys.readouterr().err == ""

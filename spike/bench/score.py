@@ -1765,12 +1765,48 @@ def _run_step_rank(
 
 
 def _at_or_before(step: str | None, order: dict[str, int], rank: int | None) -> bool:
-    """`step` is at or before `rank`. No rank, no step, or a step the order
-    doesn't know never holds a truth entry back, the convention
-    `_current_at_step` already uses."""
+    """`step` is at or before `rank`. No rank or no step never holds a truth
+    entry back. A step the run's fixture doesn't list does, once the rank
+    is known: a truth checkout ahead of the run's fixture (a seventh step
+    the run never saw) must not be expected of it. `_warn_unknown_steps`
+    says so on stderr."""
     if rank is None or step is None:
         return True
-    return order.get(step, rank) <= rank
+    return step in order and order[step] <= rank
+
+
+def _unknown_step(step: str | None, order: dict[str, int], rank: int | None) -> bool:
+    return rank is not None and step is not None and step not in order
+
+
+def _warn_unknown_steps(
+    truth: Truth, order: dict[str, int], rank: int | None, through_step: str | None
+) -> None:
+    """One stderr line naming the truth steps the run's fixture doesn't list
+    and what `_at_or_before` held back for that reason; stdout, and so the
+    report, is unchanged."""
+    fact_steps = {
+        fid: f.valid_from
+        for fid, f in truth.facts.items()
+        if _unknown_step(f.valid_from, order, rank)
+    }
+    contradictions = [
+        xid
+        for xid, xc in truth.contradictions.items()
+        if any(fid in fact_steps for fid in xc.facts)
+    ]
+    stale_steps = [
+        e.changed_by for e in truth.stale.values() if _unknown_step(e.changed_by, order, rank)
+    ]
+    steps = sorted({*fact_steps.values(), *stale_steps})
+    if not steps:
+        return
+    print(
+        f"warning: truth names step(s) {', '.join(steps)} that the run's fixture does not "
+        f"list; held back as later than through_step {through_step}: {len(fact_steps)} "
+        f"facts, {len(contradictions)} contradictions, {len(stale_steps)} stale pages",
+        file=sys.stderr,
+    )
 
 
 def _fact_by_step(tf: TruthFact | None, order: dict[str, int], rank: int | None) -> bool:
@@ -2035,6 +2071,7 @@ def score(
     # Expected sets honour the step the run was ingested through
     # (konyklabs/asbuilt#34): see `_run_step_rank` for the default.
     order, run_rank = _run_step_rank(results.get("through_step"), step_dates, commits)
+    _warn_unknown_steps(truth, order, run_rank, results.get("through_step"))
     facts_by_step = {fid: f for fid, f in truth.facts.items() if _fact_by_step(f, order, run_rank)}
     contradictions_by_step = {
         xid: xc
