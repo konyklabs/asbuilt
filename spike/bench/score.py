@@ -292,7 +292,12 @@ New in konyklabs/asbuilt#66 (found while building #63):
   more than, beyond, longer than; "over N" and "the past N" are windows,
   not read) must be the same. "A refund
   requested within 14 days is rejected." no longer matches F-013. A
-  duration with no direction word states no direction and never vetoes.
+  duration with no direction word states no direction and never vetoes,
+  so a flip written as a window ("requested in the past 14 days") is
+  credited as before. The veto refuses at the statement level only: the
+  contradiction side's opposing guard credits on a non-match, so it runs
+  without it (`direction_vetoes=False`, the loosest matcher), and a
+  refusal never becomes a credit there (#66's lens round, X-020).
 * Negation scope is not read: the plain negation veto still asks only
   whether each side is negated, so one negation for another is credited
   ("A ride is not closed as lost within 24 hours." against F-010). Two
@@ -694,7 +699,11 @@ def _bound_direction_conflict(a: str, b: str) -> bool:
     differ ("A refund requested within 14 days is rejected." against "more
     than 14 days after"; "after 7 days is locked" against "within 7 days").
     The polarity and negation rules compare outcome words and negation, so
-    a flipped bound that keeps the truth's words passed them. Negated or
+    a flipped bound that keeps the truth's words passed them; a flip
+    written as a window the reader does not take for a bound ("requested
+    in the past 14 days"; "over N" is not read either) still passes, as on
+    main. It refuses at the
+    statement level only (see `_side_matches`). Negated or
     not, the words decide: "not docked within 24 hours" is an inside bound
     here, so the complement "open past 24 hours" conflicts. The plain
     negation veto refuses it (F-010, #63) unless an unrelated negation

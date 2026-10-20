@@ -4014,3 +4014,39 @@ def test_a_new_veto_never_turns_a_hedge_into_a_contradiction_credit():
         "winner": None,
     }
     assert score_contradictions([hedging_side], x020, truth.facts, mention_index)["matched"] == 0
+
+
+# Fix F of asbuilt#66's lens round: every piece of the bound reader is pinned,
+# so deleting any one word, the number-word reading or the window rules fails.
+
+
+@pytest.mark.parametrize("word", ["within", "less than", "under", "up to", "at most"])
+def test_each_inside_word_reads_as_an_inside_bound(word):
+    assert _bound_direction_conflict(
+        f"It times out {word} 5 seconds.", "It times out after 5 seconds."
+    )
+    assert not _bound_direction_conflict(
+        f"It times out {word} 5 seconds.", "It times out within 5 seconds."
+    )
+
+
+@pytest.mark.parametrize("word", ["past", "after", "more than", "beyond", "longer than"])
+def test_each_beyond_word_reads_as_a_beyond_bound(word):
+    assert _bound_direction_conflict(
+        f"It times out {word} 5 seconds.", "It times out within 5 seconds."
+    )
+    assert not _bound_direction_conflict(
+        f"It times out {word} 5 seconds.", "It times out after 5 seconds."
+    )
+
+
+def test_a_bound_is_read_through_number_words_and_not_through_windows():
+    """Number words are read as digits before the bound is ("within five
+    seconds", "within twenty-four hours"); "over N" and "the past N" are
+    windows, not bounds, so they never conflict."""
+    assert _bound_direction_conflict(
+        "It times out within five seconds.", "It times out after 5 seconds."
+    )
+    assert _bound_direction_conflict("Closed within twenty-four hours.", "Closed past 24 hours.")
+    assert not _bound_direction_conflict("Locked over 7 days.", "Locked within 7 days.")
+    assert not _bound_direction_conflict("Locked in the past 7 days.", "Locked within 7 days.")

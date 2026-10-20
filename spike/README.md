@@ -295,7 +295,14 @@ uv sync
    Since asbuilt#66, where both statements state a duration bound on the
    same number and unit ("within 14 days", "more than 14 days"), the
    directions must agree, negated or not, so a flipped bound is refused
-   even when the claim agrees. Negation scope is not read: the negation
+   even when the claim agrees, unless the flip is written as a window the
+   reader does not take for a bound ("requested in the past 14 days";
+   "over N" is not read either), which is credited as before. The rule only refuses, at the
+   statement level: where a check credits on a non-match, the
+   contradiction side's opposing guard (a side counts only when no clause
+   also states the pair's other fact), it runs without the rule, the
+   loosest matcher, so a refusal can never turn into a credit there.
+   Negation scope is not read: the negation
    veto asks only whether each side is negated, so one negation for
    another ("A ride is not closed as lost within 24 hours." against F-010)
    stays a recorded false positive, as does "not docked within 24 minutes"
