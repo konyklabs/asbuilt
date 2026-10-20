@@ -16,6 +16,10 @@ tests and the leak test). `truth/SCHEMA.md` defines the ground-truth yaml
 shapes. Build issue: konyklabs/asbuilt#2; decision: D-013 in
 `konyklabs/roadmap`.
 
+The results, measured against D-013: `REPORT.md` (konyklabs/asbuilt#5), with
+the hand audit of stack B's facts in `AUDIT.md` and the demo script in
+`DEMO.md`.
+
 ## The invented system
 
 **Gearwell** is a bike-share operator's back office, invented for this
