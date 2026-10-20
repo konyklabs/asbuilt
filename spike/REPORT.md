@@ -985,7 +985,9 @@ executed_precision  0.195     0.079     0.290     True (n=42 queries)
 
 Neither script is shipped: they read the scorer's JSON and the results
 files and decide nothing the scorer decides. Their source is here so that
-every number they produced can be reproduced.
+every number they produced can be reproduced. `ruff format`, which the
+repository check runs on Python blocks in Markdown, re-wrapped their lines
+when this file was checked in; nothing else changed.
 
 ### B.1 Provenance
 
@@ -1100,10 +1102,20 @@ from pathlib import Path
 score_dir = Path(sys.argv[1])  # holds b-1.json b-2.json b-3.json baseline.json nomodel.json
 results_dir = Path(sys.argv[2])  # holds results-*.json
 
-ARMS = [("B run 1", "b-1"), ("B run 2", "b-2"), ("B run 3", "b-3"), ("baseline", "baseline"), ("B no-model (09-29)", "nomodel")]
-RESULTS = {"b-1": "results-b_postgres-model-1.json", "b-2": "results-b_postgres-model-2.json",
-           "b-3": "results-b_postgres-model-3.json", "baseline": "results-baseline-model-1.json",
-           "nomodel": "results-b_postgres-nomodel.json"}
+ARMS = [
+    ("B run 1", "b-1"),
+    ("B run 2", "b-2"),
+    ("B run 3", "b-3"),
+    ("baseline", "baseline"),
+    ("B no-model (09-29)", "nomodel"),
+]
+RESULTS = {
+    "b-1": "results-b_postgres-model-1.json",
+    "b-2": "results-b_postgres-model-2.json",
+    "b-3": "results-b_postgres-model-3.json",
+    "baseline": "results-baseline-model-1.json",
+    "nomodel": "results-b_postgres-nomodel.json",
+}
 SURFACES = ["explain", "search", "ask", "contradictions", "stale"]
 reports = {key: json.loads((score_dir / f"{key}.json").read_text()) for _, key in ARMS}
 
@@ -1123,7 +1135,9 @@ for label, key in ARMS:
     r = reports[key]
     print(f"{label:<20}{f(r['headline'] / 100, 4):<16}{f(r['headline_equal_weights'], 4):<14}")
 b = [reports[k] for k in ("b-1", "b-2", "b-3")]
-print(f"{'B median/min/max':<20}{mmm([r['headline'] / 100 for r in b]):<26}{mmm([r['headline_equal_weights'] for r in b])}")
+print(
+    f"{'B median/min/max':<20}{mmm([r['headline'] / 100 for r in b]):<26}{mmm([r['headline_equal_weights'] for r in b])}"
+)
 print("per-surface contribution (F1, or recall where precision is undefined):")
 for label, key in ARMS:
     s = reports[key]["surfaces"]
@@ -1132,9 +1146,15 @@ for label, key in ARMS:
         p, rc, f1 = s[name]["precision"], s[name]["recall"], s[name]["f1"]
         row.append(f"{name}={f(rc if p is None else (f1 or 0.0))}")
     print(f"  {label:<20}" + " ".join(row))
-for weighting, field, scale in (("40/25/15/10/10", "headline", 100), ("equal", "headline_equal_weights", 1)):
+for weighting, field, scale in (
+    ("40/25/15/10/10", "headline", 100),
+    ("equal", "headline_equal_weights", 1),
+):
     ranked = sorted(ARMS, key=lambda a: reports[a[1]][field], reverse=True)
-    print(f"order under {weighting}: " + " > ".join(f"{lab} {f(reports[k][field] / scale, 4)}" for lab, k in ranked))
+    print(
+        f"order under {weighting}: "
+        + " > ".join(f"{lab} {f(reports[k][field] / scale, 4)}" for lab, k in ranked)
+    )
 
 print()
 print("== 2. counts per surface, per run ==")
@@ -1156,7 +1176,13 @@ print()
 print("== 3. by category (truth fact's category), tp per run ==")
 for name in ("explain", "search", "ask"):
     cats = sorted(reports["b-1"]["surfaces"][name]["by_category"])
-    print(f"-- {name}: " + ", ".join(f"{c} expected={reports['b-1']['surfaces'][name]['by_category'][c]['expected']}" for c in cats))
+    print(
+        f"-- {name}: "
+        + ", ".join(
+            f"{c} expected={reports['b-1']['surfaces'][name]['by_category'][c]['expected']}"
+            for c in cats
+        )
+    )
     for label, key in ARMS:
         bc = reports[key]["surfaces"][name]["by_category"]
         print(f"  {label:<20}" + " ".join(f"{c}={bc[c]['tp']}" for c in cats))
@@ -1169,35 +1195,51 @@ for name in ("explain", "search"):
         s = reports[key]["surfaces"][name]
         t, c, v, e = s["tier"], s["category_accuracy"], s["validity"], s["entity_resolution"]
         unmatched_exec = t["returned_executed"] - t["tp_executed"]
-        print(f"  {label:<20}exec P={f(t['precision'])} ({t['tp_executed']}/{t['returned_executed']}) "
-              f"R={f(t['recall'])} ({t['tp_executed']}/{t['expected_executed']}) hard_errors={t['hard_errors']} "
-              f"exec-claims-not-credited={unmatched_exec} | cat={f(c['accuracy'])} ({c['correct']}/{c['total']}) "
-              f"| validity={f(v['accuracy'])} ({v['correct']}/{v['total']}) "
-              f"| ER P={f(e['precision'])} R={f(e['recall'])} unresolved={len(e['unresolved'])}")
+        print(
+            f"  {label:<20}exec P={f(t['precision'])} ({t['tp_executed']}/{t['returned_executed']}) "
+            f"R={f(t['recall'])} ({t['tp_executed']}/{t['expected_executed']}) hard_errors={t['hard_errors']} "
+            f"exec-claims-not-credited={unmatched_exec} | cat={f(c['accuracy'])} ({c['correct']}/{c['total']}) "
+            f"| validity={f(v['accuracy'])} ({v['correct']}/{v['total']}) "
+            f"| ER P={f(e['precision'])} R={f(e['recall'])} unresolved={len(e['unresolved'])}"
+        )
         print(f"  {'':<20}confusion {json.dumps(t['confusion'], sort_keys=True)}")
-    for metric, get in (("exec P", lambda s: s["tier"]["precision"]), ("exec R", lambda s: s["tier"]["recall"]),
-                        ("category", lambda s: s["category_accuracy"]["accuracy"]),
-                        ("validity", lambda s: s["validity"]["accuracy"]),
-                        ("ER P", lambda s: s["entity_resolution"]["precision"]),
-                        ("ER R", lambda s: s["entity_resolution"]["recall"])):
+    for metric, get in (
+        ("exec P", lambda s: s["tier"]["precision"]),
+        ("exec R", lambda s: s["tier"]["recall"]),
+        ("category", lambda s: s["category_accuracy"]["accuracy"]),
+        ("validity", lambda s: s["validity"]["accuracy"]),
+        ("ER P", lambda s: s["entity_resolution"]["precision"]),
+        ("ER R", lambda s: s["entity_resolution"]["recall"]),
+    ):
         print(f"  B median/min/max {metric:<9}{mmm([get(r['surfaces'][name]) for r in b])}")
 
-print("-- explain and search pooled (the paired bootstrap's executed_precision pools the same counts)")
+print(
+    "-- explain and search pooled (the paired bootstrap's executed_precision pools the same counts)"
+)
 for label, key in ARMS:
     ts = [reports[key]["surfaces"][n]["tier"] for n in ("explain", "search")]
     tp = sum(t["tp_executed"] for t in ts)
     ret = sum(t["returned_executed"] for t in ts)
     exp = sum(t["expected_executed"] for t in ts)
     he = sum(t["hard_errors"] for t in ts)
-    print(f"  {label:<20}exec P={f(tp / ret if ret else None)} ({tp}/{ret}) R={f(tp / exp)} ({tp}/{exp}) hard_errors={he}")
+    print(
+        f"  {label:<20}exec P={f(tp / ret if ret else None)} ({tp}/{ret}) R={f(tp / exp)} ({tp}/{exp}) hard_errors={he}"
+    )
 
 print()
 print("== 5. latency ==")
-print("cold (the scorer's table: each query's first call; p50/p95 across the surface's queries), ms")
+print(
+    "cold (the scorer's table: each query's first call; p50/p95 across the surface's queries), ms"
+)
 for name in SURFACES:
-    row = [f"{label}: p50={f(reports[key]['latency'][name]['p50_ms'], 1)} p95={f(reports[key]['latency'][name]['p95_ms'], 1)}" for label, key in ARMS]
+    row = [
+        f"{label}: p50={f(reports[key]['latency'][name]['p50_ms'], 1)} p95={f(reports[key]['latency'][name]['p95_ms'], 1)}"
+        for label, key in ARMS
+    ]
     print(f"  {name:<15}" + " | ".join(row))
-print("warm repeats (per query: p50/p95 over its repeats; here the median of the per-query p50s and the max of the per-query p95s), ms")
+print(
+    "warm repeats (per query: p50/p95 over its repeats; here the median of the per-query p50s and the max of the per-query p95s), ms"
+)
 for label, key in ARMS:
     q = json.loads((results_dir / RESULTS[key]).read_text())["queries"]
     reps = sorted({x["warm_repeats"] for x in q})
@@ -1207,23 +1249,35 @@ for label, key in ARMS:
         if not qs:
             parts.append(f"{name}=none")
             continue
-        parts.append(f"{name}: p50med={f(statistics.median(x['p50_ms'] for x in qs), 3)} p95max={f(max(x['p95_ms'] for x in qs), 3)} n={len(qs)}")
+        parts.append(
+            f"{name}: p50med={f(statistics.median(x['p50_ms'] for x in qs), 3)} p95max={f(max(x['p95_ms'] for x in qs), 3)} n={len(qs)}"
+        )
     print(f"  {label:<20}repeats={reps} " + " | ".join(parts))
     total_cold_s = sum(x["cold_ms"] for x in q) / 1000
     waited = sum(x.get("waited_for_reset_s", 0) for x in q)
     failed = sum(1 for x in q if "error" in x)
-    print(f"  {'':<20}queries={len(q)} failed={failed} sum of cold calls={total_cold_s:.0f} s, usage-limit wait={waited:.0f} s")
+    print(
+        f"  {'':<20}queries={len(q)} failed={failed} sum of cold calls={total_cold_s:.0f} s, usage-limit wait={waited:.0f} s"
+    )
 
 print()
 print("== 6. ingest cost ==")
 for label, key in ARMS:
     i = reports[key]["ingest"]
     calls = i.get("calls") or 0
-    per_call = (f"per call: {i['seconds'] / calls:.1f} s, {i['output_tokens'] / calls:.0f} output, "
-                f"{i['cache_tokens'] / calls:.0f} cache, ${i['dollars'] / calls:.4f}") if calls else "no model calls"
-    print(f"  {label:<20}seconds={i['seconds']:.1f} calls={calls} input={i['input_tokens']} output={i['output_tokens']} "
-          f"cache={i.get('cache_tokens', 0)} embedding={i.get('embedding_tokens')} dollars={i['dollars']:.3f} "
-          f"services={i['services']} documents={i['documents']} | {per_call}")
+    per_call = (
+        (
+            f"per call: {i['seconds'] / calls:.1f} s, {i['output_tokens'] / calls:.0f} output, "
+            f"{i['cache_tokens'] / calls:.0f} cache, ${i['dollars'] / calls:.4f}"
+        )
+        if calls
+        else "no model calls"
+    )
+    print(
+        f"  {label:<20}seconds={i['seconds']:.1f} calls={calls} input={i['input_tokens']} output={i['output_tokens']} "
+        f"cache={i.get('cache_tokens', 0)} embedding={i.get('embedding_tokens')} dollars={i['dollars']:.3f} "
+        f"services={i['services']} documents={i['documents']} | {per_call}"
+    )
 for field in ("seconds", "output_tokens", "cache_tokens", "dollars"):
     print(f"  B median/min/max {field:<14}{mmm([float(r['ingest'][field]) for r in b])}")
 ```
@@ -1397,17 +1451,23 @@ from prototypes.baseline import (  # noqa: E402
 
 docs = _build_documents(root)
 corpus = "\n\n".join(f"=== {doc_id} ===\n{text}" for doc_id, text in docs)
-print(f"documents={len(docs)} corpus_estimate_tokens={_estimate_tokens(corpus)} "
-      f"fallback_threshold={DEFAULT_MAX_CORPUS_TOKENS} full_path={_estimate_tokens(corpus) <= DEFAULT_MAX_CORPUS_TOKENS}")
+print(
+    f"documents={len(docs)} corpus_estimate_tokens={_estimate_tokens(corpus)} "
+    f"fallback_threshold={DEFAULT_MAX_CORPUS_TOKENS} full_path={_estimate_tokens(corpus) <= DEFAULT_MAX_CORPUS_TOKENS}"
+)
 by_kind: dict[str, list[int]] = {}
 for doc_id, text in docs:
     by_kind.setdefault(doc_id.split("/", 1)[0], []).append(len(text.split()))
 for kind, words in sorted(by_kind.items()):
     words.sort()
-    print(f"  {kind:<8} n={len(words):<4} words median={words[len(words) // 2]} min={words[0]} max={words[-1]}")
+    print(
+        f"  {kind:<8} n={len(words):<4} words median={words[len(words) // 2]} min={words[0]} max={words[-1]}"
+    )
 text_docs = [w for k in ("wiki", "doc", "ticket", "pull") for w in by_kind.get(k, [])]
 text_docs.sort()
-print(f"  text documents (wiki+doc+ticket+pull) n={len(text_docs)} words median={text_docs[len(text_docs) // 2]} mean={sum(text_docs) / len(text_docs):.0f}")
+print(
+    f"  text documents (wiki+doc+ticket+pull) n={len(text_docs)} words median={text_docs[len(text_docs) // 2]} mean={sum(text_docs) / len(text_docs):.0f}"
+)
 ```
 
 ```

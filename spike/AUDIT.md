@@ -79,7 +79,7 @@ Each is a change to the exam or the marking, so each needs the review round.
 
 ## Method
 
-The scripts below are reproduced verbatim in the appendix. They are not committed as files; to rerun, save each to `build/audit/<name>.py` (`build/` is ignored by git) and run it from `spike/` with `.venv/bin/python`, never `uv run`. Each uses the scorer's own functions from `bench/score.py` and `bench/truth.py` rather than reimplementing the matcher.
+The scripts below are reproduced in the appendix, as run except that `ruff format` (the repository check formats Python blocks in Markdown) re-wrapped their lines; nothing else changed. They are not committed as files; to rerun, save each to `build/audit/<name>.py` (`build/` is ignored by git) and run it from `spike/` with `.venv/bin/python`, never `uv run`. Each uses the scorer's own functions from `bench/score.py` and `bench/truth.py` rather than reimplementing the matcher.
 
 | Script | What it does |
 |---|---|
@@ -533,7 +533,7 @@ The **strict sensitivity**, with statements that do not state their fact on thei
 
 ## Appendix: the audit scripts
 
-Verbatim. Save each to `build/audit/<name>.py` and run from `spike/`. `misses.py` comes first: `diagnose.py`, `sample.py` and `veto.py` read its dumps, and `siblings.py` and `veto.py` read `sample.py`'s output.
+As run, re-wrapped by `ruff format` only. Save each to `build/audit/<name>.py` and run from `spike/`. `misses.py` comes first: `diagnose.py`, `sample.py` and `veto.py` read its dumps, and `siblings.py` and `veto.py` read `sample.py`'s output.
 
 ### `misses.py`
 
@@ -547,6 +547,7 @@ the scorer's own functions (bench/score.py), not a reimplementation.
 
 Run from spike/: .venv/bin/python <this> RESULTS.json [--dump OUT.json]
 """
+
 import argparse
 import json
 import sys
@@ -567,12 +568,20 @@ def main():
     truth = load_truth(Path("truth"))
     rep = S.score(results, Path("truth"), commits)
     ex = rep["surfaces"]["explain"]
-    print("scorer explain: tp=%s returned=%s hard_fp=%s unplanted=%s" % (
-        ex["tp"], ex["returned"], ex.get("hard_false_positives"),
-        len(ex.get("unplanted_facts") or [])))
+    print(
+        "scorer explain: tp=%s returned=%s hard_fp=%s unplanted=%s"
+        % (
+            ex["tp"],
+            ex["returned"],
+            ex.get("hard_false_positives"),
+            len(ex.get("unplanted_facts") or []),
+        )
+    )
     t = ex["tier"]
-    print("scorer executed: tp=%s returned=%s expected=%s hard_errors=%s" % (
-        t["tp_executed"], t["returned_executed"], t["expected_executed"], t["hard_errors"]))
+    print(
+        "scorer executed: tp=%s returned=%s expected=%s hard_errors=%s"
+        % (t["tp_executed"], t["returned_executed"], t["expected_executed"], t["hard_errors"])
+    )
 
     alias_index = S.build_alias_index(truth)
     mention_index = S.build_mention_index(truth)
@@ -584,32 +593,60 @@ def main():
         raw_entity = q["params"]["entity"]
         ids, _ = S.align_entities([raw_entity], alias_index, truth.entities)
         entity_id = ids[0] if ids else None
-        expected = {fid: f for fid, f in truth.facts.items() if entity_id and entity_id in f.entities}
+        expected = {
+            fid: f for fid, f in truth.facts.items() if entity_id and entity_id in f.entities
+        }
         resolved = [S.resolve_fact_entities(rf, alias_index, truth.entities) for rf in q["result"]]
         matches, _unc = S.match_facts(resolved, expected, commits, mention_index)
         by_obj = {id(rf): fid for rf, fid in matches}
-        unmatched = [rf for rf in resolved if id(rf) not in by_obj and S._citation_documents(rf.get("citations"))]
+        unmatched = [
+            rf
+            for rf in resolved
+            if id(rf) not in by_obj and S._citation_documents(rf.get("citations"))
+        ]
         hard, unpl = S.classify_unmatched(unmatched, truth.facts)
         hard_ids = {id(x) for x in hard}
-        tp += len(matches); ret += len(resolved); hfp += len(hard); unp += len(unpl)
+        tp += len(matches)
+        ret += len(resolved)
+        hfp += len(hard)
+        unp += len(unpl)
         matched_ids = set(by_obj.values())
         for i, rf in enumerate(resolved):
             # every truth fact facts_match would accept, ignoring the query's expected subset
-            any_match = [fid for fid, tf in truth.facts.items() if S.facts_match(rf, tf, mention_index)]
+            any_match = [
+                fid for fid, tf in truth.facts.items() if S.facts_match(rf, tf, mention_index)
+            ]
             row = {
-                "query": q["id"], "query_entity": raw_entity, "index": i,
-                "statement": rf.get("statement"), "category": rf.get("category"),
-                "tier": rf.get("tier"), "entities": rf.get("entities"),
+                "query": q["id"],
+                "query_entity": raw_entity,
+                "index": i,
+                "statement": rf.get("statement"),
+                "category": rf.get("category"),
+                "tier": rf.get("tier"),
+                "entities": rf.get("entities"),
                 "unresolved": rf.get("_unresolved_entities"),
                 "raw_entities": q["result"][i].get("entities"),
                 "claim": q["result"][i].get("claim"),
-                "citations": rf.get("citations"), "id": rf.get("id"),
+                "citations": rf.get("citations"),
+                "id": rf.get("id"),
                 "matched_to": by_obj.get(id(rf)),
                 "matched_tier": truth.facts[by_obj[id(rf)]].tier if id(rf) in by_obj else None,
                 "facts_match_any": any_match,
-                "facts_match_in_expected_already_matched": [f for f in any_match if f in expected and f in matched_ids and f != by_obj.get(id(rf))],
+                "facts_match_in_expected_already_matched": [
+                    f
+                    for f in any_match
+                    if f in expected and f in matched_ids and f != by_obj.get(id(rf))
+                ],
                 "facts_match_outside_expected": [f for f in any_match if f not in expected],
-                "class": "matched" if id(rf) in by_obj else ("hard_fp" if id(rf) in hard_ids else ("uncited" if not S._citation_documents(rf.get("citations")) else "unplanted")),
+                "class": "matched"
+                if id(rf) in by_obj
+                else (
+                    "hard_fp"
+                    if id(rf) in hard_ids
+                    else (
+                        "uncited" if not S._citation_documents(rf.get("citations")) else "unplanted"
+                    )
+                ),
             }
             if rf.get("tier") == S._EXECUTED:
                 rete += 1
@@ -620,14 +657,35 @@ def main():
                     out["executed_misses"].append(row)
             if row["class"] == "hard_fp":
                 out["hard_fp"].append(row)
-    print("recomputed explain: tp=%d returned=%d hard_fp=%d unplanted=%d executed tp=%d returned=%d" % (tp, ret, hfp, unp, tpe, rete))
+    print(
+        "recomputed explain: tp=%d returned=%d hard_fp=%d unplanted=%d executed tp=%d returned=%d"
+        % (tp, ret, hfp, unp, tpe, rete)
+    )
     if a.dump:
         Path(a.dump).write_text(json.dumps(out, indent=1, default=str))
     print("executed misses: %d" % len(out["executed_misses"]))
     for r in out["executed_misses"]:
-        docs = ["%s@%s:%s" % (c.get("document"), (c.get("version") or "")[:7], c.get("location")) for c in r["citations"]]
-        print("-", r["query"], "|", r["statement"], "| ents", r["entities"], "unres", r["unresolved"],
-              "| matched_to", r["matched_to"], r["matched_tier"], "| any", r["facts_match_any"], "| cls", r["class"])
+        docs = [
+            "%s@%s:%s" % (c.get("document"), (c.get("version") or "")[:7], c.get("location"))
+            for c in r["citations"]
+        ]
+        print(
+            "-",
+            r["query"],
+            "|",
+            r["statement"],
+            "| ents",
+            r["entities"],
+            "unres",
+            r["unresolved"],
+            "| matched_to",
+            r["matched_to"],
+            r["matched_tier"],
+            "| any",
+            r["facts_match_any"],
+            "| cls",
+            r["class"],
+        )
         print("   claim", r["claim"])
         for d in docs:
             print("   ", d)
@@ -646,6 +704,7 @@ $ .venv/bin/python build/audit/diagnose.py build/audit/run2.json build/results-b
 """For a dumped row, step through facts_match against named truth facts using
 the scorer's own helpers.
 Run from spike/: python diagnose.py runN.json RESULTS.json"""
+
 import json
 import sys
 from pathlib import Path
@@ -666,7 +725,14 @@ for r in rows:
     qid = (S.align_entities([qe], ai, truth.entities)[0] or [None])[0]
     print("=" * 100)
     print(r["query"], "query entity", qe, "->", qid, "| stmt:", r["statement"])
-    print("  raw entities", r["raw_entities"], "-> resolved", r["entities"], "unresolved", r["unresolved"])
+    print(
+        "  raw entities",
+        r["raw_entities"],
+        "-> resolved",
+        r["entities"],
+        "unresolved",
+        r["unresolved"],
+    )
     rdocs = S._citation_documents(r["citations"])
     rf = {k: r[k] for k in ("statement", "entities", "citations")}
     claim = r["claim"]
@@ -676,9 +742,13 @@ for r in rows:
     for fid, tf in truth.facts.items():
         tdocs = {c.document for c in tf.carriers}
         rlocs = {c.get("location") for c in r["citations"]}
-        if not any(c.location in rlocs or (c.location or "").split("::")[-1] in rlocs for c in tf.carriers):
+        if not any(
+            c.location in rlocs or (c.location or "").split("::")[-1] in rlocs for c in tf.carriers
+        ):
             continue
-        if not (rdocs & tdocs) or not any(d.startswith("code/tests") or d.startswith("run/") for d in rdocs & tdocs):
+        if not (rdocs & tdocs) or not any(
+            d.startswith("code/tests") or d.startswith("run/") for d in rdocs & tdocs
+        ):
             continue
         ent = bool(set(r["entities"]) & set(tf.entities))
         neg = S._has_negation(r["statement"]) != S._has_negation(tf.statement)
@@ -692,10 +762,12 @@ for r in rows:
             tn = S._number_tokens(S._without_http_codes(tf.statement))
         sim = S._text_similarity(r["statement"], tf.statement)
         sm = S._statement_matches(r["statement"], tf.statement, mi, rf.get("claim"), tf.claim)
-        print(f"  vs {fid} [{tf.tier}] in_expected={qid in tf.entities} entity_overlap={ent} "
-              f"neg_mismatch={neg} flag_conflict={flag} mention_conflict={ment} "
-              f"nums r={sorted(rn)} t={sorted(tn)} sim={sim:.3f} stmt_match={sm} "
-              f"facts_match={S.facts_match(rf, tf, mi)}")
+        print(
+            f"  vs {fid} [{tf.tier}] in_expected={qid in tf.entities} entity_overlap={ent} "
+            f"neg_mismatch={neg} flag_conflict={flag} mention_conflict={ment} "
+            f"nums r={sorted(rn)} t={sorted(tn)} sim={sim:.3f} stmt_match={sm} "
+            f"facts_match={S.facts_match(rf, tf, mi)}"
+        )
         print(f"     truth: {tf.statement}")
         print(f"     truth entities {list(tf.entities)} claim {tf.claim}")
 ```
@@ -711,6 +783,7 @@ $ .venv/bin/python build/audit/sample.py build/audit/run1.json build/audit/sampl
 counts them: 470 rows, duplicates across queries included), proportional to
 the returned fact's category, largest-remainder allocation, fixed seed.
 Run from spike/: python sample.py run1.json OUT.json"""
+
 import json
 import random
 import re
@@ -791,8 +864,12 @@ for i, r in enumerate(sample, 1):
     r["cited"] = [{**c, "text": cited_text(c)} for c in r["citations"]]
 Path(sys.argv[2]).write_text(json.dumps(sample, indent=1))
 for r in sample:
-    print(f"\n#{r['sample_no']} [{r['category']}/{r['tier']}] {r['query']}({r['query_entity']}) :: {r['statement']}")
-    print(f"   entities {r['raw_entities']} -> {r['entities']}; claim {r['claim']}; facts_match_any {r['facts_match_any']}")
+    print(
+        f"\n#{r['sample_no']} [{r['category']}/{r['tier']}] {r['query']}({r['query_entity']}) :: {r['statement']}"
+    )
+    print(
+        f"   entities {r['raw_entities']} -> {r['entities']}; claim {r['claim']}; facts_match_any {r['facts_match_any']}"
+    )
     for c in r["cited"]:
         print(f"   - {c['document']}@{c.get('version')} {c.get('location')}: {c['text'][:700]!r}")
 ```
@@ -808,6 +885,7 @@ $ .venv/bin/python build/audit/siblings.py build/audit/sample.json   # add --qui
 on-disk document version, and list the planted facts that share an entity
 and a document with it (why the scorer calls it a hard FP).
 Run from spike/: python siblings.py sample.json [--quiet]"""
+
 import json
 import re
 import sys
@@ -824,8 +902,12 @@ quiet = "--quiet" in sys.argv
 
 def ondisk(doc):
     kind, _, rest = doc.partition("/")
-    p = {"wiki": Path("sources/wiki") / f"{rest}.md", "doc": Path("sources/docs") / f"{rest}.md",
-         "ticket": Path("sources/tickets") / f"{rest}.json", "pull": Path("sources/pulls") / f"{rest}.json"}.get(kind)
+    p = {
+        "wiki": Path("sources/wiki") / f"{rest}.md",
+        "doc": Path("sources/docs") / f"{rest}.md",
+        "ticket": Path("sources/tickets") / f"{rest}.json",
+        "pull": Path("sources/pulls") / f"{rest}.json",
+    }.get(kind)
     if not p or not p.exists():
         return None
     s = p.read_text()
@@ -839,8 +921,11 @@ def ondisk(doc):
 
 checked = mismatched = 0
 for r in smp:
-    vm = [(c["document"], c.get("version"), ondisk(c["document"])) for c in r["citations"]
-          if not c["document"].startswith(("code/", "run/"))]
+    vm = [
+        (c["document"], c.get("version"), ondisk(c["document"]))
+        for c in r["citations"]
+        if not c["document"].startswith(("code/", "run/"))
+    ]
     checked += len(vm)
     bad = [v for v in vm if str(v[1]) != str(v[2])]
     mismatched += len(bad)
@@ -852,7 +937,9 @@ for r in smp:
         print("   VERSION MISMATCH", bad)
     for fid, tf in t.facts.items():
         if set(r["entities"]) & set(tf.entities) and docs & {c.document for c in tf.carriers}:
-            print(f"   ~ {fid} [{tf.category}/{tf.tier}] sim={S._text_similarity(r['statement'], tf.statement):.2f}: {tf.statement}")
+            print(
+                f"   ~ {fid} [{tf.category}/{tf.tier}] sim={S._text_similarity(r['statement'], tf.statement):.2f}: {tf.statement}"
+            )
 print(f"text citations checked: {checked}, version mismatches: {mismatched}")
 ```
 
@@ -866,6 +953,7 @@ $ .venv/bin/python build/audit/veto.py build/audit/sample.json build/results-b_p
 """Which facts_match step rejects a sampled row against a named planted fact,
 and whether that fact was in the query's expected set / already matched there.
 Run from spike/: python veto.py sample.json RESULTS.json N:F-xxx ..."""
+
 import json
 import sys
 from pathlib import Path
@@ -909,23 +997,29 @@ for arg in sys.argv[3:]:
         steps.append("mention-veto")
     rc, tc = rf.get("claim"), tf.claim
     if rc and tc and S._claim_is_comparable(rc, tc) and not S._claims_match(rc, tc):
-        if not S._claim_values_match(rc.get("value"), tc.get("value"), rc.get("unit"), tc.get("unit")):
+        if not S._claim_values_match(
+            rc.get("value"), tc.get("value"), rc.get("unit"), tc.get("unit")
+        ):
             steps.append("claim-value-veto")
         elif not S._attributes_match(rc.get("attribute"), tc.get("attribute")):
             steps.append(f"claim-attribute-veto({rc.get('attribute')} vs {tc.get('attribute')})")
     if S._names_http_code(ts):
-        rn = S._number_tokens(S._DIGIT_ORDINAL_RE.sub(" ", rs)); tn = S._number_tokens(S._DIGIT_ORDINAL_RE.sub(" ", ts))
+        rn = S._number_tokens(S._DIGIT_ORDINAL_RE.sub(" ", rs))
+        tn = S._number_tokens(S._DIGIT_ORDINAL_RE.sub(" ", ts))
     else:
-        rn = S._number_tokens(S._without_http_codes(rs)); tn = S._number_tokens(S._without_http_codes(ts))
+        rn = S._number_tokens(S._without_http_codes(rs))
+        tn = S._number_tokens(S._without_http_codes(ts))
     if not S._numbers_compatible(rn, tn):
         steps.append(f"numbers(r={sorted(rn)} t={sorted(tn)})")
     sim = S._text_similarity(rs, ts)
     if sim < S._SIMILARITY_THRESHOLD:
         steps.append(f"similarity {sim:.2f}<0.6")
     exp, matched = matched_in_query(r["query"])
-    print(f"#{n} vs {fid}: facts_match={S.facts_match(rf, tf, mi)} fails_on={steps or ['-']} "
-          f"in_expected={fid in exp} already_matched_in_query={fid in matched} "
-          f"returned_cat={r['category']} truth_cat={tf.category} truth_tier={tf.tier} claim_r={r['claim']} claim_t={tc}")
+    print(
+        f"#{n} vs {fid}: facts_match={S.facts_match(rf, tf, mi)} fails_on={steps or ['-']} "
+        f"in_expected={fid in exp} already_matched_in_query={fid in matched} "
+        f"returned_cat={r['category']} truth_cat={tf.category} truth_tier={tf.tier} claim_r={r['claim']} claim_t={tc}"
+    )
 ```
 
 ### `extras.py`
@@ -937,6 +1031,7 @@ $ .venv/bin/python build/audit/extras.py build
 ```python
 """Wilson intervals for the sample counts, and the compound-number-word scan.
 Run from spike/: python extras.py RESULTS_DIR"""
+
 import json
 import math
 import re
@@ -953,10 +1048,21 @@ def wilson(k, n, z=1.96):
 
 for lab, k in [("a", 16), ("b", 22), ("c", 2), ("d", 0), ("b+c", 24), ("a+b+c", 40)]:
     print(lab, f"{k}/40", "share, wilson95 lo, hi =", wilson(k, 40))
-pat = re.compile(r"\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ]?(one|two|three|four|five|six|seven|eight|nine)\b", re.I)
+pat = re.compile(
+    r"\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[- ]?(one|two|three|four|five|six|seven|eight|nine)\b",
+    re.I,
+)
 for n in (1, 2, 3):
     r = json.load(open(f"{sys.argv[1]}/results-b_postgres-model-{n}.json"))
-    hits = sorted({f["statement"] for q in r["queries"] if q["surface"] in ("explain", "search") for f in q["result"] if pat.search(f["statement"])})
+    hits = sorted(
+        {
+            f["statement"]
+            for q in r["queries"]
+            if q["surface"] in ("explain", "search")
+            for f in q["result"]
+            if pat.search(f["statement"])
+        }
+    )
     print(f"run {n} compound number words in explain/search statements: {len(hits)} {hits}")
 ```
 
@@ -971,6 +1077,7 @@ $ for n in 1 2 3; do .venv/bin/python build/audit/tiers.py build/results-b_postg
 functions (same method as misses.py; search's expected set is the query's
 `expects`, exactly as bench.score.score() builds it).
 Run from spike/: python tiers.py RESULTS.json --dump OUT.json"""
+
 import argparse
 import json
 import sys
@@ -991,7 +1098,9 @@ rep = S.score(results, Path("truth"), commits)
 ai, mi = S.build_alias_index(truth), S.build_mention_index(truth)
 for s in ("explain", "search"):
     t = rep["surfaces"][s]["tier"]
-    print(f"scorer {s}: executed tp={t['tp_executed']} returned={t['returned_executed']} hard_errors={t['hard_errors']}")
+    print(
+        f"scorer {s}: executed tp={t['tp_executed']} returned={t['returned_executed']} hard_errors={t['hard_errors']}"
+    )
 out = {"explain": [], "search": []}
 tot = {}
 for q in results["queries"]:
@@ -1003,7 +1112,9 @@ for q in results["queries"]:
         eid = ids[0] if ids else None
         expected = {f: tf for f, tf in truth.facts.items() if eid and eid in tf.entities}
     else:
-        expected = {f: truth.facts[f] for f in (q["params"].get("expects") or []) if f in truth.facts}
+        expected = {
+            f: truth.facts[f] for f in (q["params"].get("expects") or []) if f in truth.facts
+        }
     resolved = [S.resolve_fact_entities(rf, ai, truth.entities) for rf in q["result"]]
     matches, _ = S.match_facts(resolved, expected, commits, mi)
     by_obj = {id(rf): fid for rf, fid in matches}
@@ -1018,23 +1129,39 @@ for q in results["queries"]:
             tp_e += 1
             continue
         anym = [f for f, tf in truth.facts.items() if S.facts_match(rf, tf, mi)]
-        out[s].append({
-            "query": q["id"], "params": q["params"], "statement": rf["statement"], "id": rf.get("id"),
-            "entities": rf["entities"], "unresolved": rf.get("_unresolved_entities"),
-            "claim": q["result"][i].get("claim"), "citations": rf.get("citations"),
-            "matched_to": fid, "matched_tier": truth.facts[fid].tier if fid else None,
-            "facts_match_any": anym,
-            "any_in_expected": [f for f in anym if f in expected],
-            "any_already_matched_in_query": [f for f in anym if f in matched],
-            "expects": sorted(expected),
-        })
-    t = tot.setdefault(s, [0, 0]); t[0] += tp_e; t[1] += ret_e
-print("recomputed:", {s: f"{v[0]}/{v[1]}" for s, v in tot.items()},
-      "pooled", f"{tot['explain'][0]+tot['search'][0]}/{tot['explain'][1]+tot['search'][1]}")
+        out[s].append(
+            {
+                "query": q["id"],
+                "params": q["params"],
+                "statement": rf["statement"],
+                "id": rf.get("id"),
+                "entities": rf["entities"],
+                "unresolved": rf.get("_unresolved_entities"),
+                "claim": q["result"][i].get("claim"),
+                "citations": rf.get("citations"),
+                "matched_to": fid,
+                "matched_tier": truth.facts[fid].tier if fid else None,
+                "facts_match_any": anym,
+                "any_in_expected": [f for f in anym if f in expected],
+                "any_already_matched_in_query": [f for f in anym if f in matched],
+                "expects": sorted(expected),
+            }
+        )
+    t = tot.setdefault(s, [0, 0])
+    t[0] += tp_e
+    t[1] += ret_e
+print(
+    "recomputed:",
+    {s: f"{v[0]}/{v[1]}" for s, v in tot.items()},
+    "pooled",
+    f"{tot['explain'][0] + tot['search'][0]}/{tot['explain'][1] + tot['search'][1]}",
+)
 for r in out["search"]:
     runs = sorted({c["document"] for c in r["citations"] if c["document"].startswith("run/")})
-    print(f"- {r['query']} | {r['statement']} | id {r['id']} | any {r['facts_match_any']} in_exp {r['any_in_expected']} "
-          f"already {r['any_already_matched_in_query']} | expects {r['expects']} | runs {runs}")
+    print(
+        f"- {r['query']} | {r['statement']} | id {r['id']} | any {r['facts_match_any']} in_exp {r['any_in_expected']} "
+        f"already {r['any_already_matched_in_query']} | expects {r['expects']} | runs {runs}"
+    )
 if a.dump:
     Path(a.dump).write_text(json.dumps(out, indent=1, default=str))
 ```
@@ -1055,6 +1182,7 @@ distinct-fact reading. Every executed-labelled row is classed:
               truth/executed-audit.md F-015/F-016 verdict b)
 A credited row whose statement is one of the C_STATEMENTS is re-classed c.
 Run from spike/: python readings.py RESULTS_DIR"""
+
 import json
 import sys
 from collections import Counter
@@ -1064,12 +1192,20 @@ sys.path.insert(0, str(Path.cwd()))
 from bench import score as S  # noqa: E402
 from bench.truth import load_truth  # noqa: E402
 
-C_STATEMENTS = {"Membership lapses 3 days after failed renewal.", "Membership lapses 7 days after failed renewal."}
+C_STATEMENTS = {
+    "Membership lapses 3 days after failed renewal.",
+    "Membership lapses 7 days after failed renewal.",
+}
 # Statements that do not state their fact on their own, for the strict
 # sensitivity row: the value only in the claim (0.25, 0.10, 0.15), or a
 # dropped clause or condition (the 2-bike limit; the overflow flag being off).
-TERSE = {"Casual rate from 1st minute.", "Ebike surcharge when flag on.", "Member rate after free minutes.",
-         "3rd checkout refused.", "Checkin at full station refused."}
+TERSE = {
+    "Casual rate from 1st minute.",
+    "Ebike surcharge when flag on.",
+    "Member rate after free minutes.",
+    "3rd checkout refused.",
+    "Checkin at full station refused.",
+}
 t = load_truth(Path("truth"))
 ai, mi = S.build_alias_index(t), S.build_mention_index(t)
 commits = json.loads(Path("build/commits.json").read_text())
@@ -1101,8 +1237,16 @@ def classify(results):
                 cls = "credited"
             else:
                 cls = "a"  # every uncredited row was read by hand; see AUDIT.md tables
-            rows.append({"surface": s, "query": q["id"], "statement": rf["statement"], "id": rf.get("id"),
-                         "credited": credited, "cls": cls})
+            rows.append(
+                {
+                    "surface": s,
+                    "query": q["id"],
+                    "statement": rf["statement"],
+                    "id": rf.get("id"),
+                    "credited": credited,
+                    "cls": cls,
+                }
+            )
     return rows
 
 
@@ -1116,23 +1260,31 @@ for n in (1, 2, 3):
     res = json.loads(Path(f"{sys.argv[1]}/results-b_postgres-model-{n}.json").read_text())
     rows = classify(res)
     print(f"=== run {n}")
-    for name, sel in (("explain", lambda r: r["surface"] == "explain"),
-                      ("search", lambda r: r["surface"] == "search"),
-                      ("pooled", lambda r: True)):
+    for name, sel in (
+        ("explain", lambda r: r["surface"] == "explain"),
+        ("search", lambda r: r["surface"] == "search"),
+        ("pooled", lambda r: True),
+    ):
         rs = [r for r in rows if sel(r)]
-        print(f"  {name:8s} scorer {ratio(rs, lambda r: r['credited'])} | audit (a)+(b) {ratio(rs, lambda r: r['cls'] in ('credited', 'a'))}"
-              f" | audit (a) only {ratio(rs, lambda r: r['cls'] in ('credited', 'a'))}"
-              f" | strict (terse echoes wrong) {ratio(rs, lambda r: r['cls'] in ('credited', 'a') and r['statement'] not in TERSE)}"
-              f" | classes {dict(Counter(r['cls'] for r in rs))}")
+        print(
+            f"  {name:8s} scorer {ratio(rs, lambda r: r['credited'])} | audit (a)+(b) {ratio(rs, lambda r: r['cls'] in ('credited', 'a'))}"
+            f" | audit (a) only {ratio(rs, lambda r: r['cls'] in ('credited', 'a'))}"
+            f" | strict (terse echoes wrong) {ratio(rs, lambda r: r['cls'] in ('credited', 'a') and r['statement'] not in TERSE)}"
+            f" | classes {dict(Counter(r['cls'] for r in rs))}"
+        )
     distinct = {}
     for r in rows:
         distinct.setdefault(r["id"], r)
     d = list(distinct.values())
-    print(f"  distinct executed-labelled facts (explain+search, by fact id): audit {ratio(d, lambda r: r['cls'] != 'c')}"
-          f" | strict {ratio(d, lambda r: r['cls'] != 'c' and r['statement'] not in TERSE)}"
-          f" | c: {sorted({r['statement'] for r in d if r['cls'] == 'c'})}")
-    print(f"  credited rows that are c (scorer over-credit): {sum(1 for r in rows if r['cls'] == 'c' and r['credited'])}"
-          f" ({dict(Counter(r['surface'] for r in rows if r['cls'] == 'c' and r['credited']))})")
+    print(
+        f"  distinct executed-labelled facts (explain+search, by fact id): audit {ratio(d, lambda r: r['cls'] != 'c')}"
+        f" | strict {ratio(d, lambda r: r['cls'] != 'c' and r['statement'] not in TERSE)}"
+        f" | c: {sorted({r['statement'] for r in d if r['cls'] == 'c'})}"
+    )
+    print(
+        f"  credited rows that are c (scorer over-credit): {sum(1 for r in rows if r['cls'] == 'c' and r['credited'])}"
+        f" ({dict(Counter(r['surface'] for r in rows if r['cls'] == 'c' and r['credited']))})"
+    )
 ```
 
 ### `evidence.py`
@@ -1146,6 +1298,7 @@ $ .venv/bin/python build/audit/evidence.py
 uncredited or questioned executed row cites, the matcher helpers behind each
 veto, the assertions present at each commit of the built fixture repo, and
 the over-claim and polarity checks. Run from spike/: python evidence.py"""
+
 import json
 import subprocess
 import sys
@@ -1197,37 +1350,76 @@ for s in STEPS:
 print(f"  {'rideEvents > ' + title:60s} {' '.join(row)}")
 
 print("== matcher helpers behind each veto")
-print("  _number_tokens('Member 1st fortyfive minutes free.') =", S._number_tokens(S._without_http_codes("Member 1st fortyfive minutes free.")))
-print("  _number_tokens(\"A member's first forty-five minutes are free.\") =", S._number_tokens("A member's first forty-five minutes are free."))
-print("  _has_negation(F-010) =", S._has_negation(t.facts["F-010"].statement), "| _has_negation('Ride open past 24 hours closed as lost.') =", S._has_negation("Ride open past 24 hours closed as lost."))
+print(
+    "  _number_tokens('Member 1st fortyfive minutes free.') =",
+    S._number_tokens(S._without_http_codes("Member 1st fortyfive minutes free.")),
+)
+print(
+    '  _number_tokens("A member\'s first forty-five minutes are free.") =',
+    S._number_tokens("A member's first forty-five minutes are free."),
+)
+print(
+    "  _has_negation(F-010) =",
+    S._has_negation(t.facts["F-010"].statement),
+    "| _has_negation('Ride open past 24 hours closed as lost.') =",
+    S._has_negation("Ride open past 24 hours closed as lost."),
+)
 rc = {"entity": "EBIKE_SURCHARGE", "attribute": "ebike_surcharge", "value": 0.1, "unit": "usd"}
-rc["_resolved_entities"] = S.align_entities(["EBIKE_SURCHARGE"], ai, t.entities, "business-logic")[0]
+rc["_resolved_entities"] = S.align_entities(["EBIKE_SURCHARGE"], ai, t.entities, "business-logic")[
+    0
+]
 tc = t.facts["F-007"].claim
-print("  F-007 echo claim: resolves", rc["_resolved_entities"], "| comparable", S._claim_is_comparable(rc, tc),
-      "| claims_match", S._claims_match(rc, tc), "| values agree", S._claim_values_match(0.1, tc["value"], "usd", tc["unit"]),
-      "| attributes_match", S._attributes_match("ebike_surcharge", tc["attribute"]))
-print("  F-019 echo: sim %.3f, words %s" % (S._text_similarity("3rd checkout refused.", t.facts["F-019"].statement), S._words("3rd checkout refused.")))
+print(
+    "  F-007 echo claim: resolves",
+    rc["_resolved_entities"],
+    "| comparable",
+    S._claim_is_comparable(rc, tc),
+    "| claims_match",
+    S._claims_match(rc, tc),
+    "| values agree",
+    S._claim_values_match(0.1, tc["value"], "usd", tc["unit"]),
+    "| attributes_match",
+    S._attributes_match("ebike_surcharge", tc["attribute"]),
+)
+print(
+    "  F-019 echo: sim %.3f, words %s"
+    % (
+        S._text_similarity("3rd checkout refused.", t.facts["F-019"].statement),
+        S._words("3rd checkout refused."),
+    )
+)
 
 print("== over-claim: 'Membership lapses N days after failed renewal.' against F-015/F-016")
 for n, fid in ((3, "F-015"), (7, "F-016")):
     st = f"Membership lapses {n} days after failed renewal."
     c = {"entity": "GRACE_DAYS", "attribute": "grace_days", "value": n, "unit": "day"}
     c["_resolved_entities"] = S.align_entities(["GRACE_DAYS"], ai, t.entities, "business-logic")[0]
-    print(f"  {fid}: claims_match {S._claims_match(c, t.facts[fid].claim)} | statement match {S._statement_matches(st, t.facts[fid].statement, mi)}"
-          f" sim {S._text_similarity(st, t.facts[fid].statement):.2f} | truth: {t.facts[fid].statement}")
+    print(
+        f"  {fid}: claims_match {S._claims_match(c, t.facts[fid].claim)} | statement match {S._statement_matches(st, t.facts[fid].statement, mi)}"
+        f" sim {S._text_similarity(st, t.facts[fid].statement):.2f} | truth: {t.facts[fid].statement}"
+    )
 
 print("== polarity: allowed/refused against F-017/F-018")
-for st in ("Checkin at full station allowed with overflow parking.", "Checkin at full station refused."):
+for st in (
+    "Checkin at full station allowed with overflow parking.",
+    "Checkin at full station refused.",
+):
     for fid in ("F-017", "F-018"):
-        print(f"  {st!r} vs {fid}: statement match {S._statement_matches(st, t.facts[fid].statement, mi)} sim {S._text_similarity(st, t.facts[fid].statement):.2f}")
+        print(
+            f"  {st!r} vs {fid}: statement match {S._statement_matches(st, t.facts[fid].statement, mi)} sim {S._text_similarity(st, t.facts[fid].statement):.2f}"
+        )
 
 
 def show(sha, path):
-    r = subprocess.run(["git", "-C", "build/repo", "show", f"{sha}:{path}"], capture_output=True, text=True)
+    r = subprocess.run(
+        ["git", "-C", "build/repo", "show", f"{sha}:{path}"], capture_output=True, text=True
+    )
     return r.stdout
 
 
-print("== assertions present per commit (git -C build/repo show <sha>:<path>, count of matching lines)")
+print(
+    "== assertions present per commit (git -C build/repo show <sha>:<path>, count of matching lines)"
+)
 CHECKS = [
     ("tests/e2e/test_pricing.py", "minutes=46", ["c2", "c3"]),
     ("tests/e2e/test_pricing.py", "minutes=31", STEPS),
@@ -1246,8 +1438,14 @@ CHECKS = [
     ("tests/unit/test_memberships.py", "LAPSED", STEPS),
 ]
 for path, pat, steps in CHECKS:
-    counts = " ".join(f"{s}:{sum(1 for ln in show(SHA[s], path).splitlines() if pat in ln)}" for s in steps)
+    counts = " ".join(
+        f"{s}:{sum(1 for ln in show(SHA[s], path).splitlines() if pat in ln)}" for s in steps
+    )
     print(f"  {path} {pat!r}: {counts}")
-lapsed = subprocess.run(["git", "-C", "build/repo", "grep", "-n", "LAPSED", SHA["c6"], "--", "farebox"], capture_output=True, text=True).stdout
+lapsed = subprocess.run(
+    ["git", "-C", "build/repo", "grep", "-n", "LAPSED", SHA["c6"], "--", "farebox"],
+    capture_output=True,
+    text=True,
+).stdout
 print("  git grep LAPSED farebox @c6:", lapsed.strip().replace("\n", " | "))
 ```
