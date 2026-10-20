@@ -3720,6 +3720,49 @@ def test_a_complement_bound_against_a_negated_bound_is_refused_as_the_vetos_know
 
 
 @pytest.mark.fixture
+def test_an_inside_phrased_complement_of_a_beyond_fact_is_refused_as_a_known_cost():
+    """Fix C of asbuilt#66's lens round: each candidate is CORRECT by
+    meaning, credited on main, and refused by the bound rule. It states a
+    beyond fact's boundary from the inside, through a connective the reader
+    does not follow ("or", "unless", "otherwise", "before it times out"),
+    so its `within`, `at most` or `up to` conflicts with the fact's
+    `after` or `more than`. An unmatched correct statement is a hard false
+    positive, so this costs precision as well as recall. No connective rule
+    is tried here; a follow-up issue owns it."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    correct = (
+        (
+            "F-013",
+            "A refund must be requested within 14 days after the ride ended or it is rejected.",
+        ),
+        ("F-060", "Each Tollbooth Pay call times out unless it answers within 5 seconds."),
+        ("F-060", "Each Tollbooth Pay call waits at most 5 seconds before it times out."),
+        ("F-060", "Each Tollbooth Pay call waits up to 5 seconds before it times out."),
+        ("F-060", "Each Tollbooth Pay call must complete within 5 seconds or it times out."),
+        (
+            "F-071",
+            "A refund request must be filed within 14 days (REFUND_WINDOW_DAYS) of the ride "
+            "ending; otherwise request_refund raises RefundWindowExpiredError and the endpoint "
+            "returns HTTP 422 with error code refund_window_expired.",
+        ),
+        (
+            "F-068",
+            "The Skyglass client calls GET /v2/severity with the station's latitude and "
+            "longitude, waiting up to 3 seconds before it times out.",
+        ),
+        ("F-077", "Each Tollbooth Pay call waits up to 10 seconds before it times out."),
+    )
+    for fid, candidate in correct:
+        tf = truth.facts[fid]
+        for strict in (True, False):
+            assert not _statement_matches(
+                candidate, tf.statement, mention_index, None, tf.claim, strict
+            ), (fid, candidate)
+            assert _bound_direction_conflict(candidate, tf.statement), (fid, candidate)
+
+
+@pytest.mark.fixture
 def test_f051_states_its_flag_condition():
     """Item 2: F-051's 409 holds only while the overflow_parking flag is off
     (F-017, F-018), so the truth says so: a statement carrying the

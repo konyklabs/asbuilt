@@ -698,18 +698,30 @@ def _bound_direction_conflict(a: str, b: str) -> bool:
     elsewhere in the sentence pairs with the truth's: the baseline's "open
     more than 24 hours without the bike being docked ... rides aren't
     flagged" was credited that way, and is now refused, a correct statement
-    lost (a known cost; F-010's complement stays its recorded false
-    negative, credited by no rule rather than by accident). A duration with no
+    refused (a known cost, counted as a hard false positive; F-010's
+    complement stays its recorded false negative, credited by no rule
+    rather than by accident). A duration with no
     direction word before it ("open for 24 hours", "a 7-day window",
     "older than 60 minutes") states no known direction and never conflicts:
-    such a pair is left to the other rules. Known cost: a statement naming
-    both sides of one boundary ("within 14 days ... more than 14 days")
-    conflicts with a fact stating one side; the direction sets must be
-    equal, so a statement still matches itself, and "past 24 hours ...
-    unless it is not docked within 24 hours" is refused against "not docked
-    within 24 hours". Units are not compared ("within 24 minutes" against
-    "within 24 hours" is another key, so no conflict), and bounds on money
-    or counts are not read."""
+    such a pair is left to the other rules. Known costs, each a correct
+    statement refused; an unmatched correct statement counts as a hard
+    false positive, so each costs precision as well as recall:
+    - the inside-phrased complement of a beyond fact, which states the
+      same boundary from the other side through a connective the reader
+      does not follow: "must be requested within 14 days ... or it is
+      rejected" (F-013), "times out unless it answers within 5 seconds",
+      "waits at most 5 seconds before it times out" (F-060), "must be
+      filed within 14 days ...; otherwise ... 422" (F-071). No connective
+      rule is tried; a follow-up issue owns it, with units and bounds on
+      money or counts;
+    - a statement naming both sides of one boundary ("within 14 days ...
+      more than 14 days") against a fact stating one side: the direction
+      sets must be equal, so a statement still matches itself, and "past 24
+      hours ... unless it is not docked within 24 hours" is refused against
+      "not docked within 24 hours".
+    Units are not compared ("within 24 minutes" against "within 24 hours"
+    is another key, so no conflict), and bounds on money or counts are not
+    read."""
     bounds_a, bounds_b = _bound_directions(a), _bound_directions(b)
     return any(bounds_a[key] != bounds_b[key] for key in bounds_a.keys() & bounds_b.keys())
 
