@@ -3768,6 +3768,47 @@ def test_an_inside_phrased_complement_of_a_beyond_fact_is_refused_as_a_known_cos
 
 
 @pytest.mark.fixture
+def test_a_statement_naming_both_sides_of_a_boundary_is_refused_as_a_known_cost():
+    """Each candidate is CORRECT by meaning, credited on main, and refused
+    by the bound rule: it states the fact's side of the boundary and the
+    other side too, and the direction sets at one number and unit must be
+    equal. An unmatched correct statement is a hard false positive, so this
+    costs precision as well as recall. konyklabs/asbuilt#69 owns it, with
+    the inside-phrased complements, units and money or count bounds."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    correct = (
+        (
+            "F-013",
+            "A refund requested more than 14 days after the ride ended is rejected; within 14 "
+            "days it is accepted.",
+        ),
+        (
+            "F-010",
+            "A ride whose bike is not docked within 24 hours of check-out is closed as lost "
+            "after 24 hours.",
+        ),
+        (
+            "F-091",
+            "When the latest Skyglass reading is more than 60 minutes old, rebalancing is not "
+            "paused by the storm pause, and a reading within 60 minutes pauses it.",
+        ),
+        (
+            "F-039",
+            "A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee "
+            "after 24 hours.",
+        ),
+    )
+    for fid, candidate in correct:
+        tf = truth.facts[fid]
+        for strict in (True, False):
+            assert not _statement_matches(
+                candidate, tf.statement, mention_index, None, tf.claim, strict
+            ), (fid, candidate)
+            assert _bound_direction_conflict(candidate, tf.statement), (fid, candidate)
+
+
+@pytest.mark.fixture
 def test_f051_states_its_flag_condition():
     """Item 2: F-051's 409 holds only while the overflow_parking flag is off
     (F-017, F-018), so the truth says so: a statement carrying the

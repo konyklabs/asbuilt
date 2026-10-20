@@ -308,7 +308,9 @@ uv sync
    stays a recorded false positive, as does "not docked within 24 minutes"
    against F-010's 24 hours (units are not compared); two designs that
    read negation scope each refused correct statements. The bound rule's
-   known costs are in the module docstring.
+   known costs (an inside-phrased complement of a beyond fact, and a
+   correct statement naming both sides of one boundary, each a hard false
+   positive; asbuilt#69) are in the module docstring.
 
    Explain and search print a line per provenance tier (asbuilt#34):
    `tier executed`, `tier code` and `tier documented`, each with precision

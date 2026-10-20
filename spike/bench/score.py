@@ -724,13 +724,15 @@ def _bound_direction_conflict(a: str, b: str) -> bool:
       rejected" (F-013), "times out unless it answers within 5 seconds",
       "waits at most 5 seconds before it times out" (F-060), "must be
       filed within 14 days ...; otherwise ... 422" (F-071). No connective
-      rule is tried; a follow-up issue owns it, with units and bounds on
-      money or counts;
-    - a statement naming both sides of one boundary ("within 14 days ...
-      more than 14 days") against a fact stating one side: the direction
-      sets must be equal, so a statement still matches itself, and "past 24
+      rule is tried; konyklabs/asbuilt#69 owns it, with units and bounds
+      on money or counts;
+    - a correct statement naming both sides of one boundary against a fact
+      stating one side: "... rejected; within 14 days it is accepted"
+      (F-013), "... closed as lost after 24 hours" (F-010), "... and a
+      reading within 60 minutes pauses it" (F-091). The direction sets
+      must be equal, so a statement still matches itself, and "past 24
       hours ... unless it is not docked within 24 hours" is refused against
-      "not docked within 24 hours".
+      "not docked within 24 hours"; konyklabs/asbuilt#69 owns this too.
     Units are not compared ("within 24 minutes" against "within 24 hours"
     is another key, so no conflict), and bounds on money or counts are not
     read."""
