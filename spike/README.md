@@ -264,13 +264,15 @@ uv sync
    across a surface's queries — micro-averaged — before computing ratios,
    and per-category breakdowns bucket by the *truth* fact's category only).
    The matcher itself is calibrated: `bench/score.py --calibrate` runs the
-   130 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
-   (1.0/1.0), and `--calibrate tests/fixtures/calibration-model-run.yaml`
-   the 91 pairs judged from the test connector's first real model run plus
-   targeted pairs per rule (asbuilt#17 and #35: precision 1.0, recall 0.59
-   strict and 0.62 lenient by design — the misses are narratives of a test
-   scenario, not matcher defects, and one paraphrase the over-claim rule
-   misses, kept to show its cost). The rules a fuller statement is held to — HTTP codes set
+   140 invented paraphrase pairs in `tests/fixtures/calibration.yaml`
+   (1.0/1.0 in both readings), and `--calibrate
+   tests/fixtures/calibration-model-run.yaml` the 91 pairs judged from the
+   test connector's first real model run plus targeted pairs per rule
+   (asbuilt#17, #35 and #63: precision 1.0, recall 0.56 strict and 0.62
+   lenient by design — the misses are narratives of a test scenario, not
+   matcher defects, one paraphrase the over-claim rule misses, kept to show
+   its cost, and F-010's bound stated from its other side, the negation
+   veto's known cost). The rules a fuller statement is held to — HTTP codes set
    aside, extra numbers only of a kind the fact does not use, flag state as
    its own polarity, a claim naming the entity its own way handed to the
    statement rule — are in the module docstring under asbuilt#17.
@@ -321,7 +323,11 @@ uv sync
    since asbuilt#38, the portal's Playwright specs in `code/web/tests/`), `code` (a `code/` file outside the test
    directories, at or before the step) or `documents` (a wiki page, doc,
    ticket or pull request; their versions are not history steps, so any
-   one counts).
+   one counts). A fact's tier at the step is `executed` when a run at or
+   before the step lifts it, no demotion applies by then and the step is
+   before the fact's `valid_to` (asbuilt#63; F-050's flaky c6 runs leave
+   it executed on its c1 to c5 runs, and a fact at its own `valid_to` step
+   is `code`); otherwise `code` where code carries it.
 
    **Backend fidelity** (asbuilt#38, D-014). A returned executed fact
    names the fidelity it claims in its own `fidelity` field (a name from

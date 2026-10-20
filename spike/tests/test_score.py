@@ -2244,14 +2244,16 @@ def test_judged_model_run_pairs_have_no_false_positive_and_a_recall_floor():
     reading (two dropping the flag condition, two leaving the value to the
     claim, one over-claim: each pair's `why`) and added the F-077 paraphrase
     the over-claim rule misses in both readings, which moved the floor from
-    35/55 to 30/51."""
+    35/55 to 30/51. asbuilt#63 gave F-051 its flag condition and relabelled
+    the three pairs whose candidate drops it (each pair's `why`), which moved
+    it to 27/48; the lenient reading is unchanged at 34/55."""
     pairs = load_calibration(SPIKE_ROOT / "tests/fixtures/calibration-model-run.yaml")
     assert len(pairs) == 91
     truth = load_truth(SPIKE_ROOT / "truth")
     report = calibrate(pairs, build_mention_index(truth), build_alias_index(truth), truth.entities)
     assert report["fp"] == 0, report["misclassified"]
     assert report["precision"] == 1.0
-    assert report["recall"] >= 0.58, report["misclassified"]
+    assert report["recall"] >= 0.56, report["misclassified"]
     assert report["recall"] < 0.9  # an honest floor: see the docstring
     # every targeted rule pair (both directions) must hold exactly
     rule_pairs = [p for p in pairs if str(p.get("source", "")).startswith("rule-")]
@@ -3659,3 +3661,103 @@ def test_g4_a_non_string_fidelity_or_project_is_absent_not_a_crash():
     )
     fidelity = _portal_report([odd_location])["surfaces"]["explain"]["tier"]["fidelity"]
     assert fidelity["by_fidelity"]["real"]["hard_errors"] == 0
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#63: the marking corrections #36's measurement found
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.fixture
+def test_a_complement_bound_against_a_negated_bound_is_refused_as_the_vetos_known_cost():
+    """Decided in the asbuilt#63 lens round (conductor): the negation veto
+    stays as it is. "Ride open past 24 hours closed as lost." states F-010
+    ("A ride whose bike is not docked within 24 hours of check-out is
+    closed as lost.") from the bound's other side, and is refused: a known
+    false negative, accepted. Two designs that read a negated `within`
+    bound as its complement each credited a wrong statement. The first,
+    counting an unread negated bound as `beyond`, credited "A ride whose
+    bike is not docked past 24 hours is closed as lost."; the second, with
+    an unknown direction for it, credited "Every ride is closed as lost
+    after 24 hours." This scorer keeps precision at 1.0 and reports
+    recall; the two designs' 22 calibration pairs are asbuilt#66's
+    evidence."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f010 = truth.facts["F-010"]
+    complement = "Ride open past 24 hours closed as lost."
+    for strict in (True, False):
+        assert not _statement_matches(
+            complement, f010.statement, mention_index, None, f010.claim, strict
+        )
+
+
+@pytest.mark.fixture
+def test_f051_states_its_flag_condition():
+    """Item 2: F-051's 409 holds only while the overflow_parking flag is off
+    (F-017, F-018), so the truth says so: a statement carrying the
+    condition is credited under the strict reading, one naming the other
+    state is not, and one dropping it no longer is."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    f051 = truth.facts["F-051"]
+    assert f051.statement.endswith("when the overflow_parking flag is off.")
+
+    def matches(candidate: str) -> bool:
+        return _statement_matches(candidate, f051.statement, mention_index, None, f051.claim)
+
+    assert matches(
+        "A check-in at a full station gets HTTP 409 station_full while the overflow_parking "
+        "flag is off."
+    )
+    assert not matches(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code "
+        "station_full when the overflow_parking flag is on."
+    )
+    assert not matches(
+        "POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full."
+    )
+
+
+@pytest.mark.fixture
+def test_step_tier_follows_the_distinct_target_rule():
+    """Item 3: under `--facts` a fact is executed at a step when a run at or
+    before it lifts it and no demotion applies by then. F-050's flaky c6
+    cites no run, so it stays executed on c1 to c5; F-007, proven from c5,
+    is code before; F-011 is code from its c5 demotion; F-012 is executed
+    from c6; F-123 is documented at c7. A run lifts a fact only before its
+    `valid_to` (lens round): F-001, F-015, F-002 and F-008 are in scope at
+    their `valid_to` step, and `code` there, as on main."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+
+    def tier(fid: str, step: str) -> str:
+        return _expected_tier_at_step(truth.facts[fid], step, truth.fidelities, order)
+
+    assert [tier("F-011", s) for s in ("c1", "c4", "c5", "c6")] == [
+        "executed",
+        "executed",
+        "code",
+        "code",
+    ]
+    assert [tier("F-007", s) for s in ("c1", "c2", "c3", "c4", "c5", "c6")] == [
+        "code",
+        "code",
+        "code",
+        "code",
+        "executed",
+        "executed",
+    ]
+    assert tier("F-050", "c6") == "executed"
+    assert _expected_fidelity_at_step(truth.facts["F-050"], "c6", truth.fidelities, order) == (
+        "in-process"
+    )
+    assert [tier("F-012", s) for s in ("c6", "c7")] == ["executed", "executed"]
+    assert tier("F-123", "c7") == "documented"
+    assert (tier("F-001", "c1"), tier("F-001", "c2")) == ("executed", "code")
+    assert [tier(f, s) for f, s in (("F-015", "c3"), ("F-002", "c4"), ("F-008", "c5"))] == [
+        "code",
+        "code",
+        "code",
+    ]

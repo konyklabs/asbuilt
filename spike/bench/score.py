@@ -269,6 +269,14 @@ New in konyklabs/asbuilt#38 (backend fidelity, D-014; truth/fidelities.yaml):
 * Contradictions are counted per truth kind (`by_kind`); the report
   prints the `fake-vs-real` line, found and winner, and `--facts` scores
   its candidates against those pairs too.
+
+New in konyklabs/asbuilt#63 (found by #36's measurement):
+
+* Under `--facts` a fact is executed at a step when a run at or before
+  the step lifts it and no demotion applies by then (`_runs_at_step`), the
+  distinct measure's rule: F-050's flaky c6 keeps it executed on c1 to c5.
+  Runs lift a fact only before its `valid_to`: at that step (in scope
+  under the closed window) a retired fact is `code`, as before.
 """
 
 from __future__ import annotations
@@ -3229,12 +3237,8 @@ def _expected_tier_at_step(
     fidelities: Fidelities | None = None,
     order: dict[str, int] | None = None,
 ) -> str:
-    """`executed` if the fact has a `run/pytest-<step_id>`,
-    `run/vitest-<step_id>` or `run/playwright-<step_id>` carrier — an EXACT
-    match, or a "-rerun"-suffixed variant ("a rerun carrier counts" —
-    konyklabs/asbuilt#8 review) — that lifts it (`_run_counts`: a demoted
-    fact's passes below the demoting fidelity do not, konyklabs/asbuilt#38);
-    `code` otherwise, when the fact has a `code/` carrier. Under the `tests`
+    """`executed` when a run lifts the fact at the step (`_runs_at_step`);
+    otherwise `code`, when the fact has a `code/` carrier. Under the `tests`
     and `code` filters every expected fact has one (that is what put it in
     scope); under `documents` a fact with none keeps its own static tier,
     `documented` in the fixture, rather than being labelled `code`
@@ -3257,7 +3261,23 @@ def _runs_at_step(
     fidelities: Fidelities | None = None,
     order: dict[str, int] | None = None,
 ) -> list[Carrier]:
+    """The runs that lift `tf` at `step_id`. With the step on the history
+    (konyklabs/asbuilt#63), the distinct measure's rule: a run carrier at or
+    before the step that lifts it (`_runs_by_step`), and none once a
+    demotion applies at or before it, or once the step reaches the fact's
+    `valid_to` (`_retired_by_step`: the window is closed there, so a
+    retired fact is still in scope at that step, but its runs no longer
+    prove it; F-001 is `code` at c2, as before). F-050's flaky c6 is
+    inconclusive and cites no run, so its c1 to c5 runs keep it executed
+    at c6; F-007, proven from c5, is `code` at c1 to c4; F-011, demoted at
+    c5, is `code` from c5. With no step order, a run carrier at exactly
+    the step, or a "-rerun" of it ("a rerun carrier counts",
+    konyklabs/asbuilt#8 review), as before."""
     rank = (order or {}).get(step_id)
+    if rank is not None:
+        if _demoted_by_step(tf, order, rank) or _retired_by_step(tf, order or {}, rank):
+            return []
+        return _runs_by_step(tf, order or {}, rank, fidelities)
     runs = []
     for c in tf.carriers:
         for framework in ("pytest", "vitest", "playwright"):
@@ -3269,6 +3289,11 @@ def _runs_at_step(
     return runs
 
 
+def _retired_by_step(tf: TruthFact, order: dict[str, int], rank: int) -> bool:
+    """The step of `rank` is at or after `tf`'s `valid_to`."""
+    return tf.valid_to is not None and tf.valid_to in order and order[tf.valid_to] <= rank
+
+
 def _expected_fidelity_at_step(
     tf: TruthFact,
     step_id: str,
@@ -3276,7 +3301,7 @@ def _expected_fidelity_at_step(
     order: dict[str, int] | None = None,
 ) -> str | None:
     """The strongest fidelity of the runs that lift `tf` at `step_id`
-    (konyklabs/asbuilt#38); None when none does."""
+    (konyklabs/asbuilt#38, `_runs_at_step`); None when none does."""
     return max(
         (fidelities.of_carrier(c) for c in _runs_at_step(tf, step_id, fidelities, order)),
         key=fidelities.rank,

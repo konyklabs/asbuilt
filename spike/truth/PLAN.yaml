@@ -375,6 +375,7 @@ wiki:
     facts:
     - id: F-051
       states: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+    note: The page omits the overflow_parking condition that F-051 now states (asbuilt#63).
 - slug: dockyard-api
   title: Dockyard API
   version: 5
@@ -386,6 +387,7 @@ wiki:
     facts:
     - id: F-051
       states: POST /rides/{id}/checkin at a full station returns HTTP 409 with error code station_full.
+    note: The page omits the overflow_parking condition that F-051 now states (asbuilt#63).
   - anchor: '#station-status'
     facts:
     - id: F-052
