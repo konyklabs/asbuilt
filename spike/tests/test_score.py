@@ -3691,6 +3691,21 @@ def test_a_complement_bound_against_a_negated_bound_is_refused_as_the_vetos_know
             assert not _statement_matches(
                 complement, f010.statement, mention_index, None, f010.claim, strict
             )
+    # The baseline model run's statement, credited before asbuilt#66 only
+    # because "aren't flagged" paired with the truth's "not docked": item 1
+    # refuses it on its bound direction, F-010's complement like the rest,
+    # and item 3 would too ("without the bike being docked" states "docked"
+    # with a negation the reader does not know, while the truth negates it).
+    baseline = (
+        "Farebox detects a lost bike automatically: if a ride has been open more than 24 "
+        "hours without the bike being docked anywhere, it's closed out automatically and "
+        "marked lost, which is what triggers the lost-bike fee; the 24-hour threshold is "
+        "deliberately generous so legitimate overnight/weekend rides aren't flagged."
+    )
+    for strict in (True, False):
+        assert not _statement_matches(
+            baseline, f010.statement, mention_index, None, f010.claim, strict
+        )
     invented = {
         "A bike still out past 24 hours costs the rider a $100.00 lost-bike fee.": (
             "A bike that is not docked within 24 hours costs the rider a $100.00 lost-bike fee."

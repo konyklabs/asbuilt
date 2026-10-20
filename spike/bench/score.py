@@ -688,8 +688,13 @@ def _bound_direction_conflict(a: str, b: str) -> bool:
     The polarity and negation rules compare outcome words and negation, so
     a flipped bound that keeps the truth's words passed them. Negated or
     not, the words decide: "not docked within 24 hours" is an inside bound
-    here, so the complement "open past 24 hours" conflicts, as the plain
-    negation veto already refuses it (F-010, #63). A duration with no
+    here, so the complement "open past 24 hours" conflicts. The plain
+    negation veto refuses it (F-010, #63) unless an unrelated negation
+    elsewhere in the sentence pairs with the truth's: the baseline's "open
+    more than 24 hours without the bike being docked ... rides aren't
+    flagged" was credited that way, and is now refused, a correct statement
+    lost (a known cost; F-010's complement stays its recorded false
+    negative, credited by no rule rather than by accident). A duration with no
     direction word before it ("open for 24 hours", "a 7-day window",
     "older than 60 minutes") states no known direction and never conflicts:
     such a pair is left to the other rules. Known cost: a statement naming
@@ -830,9 +835,10 @@ def _negation_scope_conflict(a: str, b: str) -> bool:
     F-028 match in the 2026-10-20 results files that way). Known cost,
     credited before: determiner against verb negation of one claim ("No
     refund is approved automatically ..." against "A refund is not
-    approved automatically ...": "no" governs "refund") is refused.
-    Negation is read on the words only; what it governs past the next
-    word is not."""
+    approved automatically ...": "no" governs "refund") is refused, and
+    so is a negation the reader does not know ("without the bike being
+    docked" states "docked" against "not docked"). Negation is read on the
+    words only; what it governs past the next word is not."""
     for x, y in ((a, b), (b, a)):
         negated_x, negated_y = _negated_words(x), _negated_words(y)
         words_x, words_y = Counter(_words(x)), set(_words(y))
@@ -1188,7 +1194,10 @@ def _statement_matches(
     and cited document) and `ask` sentence scoring (a Sentence carries no
     claim, so it always takes the plain-statement path). A negation
     mismatch or an entity-mention conflict vetoes the match outright,
-    before anything claim- or number-related is even considered.
+    before anything claim- or number-related is even considered; so, since
+    konyklabs/asbuilt#66, do a negation moved onto a word the other side
+    states (`_negation_scope_conflict`) and a duration bound stated in the
+    other direction (`_bound_direction_conflict`).
 
     When BOTH sides carry a claim AND the returned one is comparable (see
     `_claim_is_comparable` — reproduced bug: an unresolved returned entity
