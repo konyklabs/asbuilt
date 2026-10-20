@@ -332,15 +332,18 @@ uv sync
    decides it. Explain, search and `--facts` print `tier executed by
    fidelity` under the tier lines: per fidelity, precision (claims of F
    that matched an executed truth fact of fidelity F, over every claim of
-   F) and recall, and hard errors (a claim of F with no run citation at
-   F), grouped into the band at or above the real backend (which outranks
+   F) and recall, and hard errors (a claim of F citing no run at F that
+   the truth has by the run's step, with the cited test, when one is
+   named, among those that passed there: a failed run, a run that does
+   not exist and a later run count at no fidelity), grouped into the band at or above the real backend (which outranks
    code) and the band below it (which code outranks), in the file's own
    order; then `unqualified`, executed facts that claim no fidelity (every
    results file before asbuilt#38), credited against an executed fact of
    any fidelity; then a fidelity confusion matrix over matched facts
    claiming `executed` (row `none`: the truth fact is not executed). Below
    the distinct line, `executed tier, distinct facts by fidelity` repeats
-   the distinct measure per claimed fidelity, strict and lenient, with n
+   the distinct measure per claimed fidelity (one fact claimed at two
+   fidelities is two claims), strict and lenient, with n
    and the Wilson lower bound. `--json` carries these under the surface's
    `tier.fidelity`, under `fidelity` for `--facts`, and under
    `distinct_executed_by_fidelity`. Explain and search take a fact's

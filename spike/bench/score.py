@@ -247,9 +247,13 @@ D-014):
 New in konyklabs/asbuilt#38 (backend fidelity, D-014; truth/fidelities.yaml):
 
 * A returned executed fact claims a fidelity in its own `fidelity` field;
-  one with none is `unqualified`, its own bucket, never a hard error. A
-  claim of F with no cited run at F (`_citation_fidelities`, by the truth's
-  mapping, the Playwright citation's `project` included) is a hard error.
+  one with none (or with a value that is not a string) is `unqualified`,
+  its own bucket, never a hard error. A claim of F with no cited run at F
+  is a hard error (`_citation_fidelities`, by the truth's mapping, the
+  Playwright citation's `project` included): a citation counts only for a
+  run the truth has by the run's step, at a test that passed there
+  (`truth_runs`; lens round G2). The pre-existing executed-without-run
+  hard error (`_has_run_citation`) is unchanged.
 * Per fidelity, on explain and search over the truth's static `fidelity`
   (as the executed line reads the static tier), and on `--facts` over the
   runs that lift a fact at the step (`_expected_fidelity_at_step`):
@@ -260,7 +264,8 @@ New in konyklabs/asbuilt#38 (backend fidelity, D-014; truth/fidelities.yaml):
   the demoting fidelity from the demoting run's step on (`_run_counts`;
   before that failure exists the lower pass did lift); from that step
   `--facts` expects its static tier, where the demotion landed it (F-123:
-  `documented`). The distinct measure is reported per claimed fidelity.
+  `documented`). The distinct measure is reported per claimed fidelity,
+  one judgement per fact and claimed fidelity (lens round G1).
 * Contradictions are counted per truth kind (`by_kind`); the report
   prints the `fake-vs-real` line, found and winner, and `--facts` scores
   its candidates against those pairs too.
@@ -1701,14 +1706,49 @@ def _fidelity_row() -> dict[str, Any]:
     return dict.fromkeys(_FIDELITY_COUNTS, 0)
 
 
-def _citation_fidelities(rf: dict[str, Any], fidelities: Fidelities) -> set[str]:
+def _claimed_fidelity(rf: dict[str, Any]) -> str | None:
+    """A returned fact's own `fidelity`; a value that is not a string (a
+    list, a number) is treated as absent, never a crash."""
+    claimed = rf.get("fidelity")
+    return claimed if isinstance(claimed, str) else None
+
+
+# (run document, project) -> the test locations that passed in that run.
+TruthRuns = dict[tuple[str, str | None], set[str | None]]
+
+
+def truth_runs(
+    truth_facts: dict[str, TruthFact], order: dict[str, int] | None, rank: int | None
+) -> TruthRuns:
+    """Every run the truth has at or before the step of `rank`, from its
+    run carriers, with the tests that passed there: a truth run carrier is
+    a passing run by construction (truth/SCHEMA.md). Reruns are never
+    cited, so they are not here."""
+    runs: TruthRuns = {}
+    for tf in truth_facts.values():
+        for c in tf.carriers:
+            m = _RUN_CARRIER_RE.fullmatch(c.document)
+            if m and _at_or_before(m.group(1), order or {}, rank):
+                runs.setdefault((c.document, c.project), set()).add(c.location)
+    return runs
+
+
+def _citation_fidelities(rf: dict[str, Any], fidelities: Fidelities, runs: TruthRuns) -> set[str]:
     """The fidelities of the runs a returned fact cites, by the truth's
     mapping (`Fidelities.of_carrier`: the runner, and for Playwright the
-    citation's `project`); the fact's own `fidelity` never decides it."""
+    citation's `project`); the fact's own `fidelity` never decides it. A
+    citation counts only when it names a run the truth has (`truth_runs`:
+    at or before the run's step), and, when it names a test (`location`),
+    one that passed there: a failed run, a run that does not exist and a
+    run after the step count at no fidelity."""
     out: set[str] = set()
     for c in rf.get("citations") or []:
-        carrier = Carrier(document=str(c.get("document", "")), project=c.get("project"))
-        fidelity = fidelities.of_carrier(carrier)
+        project = c.get("project") if isinstance(c.get("project"), str) else None
+        document = str(c.get("document", ""))
+        passed = runs.get((document, project))
+        if passed is None or (c.get("location") is not None and c.get("location") not in passed):
+            continue
+        fidelity = fidelities.of_carrier(Carrier(document=document, project=project))
         if fidelity is not None:
             out.add(fidelity)
     return out
@@ -1748,6 +1788,7 @@ def _fidelity_counts(
     matches: list[tuple[dict[str, Any], str]],
     truth_fidelity: dict[str, str | None],
     fidelities: Fidelities,
+    runs: TruthRuns,
 ) -> dict[str, Any]:
     """Executed-tier counts per backend fidelity (konyklabs/asbuilt#38).
     `truth_fidelity` maps every expected fact id to its fidelity when it is
@@ -1756,21 +1797,22 @@ def _fidelity_counts(
     bucket (tp: matched to an executed target of any fidelity). Per claimed
     fidelity F: `returned`, `tp` (matched to an executed target of fidelity
     F), `expected` (targets of fidelity F) and `hard_errors` (claims F with
-    no run citation at F). The confusion matrix is over matched facts
-    claiming `executed`: rows the truth fidelity (`none` for a fact that is
-    not an executed target), columns the claimed one."""
+    no citation of a passing truth run at F, `_citation_fidelities`). The
+    confusion matrix is over matched facts claiming `executed`: rows the
+    truth fidelity (`none` for a fact that is not an executed target),
+    columns the claimed one."""
     by_fidelity: dict[str, dict[str, int]] = {f: _fidelity_row() for f in fidelities.ranked}
     unqualified = {"returned": 0, "tp": 0}
     for rf in resolved:
         if rf.get("tier") != _EXECUTED:
             continue
-        claimed = rf.get("fidelity")
+        claimed = _claimed_fidelity(rf)
         if claimed is None:
             unqualified["returned"] += 1
             continue
-        bucket = by_fidelity.setdefault(str(claimed), _fidelity_row())
+        bucket = by_fidelity.setdefault(claimed, _fidelity_row())
         bucket["returned"] += 1
-        if claimed not in _citation_fidelities(rf, fidelities):
+        if claimed not in _citation_fidelities(rf, fidelities, runs):
             bucket["hard_errors"] += 1
     for fidelity in truth_fidelity.values():
         if fidelity is not None:
@@ -1779,14 +1821,14 @@ def _fidelity_counts(
     for rf, fid in matches:
         if rf.get("tier") != _EXECUTED:
             continue
-        claimed = rf.get("fidelity")
+        claimed = _claimed_fidelity(rf)
         truth = truth_fidelity.get(fid)
         if claimed is None:
             unqualified["tp"] += truth is not None
         elif truth == claimed:
-            by_fidelity[str(claimed)]["tp"] += 1
+            by_fidelity[claimed]["tp"] += 1
         row = confusion.setdefault(truth or _NOT_EXECUTED, {})
-        col = _UNQUALIFIED if claimed is None else str(claimed)
+        col = _UNQUALIFIED if claimed is None else claimed
         row[col] = row.get(col, 0) + 1
     return {"by_fidelity": by_fidelity, _UNQUALIFIED: unqualified, "confusion": confusion}
 
@@ -1848,6 +1890,7 @@ def _tier_stats(
     matches: list[tuple[dict[str, Any], str]],
     expected: dict[str, TruthFact],
     fidelities: Fidelities | None = None,
+    runs: TruthRuns | None = None,
 ) -> dict[str, Any]:
     """A confusion matrix (rows = truth tier, cols = returned tier) over
     matched facts, plus executed-tier counts: `returned_executed` counts
@@ -1899,6 +1942,7 @@ def _tier_stats(
             matches,
             {fid: f.fidelity if f.tier == _EXECUTED else None for fid, f in expected.items()},
             fidelities,
+            runs or {},
         )
     return stats
 
@@ -2091,6 +2135,7 @@ def score_fact_query(
     entities: dict[str, Any] | None = None,
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
     fidelities: Fidelities | None = None,
+    runs: TruthRuns | None = None,
 ) -> dict[str, Any]:
     alias_index = alias_index or {}
     all_facts = all_facts if all_facts is not None else expected
@@ -2115,7 +2160,7 @@ def score_fact_query(
         "expected": len(expected),
         "uncited": uncited,
         "by_category": _by_category_counts(matched_ids, expected),
-        "tier": _tier_stats(resolved, matches, expected, fidelities),
+        "tier": _tier_stats(resolved, matches, expected, fidelities, runs),
         "category_accuracy": _category_accuracy(matches, expected),
         "validity": _validity_stats(matches, expected, commits or {}),
         "entity_resolution": _entity_resolution_stats(matches, expected),
@@ -2758,14 +2803,19 @@ def distinct_executed_by_fidelity(
         for fid, tf in truth_facts.items()
         if _executed_by_step(tf, order or {}, rank, fidelities)
     }
+    # One judgement per (fact, claimed fidelity): the same fact claimed at
+    # two fidelities is two claims, whatever order the queries return them.
+    distinct: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for rf in returned_facts:
+        if rf.get("tier") == _EXECUTED:
+            distinct.setdefault((_distinct_key(rf), _claimed_fidelity(rf)), rf)
     claims: dict[str, list[dict[str, Any]]] = {f: [] for f in fidelities.ranked}
     unqualified: list[dict[str, Any]] = []
-    for rf in _distinct_executed_facts(returned_facts):
-        claimed = rf.get("fidelity")
+    for (_, claimed), rf in distinct.items():
         if claimed is None:
             unqualified.append(rf)
         else:
-            claims.setdefault(str(claimed), []).append(rf)
+            claims.setdefault(claimed, []).append(rf)
 
     def judged(facts: list[dict[str, Any]], fidelity: str | None) -> dict[str, Any]:
         kept = [truth_facts[fid] for fid, f in targets.items() if fidelity is None or f == fidelity]
@@ -2812,6 +2862,7 @@ def score(
     # (konyklabs/asbuilt#34): see `_run_step_rank` for the default.
     order, run_rank = _run_step_rank(results.get("through_step"), step_dates, commits)
     _warn_unknown_steps(truth, order, run_rank, results.get("through_step"))
+    runs_by_step = truth_runs(truth.facts, order, run_rank)
     facts_by_step = {fid: f for fid, f in truth.facts.items() if _fact_by_step(f, order, run_rank)}
     contradictions_by_step = {
         xid: xc
@@ -2848,6 +2899,7 @@ def score(
                         truth.entities,
                         mention_index,
                         truth.fidelities,
+                        runs_by_step,
                     ),
                     "_query_id": q["id"],
                 }
@@ -2868,6 +2920,7 @@ def score(
                         truth.entities,
                         mention_index,
                         truth.fidelities,
+                        runs_by_step,
                     ),
                     "_query_id": q["id"],
                 }
@@ -3466,6 +3519,7 @@ def score_test_connector(
                         for fid, tf in expected.items()
                     },
                     fidelities,
+                    truth_runs(truth.facts, order, step_rank),
                 )
             ],
             fidelities,
