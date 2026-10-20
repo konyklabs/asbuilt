@@ -276,7 +276,15 @@ New in konyklabs/asbuilt#63 (found by #36's measurement):
   the step lifts it and no demotion applies by then (`_runs_at_step`), the
   distinct measure's rule: F-050's flaky c6 keeps it executed on c1 to c5.
   Runs lift a fact only before its `valid_to`: at that step (in scope
-  under the closed window) a retired fact is `code`, as before.
+  under the closed window then, out of scope since #66) a retired fact is
+  `code`, as before.
+
+New in konyklabs/asbuilt#66 (found while building #63):
+
+* Under `--facts` a fact is current at step S when `valid_from` <= S <
+  `valid_to` (`_current_at_step`), the fixture's own half-open window:
+  the step that superseded a fact no longer expects it. Explain's
+  whole-history expectation (`_fact_by_step`) is unchanged.
 """
 
 from __future__ import annotations
@@ -3159,24 +3167,36 @@ def _resolve_step_or_sha(value: str, commits: dict[str, Any]) -> str:
 
 
 def _current_at_step(tf: TruthFact, order: dict[str, int], step_rank: int | None) -> bool:
-    """Closed validity window [valid_from, valid_to] at `step_rank`
-    (konyklabs/asbuilt#8 review — this was half-open, excluding `valid_to`
-    itself, until the reviewer's F-011/F-012 reproduction: "F-011 must be
-    expected... at c5", exactly its own `valid_to`). This function's only
-    caller needs "could the connector plausibly find evidence of this fact
-    in the codebase at this step", not "there is exactly one current
-    value" — at a fact's own retirement step, the OLD test's assertion is
-    still literally in the codebase (now failing, demoted) and the NEW
-    code's value isn't proven by a passing test yet; both are legitimate
-    connector targets at once, so both must be in scope there, however
-    "the current value" would be phrased elsewhere. `step_rank=None` (the
-    step didn't resolve) skips the validity filter rather than excluding
-    everything."""
+    """Half-open validity window [valid_from, valid_to) at `step_rank`
+    (konyklabs/asbuilt#66): `valid_to` is the step that superseded the
+    fact, so the fact is not current there. F-001 (`valid_to: c2`) and
+    F-002 (`valid_from: c2`) are not both expected at c2. It is the
+    fixture's own definition: `truth/validate.py`'s `steps_between` is
+    half-open (`STEPS[i:j]`), and it requires a code carrier's PLAN `steps`
+    to equal `steps_between(version, valid_to)`; `truth/PLAN.yaml` lists
+    F-011 on `LOST_BIKE_FEE` at `[c1, c2, c3, c4]`, and
+    `test_lost_bike_fee_100` asserting it at `[c1, c2, c3, c4]` with
+    `fails_in: [c5]`. The truth never carries a fact at its own `valid_to`.
+    The window was closed from the konyklabs/asbuilt#8 review, whose
+    reproduction read "F-011 must be expected... at c5", exactly its own
+    `valid_to`, holding the failing old test and the new code to be both
+    legitimate connector targets there; that reading is superseded by the
+    definition above, because the failing test's value is a contradiction
+    candidate, not a current fact: the truth records it as X-021
+    (run-vs-code, F-011 against F-012, winner F-012, opened at c5). So a
+    statement of a failing test's superseded value at the fact's
+    `valid_to` step ("Lost bike fee $100.00." at c5) is now unmatched, a
+    hard false positive, and counts against `--facts` precision there; it
+    is `code` tier, so executed-tier precision does not move. Used only by
+    `score_test_connector`; explain's whole-history expectation is
+    `_fact_by_step`. `step_rank=None` (the step didn't resolve) skips the
+    validity filter rather than excluding everything, and a `valid_from`
+    or `valid_to` the order doesn't know holds nothing back."""
     if step_rank is None:
         return True
     if tf.valid_from is not None and order.get(tf.valid_from, step_rank) > step_rank:
         return False
-    if tf.valid_to is not None and order.get(tf.valid_to, step_rank) < step_rank:
+    if tf.valid_to is not None and order.get(tf.valid_to, step_rank + 1) <= step_rank:
         return False
     return True
 
@@ -3265,9 +3285,10 @@ def _runs_at_step(
     (konyklabs/asbuilt#63), the distinct measure's rule: a run carrier at or
     before the step that lifts it (`_runs_by_step`), and none once a
     demotion applies at or before it, or once the step reaches the fact's
-    `valid_to` (`_retired_by_step`: the window is closed there, so a
-    retired fact is still in scope at that step, but its runs no longer
-    prove it; F-001 is `code` at c2, as before). F-050's flaky c6 is
+    `valid_to` (`_retired_by_step`: its runs no longer prove it there;
+    F-001 is `code` at c2, as before, though since konyklabs/asbuilt#66
+    `--facts` no longer has it in scope at its `valid_to`, see
+    `_current_at_step`). F-050's flaky c6 is
     inconclusive and cites no run, so its c1 to c5 runs keep it executed
     at c6; F-007, proven from c5, is `code` at c1 to c4; F-011, demoted at
     c5, is `code` from c5. With no step order, a run carrier at exactly

@@ -317,8 +317,10 @@ uv sync
    file without `through_step` holds nothing back.
 
    `--facts FILE --step STEP` scores a connector's bag of facts instead of
-   a results file, against the truth facts current at the step that have a
-   carrier of the kind `--truth-filter` names: `tests` (the default, a test
+   a results file, against the truth facts current at the step (from
+   their `valid_from` up to, not including, their `valid_to`: asbuilt#66,
+   the fixture's own window, so the step that superseded a fact no longer
+   expects it) that have a carrier of the kind `--truth-filter` names: `tests` (the default, a test
    file at or before the step: `code/tests/`, `code/dispatch/test/` and,
    since asbuilt#38, the portal's Playwright specs in `code/web/tests/`), `code` (a `code/` file outside the test
    directories, at or before the step) or `documents` (a wiki page, doc,
@@ -326,8 +328,8 @@ uv sync
    one counts). A fact's tier at the step is `executed` when a run at or
    before the step lifts it, no demotion applies by then and the step is
    before the fact's `valid_to` (asbuilt#63; F-050's flaky c6 runs leave
-   it executed on its c1 to c5 runs, and a fact at its own `valid_to` step
-   is `code`); otherwise `code` where code carries it.
+   it executed on its c1 to c5 runs); otherwise `code` where code carries
+   it.
 
    **Backend fidelity** (asbuilt#38, D-014). A returned executed fact
    names the fidelity it claims in its own `fidelity` field (a name from

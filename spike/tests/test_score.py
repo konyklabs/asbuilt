@@ -1723,14 +1723,11 @@ def test_resolve_step_or_sha_accepts_either_or_neither():
     assert _resolve_step_or_sha("unknown", _MINI_COMMITS) == "unknown"
 
 
-def test_current_at_step_closed_interval_overlaps_at_the_boundary():
-    """[valid_from, valid_to], closed on both ends (konyklabs/asbuilt#8
-    review — this was half-open until the reviewer's own reproduction:
-    "F-011 must be expected... at c5", exactly its own valid_to): AT the
-    boundary step, BOTH the retiring and the introduced fact are in scope
-    at once — deliberately, since a demotion's own step is exactly when
-    the old (now-failing) test and the new (not-yet-proven) code both
-    remain legitimate connector targets."""
+def test_current_at_step_is_half_open_at_valid_to():
+    """[valid_from, valid_to), the fixture's own window (konyklabs/
+    asbuilt#66; it was closed from the #8 review until then): AT the
+    boundary step only the introduced fact is in scope, never the one it
+    superseded, so a retired fact and its successor never overlap."""
     order = _step_order(_MINI_COMMITS)
     retired_at_c2 = TruthFact(
         id="F-x",
@@ -1751,7 +1748,7 @@ def test_current_at_step_closed_interval_overlaps_at_the_boundary():
         valid_from="c2",
     )
     assert _current_at_step(retired_at_c2, order, order["c1"])
-    assert _current_at_step(retired_at_c2, order, order["c2"])  # still in scope AT its own valid_to
+    assert not _current_at_step(retired_at_c2, order, order["c2"])  # not at its own valid_to
     assert not _current_at_step(retired_at_c2, order, order["c3"])
     assert not _current_at_step(introduced_at_c2, order, order["c1"])
     assert _current_at_step(introduced_at_c2, order, order["c2"])
@@ -1795,14 +1792,10 @@ def test_score_test_connector_on_mini_fixture_perfect_wrong_tier_wrong_number():
     report = score_test_connector(payload, MINI_ROOT / "truth", "c4", _MINI_COMMITS)
 
     assert report["step"] == "c4"
-    # F-002, F-003, F-012: F-002's validity window is [c2, c4] (closed —
-    # konyklabs/asbuilt#8 review), so it is STILL in scope exactly at its
-    # own valid_to=c4, alongside F-003 (valid_from=c4) — deliberately
-    # overlapping, not a bug (see _current_at_step's docstring). F-002 has
-    # no run/pytest-c4 carrier of its own, so its PER-STEP tier here is
-    # "code", not its eventual "executed" — nothing in this payload targets
-    # it, so it is simply missed.
-    assert report["expected"] == 3
+    # F-003 and F-012: F-002's validity window is [c2, c4), half-open
+    # (konyklabs/asbuilt#66), so F-003 (valid_from=c4) replaces it at c4
+    # and the two never overlap (see _current_at_step's docstring).
+    assert report["expected"] == 2
     assert report["tp"] == 2  # perfect + wrong_tier both match; tier isn't a match criterion
     assert report["hard_false_positives"] == 1
     assert report["tier_confusion"]["confusion"] == {
@@ -1814,7 +1807,7 @@ def test_score_test_connector_on_mini_fixture_perfect_wrong_tier_wrong_number():
     assert report["tier_confusion"]["hard_errors"] == 2
     assert report["by_tier"]["executed"]["tp"] == 1
     assert report["by_tier"]["code"]["tp"] == 0
-    assert [m["id"] for m in report["missed"]] == ["F-002"]
+    assert report["missed"] == []
     assert report["contradiction_candidates"]["expected"] == 0  # mini has no run-vs-code kind
 
 
@@ -1829,7 +1822,7 @@ def test_print_test_connector_report_smoke(capsys):
     print_test_connector_report(report)
     out = capsys.readouterr().out
     assert "step: c4" in out
-    assert "missed truth facts: 3" in out  # F-002, F-003, F-012 (see the perfect/wrong-tier test)
+    assert "missed truth facts: 2" in out  # F-003, F-012 (see the perfect/wrong-tier test)
 
 
 def test_claim_metrics_uses_claims_match_not_exact_attribute_equality():
@@ -2181,9 +2174,10 @@ def test_resolve_fact_entities_resolves_the_claims_own_entity():
 def test_real_fixture_f011_f012_per_step_tier_reproduction():
     """konyklabs/asbuilt#8 review, reproduced directly against the real
     F-011/F-012/commits.json: F-012 must not be in scope at c5 (its only
-    test carrier is version c6); F-011 must be in scope at "code" tier at
-    c5 (demoted) and "executed" at c1..c4 (a run/pytest-<step> carrier at
-    each of those steps)."""
+    test carrier is version c6); F-011 must be "executed" at c1..c4 (a
+    run/pytest-<step> carrier at each of those steps). The review also had
+    F-011 in scope at c5, its own `valid_to`; since konyklabs/asbuilt#66 it
+    is not (the window is half-open), and its tier there is still "code"."""
     commits_path = SPIKE_ROOT / "build" / "commits.json"
     if not commits_path.is_file():
         pytest.skip()
@@ -2203,7 +2197,7 @@ def test_real_fixture_f011_f012_per_step_tier_reproduction():
         assert _current_at_step(f011, order, order[step])
         assert _expected_tier_at_step(f011, step) == "executed"
     assert _has_test_carrier_by_step(f011, prefixes, order, order["c5"])
-    assert _current_at_step(f011, order, order["c5"])
+    assert not _current_at_step(f011, order, order["c5"])
     assert _expected_tier_at_step(f011, "c5") == "code"
 
 
@@ -2616,12 +2610,12 @@ def test_aggregate_reports_carries_code_and_documented_tier_lines(capsys):
 def test_score_test_connector_code_filter_keeps_code_outside_tests_by_step():
     """`code`: a `code/` carrier outside the test directories, at or before
     the step, on a fact current at it. F-012 carries only a dispatch test,
-    so it is never in; F-001 (retired at c2) and F-002/F-003 (from c2, c4)
-    move in and out with the step; F-013 is there throughout."""
+    so it is never in; F-001 (retired at c2), F-002 (c2 until c4) and F-003
+    (from c4) move in and out with the step; F-013 is there throughout."""
     at_c1 = score_test_connector([], MINI_ROOT / "truth", "c1", _MINI_COMMITS, "code")
     at_c4 = score_test_connector([], MINI_ROOT / "truth", "c4", _MINI_COMMITS, "code")
     assert sorted(m["id"] for m in at_c1["missed"]) == ["F-001", "F-013"]
-    assert sorted(m["id"] for m in at_c4["missed"]) == ["F-002", "F-003", "F-013"]
+    assert sorted(m["id"] for m in at_c4["missed"]) == ["F-003", "F-013"]
     assert {m["id"]: m["test"] for m in at_c4["missed"]}["F-013"] == "PricingClient.fetch_rate"
     assert set(at_c4["by_tier"]) == {"executed", "code"}
     assert at_c4["truth_filter"] == "code"
@@ -3726,8 +3720,9 @@ def test_step_tier_follows_the_distinct_target_rule():
     cites no run, so it stays executed on c1 to c5; F-007, proven from c5,
     is code before; F-011 is code from its c5 demotion; F-012 is executed
     from c6; F-123 is documented at c7. A run lifts a fact only before its
-    `valid_to` (lens round): F-001, F-015, F-002 and F-008 are in scope at
-    their `valid_to` step, and `code` there, as on main."""
+    `valid_to` (lens round): F-001, F-015, F-002 and F-008 are `code` at
+    their `valid_to` step, as on main (and since asbuilt#66 out of the
+    `--facts` scope there, `_current_at_step`)."""
     truth = load_truth(SPIKE_ROOT / "truth")
     commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
     order = _step_order(commits)
@@ -3761,3 +3756,49 @@ def test_step_tier_follows_the_distinct_target_rule():
         "code",
         "code",
     ]
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#66: the scorer's refusals and its validity window
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.fixture
+def test_facts_holds_a_fact_current_only_before_its_valid_to():
+    """`--facts` expects a fact at S when `valid_from` <= S < `valid_to`,
+    the fixture's own window (`truth/validate.py`'s `steps_between`): every
+    retired fact is in scope at the step before its `valid_to` and out of it
+    there. The cost: at c5 the bag still states the failing test's $100
+    (F-011, superseded by F-012's $150 at c5), which now matches nothing and
+    is a hard false positive, where the closed window credited it."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+    steps = sorted(order, key=order.__getitem__)
+    retired = {fid: tf for fid, tf in truth.facts.items() if tf.valid_to is not None}
+    assert len(retired) == 14
+    for tf in retired.values():
+        before = steps[order[tf.valid_to] - 1]
+        assert _current_at_step(tf, order, order[before]), tf.id
+        assert not _current_at_step(tf, order, order[tf.valid_to]), tf.id
+
+    def fee_100(step: str) -> dict:
+        return {
+            "statement": "Lost bike fee $100.00.",
+            "category": "business-logic",
+            "entities": ["farebox", "lost bike fee"],
+            "tier": "code",
+            "citations": [
+                {
+                    "document": "code/tests/unit/test_lost_bikes.py",
+                    "location": "test_lost_bike_fee_100",
+                    "version": step,
+                }
+            ],
+        }
+
+    at_c4 = score_test_connector([fee_100("c4")], SPIKE_ROOT / "truth", "c4", commits)
+    at_c5 = score_test_connector([fee_100("c5")], SPIKE_ROOT / "truth", "c5", commits)
+    assert (at_c4["tp"], at_c4["hard_false_positives"]) == (1, 0)
+    assert (at_c5["tp"], at_c5["hard_false_positives"]) == (0, 1)
+    assert "F-011" not in {m["id"] for m in at_c5["missed"]}
