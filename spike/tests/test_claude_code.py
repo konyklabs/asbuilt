@@ -176,10 +176,13 @@ def test_the_client_path_passes_the_same_turn_cap(tmp_path: Path, monkeypatch: p
     assert argv[argv.index("--max-turns") + 1] == "6"
 
 
-def test_every_call_names_its_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """roadmap#154: a call with no `--effort` runs at whatever the user's own
-    settings give the model (`xhigh` on the first overnight run, 8x slower),
-    so both paths name it: `medium` by default, `ASBUILT_EFFORT` otherwise."""
+def test_every_call_names_its_effort_and_loads_no_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """roadmap#154: a call that loads the user's own settings runs at their
+    effort (`xhigh` on the first overnight run, 8x slower) with their advisor
+    model, plugins and hooks, so both paths load none and name the effort:
+    `medium` by default, `ASBUILT_EFFORT` otherwise."""
     args_path = tmp_path / "args.json"
     monkeypatch.setenv("FAKE_CLAUDE_ARGS_PATH", str(args_path))
     monkeypatch.delenv("ASBUILT_EFFORT", raising=False)
@@ -188,6 +191,8 @@ def test_every_call_names_its_effort(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _invoke_claude_code("a prompt", "claude-sonnet-5", schema=None, system_prompt="sys")
     argv = json.loads(args_path.read_text())
     assert argv[argv.index("--effort") + 1] == DEFAULT_EFFORT == "medium"
+    # and no settings file of the user's: their effort, advisor, plugins, hooks
+    assert argv[argv.index("--setting-sources") + 1] == ""
 
     args_path.unlink()
     monkeypatch.setenv("ASBUILT_EFFORT", "high")
@@ -196,6 +201,7 @@ def test_every_call_names_its_effort(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
     argv = json.loads(args_path.read_text())
     assert argv[argv.index("--effort") + 1] == "high"
+    assert argv[argv.index("--setting-sources") + 1] == ""
 
 
 def test_an_effort_the_cli_would_refuse_is_refused_before_spawning(

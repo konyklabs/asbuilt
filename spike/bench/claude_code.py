@@ -117,16 +117,19 @@ DEFAULT_MAX_TURNS = 4
 DEFAULT_RETRY_PAUSE_SECONDS = 5.0
 DEFAULT_MAX_RETRIES = 1
 
-# konyklabs/roadmap#154, 2026-10-19: a call that names no `--effort` runs at
-# whatever effort the user's own Claude Code settings give the model
-# (`effortLevel`, per model under `modelSettings`), so an arm's speed, spend
-# and possibly its answers depended on a file outside this repository. The
-# same stack-B extraction call (wiki/checkout-rules, same prompt and schema)
-# took 172 s and 5,395 thinking tokens at the inherited `xhigh`, 20 s and 255
-# at `medium`, both with 15 facts. Every call now names its effort:
-# `medium` unless `ASBUILT_EFFORT` says otherwise, refused before the CLI is
-# spawned if the CLI would not accept it; the runner records the level in
-# the results.
+# konyklabs/roadmap#154, 2026-10-19: a call loaded the user's own Claude Code
+# settings, so an arm's speed, spend and possibly its answers depended on
+# files outside this repository: the effort they give the model
+# (`effortLevel`, per model under `modelSettings`), an `advisorModel` the
+# model could consult mid-extraction, and the plugins and SessionStart hooks
+# that add context to every prompt. The same stack-B extraction call
+# (wiki/checkout-rules, same prompt and schema) took 172 s and $0.80 at list
+# price with those settings (`xhigh`, and a second model as advisor for
+# $0.63 of it), 16 s and $0.033 with none loaded and `medium`, 15 facts
+# both. Every call now loads no settings files (`--setting-sources ""`) and
+# names its effort: `medium` unless `ASBUILT_EFFORT` says otherwise, refused
+# before the CLI is spawned if the CLI would not accept it; the runner
+# records the level in the results.
 DEFAULT_EFFORT = "medium"
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _EFFORT_ENV = "ASBUILT_EFFORT"
@@ -567,6 +570,9 @@ def _invoke_claude_code(
         model,
         "--effort",
         effort_level(),
+        # roadmap#154: no user, project or local settings (see DEFAULT_EFFORT)
+        "--setting-sources",
+        "",
     ]
     if schema is not None:
         args += ["--json-schema", json.dumps(schema)]
