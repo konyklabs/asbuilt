@@ -1186,6 +1186,7 @@ def _statement_matches(
     returned_claim: dict[str, Any] | None = None,
     truth_claim: dict[str, Any] | None = None,
     strict: bool = True,
+    direction_vetoes: bool = True,
 ) -> bool:
     """Number-aware, negation- and entity-mention-guarded text match, now
     claim-first (konyklabs/asbuilt#8: the truth author added a numeric
@@ -1197,7 +1198,12 @@ def _statement_matches(
     before anything claim- or number-related is even considered; so, since
     konyklabs/asbuilt#66, do a negation moved onto a word the other side
     states (`_negation_scope_conflict`) and a duration bound stated in the
-    other direction (`_bound_direction_conflict`).
+    other direction (`_bound_direction_conflict`), unless
+    `direction_vetoes=False`. A refusal is a refusal only where a match
+    credits: a caller that credits on a NON-match (the contradiction
+    side's opposing guard, `_side_matches`) passes `direction_vetoes=False`,
+    the loosest matcher, so that a new refusal can never turn into a credit
+    there.
 
     When BOTH sides carry a claim AND the returned one is comparable (see
     `_claim_is_comparable` — reproduced bug: an unresolved returned entity
@@ -1227,13 +1233,13 @@ def _statement_matches(
     executed precision's comparison line only."""
     if _has_negation(returned_statement) != _has_negation(truth_statement):
         return False
-    if _negation_scope_conflict(returned_statement, truth_statement):
+    if direction_vetoes and _negation_scope_conflict(returned_statement, truth_statement):
         return False
     if _flag_state_conflict(returned_statement, truth_statement, mention_index):
         return False
     if _outcome_conflict(returned_statement, truth_statement):
         return False
-    if _bound_direction_conflict(returned_statement, truth_statement):
+    if direction_vetoes and _bound_direction_conflict(returned_statement, truth_statement):
         # konyklabs/asbuilt#66: before the claim path, so an agreeing claim
         # does not credit a flipped bound either.
         return False
@@ -1450,10 +1456,12 @@ def facts_match(
     truth_fact: TruthFact,
     mention_index: list[tuple[re.Pattern[str], str, str]] | None = None,
     strict: bool = True,
+    direction_vetoes: bool = True,
 ) -> bool:
     """(a) shared entity, (b) shared cited document, (c) `_statement_matches`
     on the two statements (number-aware, negation-, mention- and now
-    claim-guarded — konyklabs/asbuilt#8; `strict` as there, #35). Entities
+    claim-guarded — konyklabs/asbuilt#8; `strict` as there, #35;
+    `direction_vetoes` as there, #66). Entities
     here, and the claim's own entity if it carries one, are expected
     already resolved ids (see `resolve_fact_entities`) — `facts_match`
     itself does no name alignment, so a caller working directly with
@@ -1474,6 +1482,7 @@ def facts_match(
         returned.get("claim"),
         truth_fact.claim,
         strict,
+        direction_vetoes,
     )
 
 
@@ -1736,7 +1745,14 @@ def _side_matches(
     the side only when neither the whole statement nor any clause also
     states `opposing`, the pair's other fact: a winner saying "up to 3
     bikes; the code's limit of 2 is a regression" states both sides and
-    picks neither (lens round)."""
+    picks neither (lens round). That guard credits on a NON-match, so it
+    uses the loosest matcher, `direction_vetoes=False` (konyklabs/asbuilt#66):
+    a check whose negative result credits must never gain a refusal, or a
+    new veto that refuses the opposing clause would turn "states both,
+    picks neither" into a credit (X-020's hedge, "times out after 5
+    seconds; ... waits up to 10 seconds before it times out", found by
+    #66's lens round). It still runs the strict reading, `facts_match`'s
+    default, as it has since #35."""
     if facts_match(side, truth_fact, mention_index):
         return True
     clauses = [c.strip() for c in str(side.get("statement", "")).split(";")]
@@ -1748,7 +1764,7 @@ def _side_matches(
     if opposing is None:
         return True
     return not any(
-        facts_match({**side, "statement": text}, opposing, mention_index)
+        facts_match({**side, "statement": text}, opposing, mention_index, direction_vetoes=False)
         for text in [side.get("statement", ""), *clauses]
     )
 

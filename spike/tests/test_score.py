@@ -3967,3 +3967,36 @@ def test_a_bound_in_another_unit_is_credited_as_a_known_false_positive():
         assert _statement_matches(
             candidate, f010.statement, mention_index, None, f010.claim, strict
         )
+
+
+@pytest.mark.fixture
+def test_a_new_veto_never_turns_a_hedge_into_a_contradiction_credit():
+    """Fix A of asbuilt#66's lens round: `_side_matches` credits a side only
+    when no clause also states the pair's other fact, a check that credits
+    on a NON-match, so it runs without the #66 direction vetoes. Otherwise
+    the bound veto refuses "waits up to 10 seconds before it times out"
+    against X-020's "times out after 10 seconds", and a winner that states
+    both sides ("states both, picks neither") is credited; a hedging side
+    is matched to the pair the same way. Both stay refused, as on main."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    mention_index = build_mention_index(truth)
+    tollbooth = ["E-int-tollbooth-pay"]
+    doc, config = "doc/tollbooth-integration", "code/farebox/config.py"
+    hedge = (
+        "Each Tollbooth Pay call times out after 5 seconds; per the integration doc, each "
+        "Tollbooth Pay call waits up to 10 seconds before it times out."
+    )
+    candidate = {
+        "a": _side("Each Tollbooth Pay call times out after 10 seconds.", tollbooth, [doc]),
+        "b": _side("Each Tollbooth Pay call times out after 5 seconds.", tollbooth, [config]),
+        "winner": _side(hedge, tollbooth, [config, doc]),
+    }
+    x020 = {"X-020": truth.contradictions["X-020"]}
+    report = score_contradictions([candidate], x020, truth.facts, mention_index)
+    assert (report["matched"], report["winner_checked"], report["winner_correct"]) == (1, 1, 0)
+    hedging_side = {
+        "a": _side(hedge, tollbooth, [config, doc]),
+        "b": _side("Each Tollbooth Pay call times out after 10 seconds.", tollbooth, [doc]),
+        "winner": None,
+    }
+    assert score_contradictions([hedging_side], x020, truth.facts, mention_index)["matched"] == 0
