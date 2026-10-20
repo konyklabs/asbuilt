@@ -3676,16 +3676,23 @@ def test_a_complement_bound_against_a_negated_bound_is_refused_as_the_vetos_know
     an unknown direction for it, credited "Every ride is closed as lost
     after 24 hours." This scorer keeps precision at 1.0 and reports
     recall; the two designs' 22 calibration pairs are asbuilt#66's
-    evidence. asbuilt#66 only refuses, so the four complement paraphrases
-    among them stay refused, here rather than in the calibration set, and
-    its bound rule now refuses them on their direction too ("past" against
-    the raw "within")."""
+    evidence. asbuilt#66 adds no credit at the statement level, so the
+    four complement paraphrases among them stay refused, here rather than
+    in the calibration set, and its bound rule now refuses those with a
+    direction word on their direction too ("past" against the raw
+    "within"). #66's label rule (a bound on the complementary event, the
+    same boundary from the other side, is a complement: true, refused,
+    pinned here) adds "A ride open for 24 hours is closed as lost.", a
+    calibration hard negative until the lens round."""
     truth = load_truth(SPIKE_ROOT / "truth")
     mention_index = build_mention_index(truth)
     f010 = truth.facts["F-010"]
     for complement in (
         "Ride open past 24 hours closed as lost.",
         "A ride whose bike is still undocked more than 24 hours after check-out is closed as lost.",
+        # #66's label rule: "open for 24 hours" states the same boundary from
+        # the complementary event too; it was a calibration hard negative.
+        "A ride open for 24 hours is closed as lost.",
     ):
         for strict in (True, False):
             assert not _statement_matches(
