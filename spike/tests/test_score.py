@@ -24,6 +24,7 @@ from bench.score import (
     _expected_tier_at_step,
     _first_step,
     _flag_states,
+    _has_filter_carrier_by_step,
     _has_negation,
     _has_test_carrier_by_step,
     _mentioned_entities,
@@ -31,6 +32,7 @@ from bench.score import (
     _number_tokens,
     _resolve_step_or_sha,
     _resolve_temporal_value_to_step,
+    _run_step_rank,
     _shares_matching_version,
     _split_camel,
     _statement_matches,
@@ -46,6 +48,7 @@ from bench.score import (
     classify_unmatched,
     facts_match,
     load_calibration,
+    main,
     match_facts,
     norm,
     norm_entity,
@@ -2431,3 +2434,334 @@ def test_split_camel_lets_typescript_attributes_compare_word_by_word():
     assert _split_camel("severityThresholdToPause") == "severity Threshold To Pause"
     assert _split_camel("min_severity") == "min_severity"
     assert _attributes_match("faultReportLockThreshold", "fault_report_threshold")
+
+
+# --------------------------------------------------------------------------
+# The code and documented tier lines, the code and documents truth filters,
+# and expected sets held to the run's step (konyklabs/asbuilt#34)
+# --------------------------------------------------------------------------
+
+
+def test_score_fact_query_code_and_documented_tier_lines():
+    """Counted exactly as the executed line is: every returned fact claiming
+    the tier, matched or not, over the static truth tier of its match."""
+    truth_code = TruthFact(
+        id="F-c",
+        statement="A refund window is 14 days.",
+        category="business-logic",
+        entities=("E-x",),
+        tier="code",
+        carriers=(Carrier(document="code/x.py"),),
+    )
+    truth_documented = TruthFact(
+        id="F-d",
+        statement="Refunds are reviewed by the payments team.",
+        category="operations",
+        entities=("E-x",),
+        tier="documented",
+        carriers=(Carrier(document="wiki/refunds"),),
+    )
+    expected = {"F-c": truth_code, "F-d": truth_documented}
+
+    def returned(statement: str, tier: str, document: str) -> dict:
+        return {
+            "statement": statement,
+            "entities": ["E-x"],
+            "tier": tier,
+            "category": "business-logic",
+            "citations": [{"document": document}],
+        }
+
+    result = score_fact_query(
+        [
+            returned("A refund window is 14 days.", "code", "code/x.py"),
+            # matches the documented fact but claims code: off the code line's tp
+            returned("Refunds are reviewed by the payments team.", "code", "wiki/refunds"),
+            returned("Something else entirely.", "documented", "wiki/elsewhere"),
+        ],
+        expected,
+        alias_index=_identity_index("E-x"),
+    )
+    tier = result["tier"]
+    assert (tier["returned_code"], tier["tp_code"], tier["expected_code"]) == (2, 1, 1)
+    assert (tier["returned_documented"], tier["tp_documented"], tier["expected_documented"]) == (
+        1,
+        0,
+        1,
+    )
+    assert (tier["returned_executed"], tier["tp_executed"], tier["expected_executed"]) == (0, 0, 0)
+
+
+def _results_with_a_documented_hit() -> dict:
+    """`_hand_built_results` plus an explain hit on F-005, the mini
+    fixture's documented fact, claimed `documented`."""
+    results = _hand_built_results()
+    results["queries"][0]["result"].append(
+        {
+            "statement": "A member's free minutes are 20.",
+            "category": "business-logic",
+            "entities": ["member free minutes"],
+            "tier": "documented",
+            "citations": [{"document": "wiki/pricing-rules-2025", "version": "1"}],
+        }
+    )
+    return results
+
+
+def test_score_reports_code_and_documented_tier_lines_on_explain_and_search(capsys):
+    report = score(_results_with_a_documented_hit(), MINI_ROOT / "truth")
+
+    # explain expects F-001, F-002, F-003 (executed) and F-005 (documented).
+    explain = report["surfaces"]["explain"]["tier"]
+    assert explain["precision_documented"] == 1.0
+    assert explain["recall_documented"] == 1.0
+    assert (explain["tp_documented"], explain["returned_documented"]) == (1, 1)
+    assert explain["expected_documented"] == 1
+    assert explain["precision_code"] is None  # nothing returned claims code
+    assert explain["recall_code"] is None  # nothing expected is code
+    # the executed line is untouched by the new ones
+    assert (explain["tp_executed"], explain["returned_executed"]) == (1, 1)
+    assert explain["expected_executed"] == 3
+
+    # search: the wrong fact claims documented and matches nothing.
+    search = report["surfaces"]["search"]["tier"]
+    assert search["precision_documented"] == 0.0
+    assert search["recall_documented"] is None
+    assert search["returned_documented"] == 1
+
+    print_report(report)
+    out = capsys.readouterr().out
+    assert "    tier code: precision=n/a (0/0) recall=n/a (0/0)" in out
+    assert "    tier documented: precision=1.000 (1/1) recall=1.000 (1/1)" in out
+    assert "    tier documented: precision=0.000 (0/1) recall=n/a (0/0)" in out
+
+
+def test_score_json_carries_the_tier_lines_under_tier(tmp_path):
+    results_path = tmp_path / "results.json"
+    results_path.write_text(json.dumps(_results_with_a_documented_hit()))
+    out = tmp_path / "score.json"
+    argv = [str(results_path), "--truth", str(MINI_ROOT / "truth"), "--json", str(out)]
+    argv += ["--commits", str(tmp_path / "no-commits.json")]
+    assert main(argv) == 0
+    tier = json.loads(out.read_text())["surfaces"]["explain"]["tier"]
+    for t in ("code", "documented"):
+        for key in ("returned", "tp", "expected", "precision", "recall"):
+            assert f"{key}_{t}" in tier
+    assert tier["recall_documented"] == 1.0
+
+
+def test_aggregate_reports_carries_code_and_documented_tier_lines(capsys):
+    good = score(_results_with_a_documented_hit(), MINI_ROOT / "truth")
+    worse = score(_hand_built_results(), MINI_ROOT / "truth")  # no documented hit
+
+    agg = aggregate_reports([good, worse])["surfaces"]
+    recall = agg["explain"]["documented_tier_recall"]
+    assert (recall["median"], recall["min"], recall["max"]) == (0.5, 0.0, 1.0)
+    # worse returned nothing claiming documented on explain: undefined, left out
+    precision = agg["explain"]["documented_tier_precision"]
+    assert (precision["median"], precision["min"], precision["max"]) == (1.0, 1.0, 1.0)
+    assert "code_tier_recall" not in agg["explain"]  # nothing code-tier is expected
+    assert agg["search"]["documented_tier_precision"]["max"] == 0.0
+
+    print_multi_report([good, worse])
+    out = capsys.readouterr().out
+    assert "explain        documented_tier_recall    0.500     0.000     1.000" in out
+
+
+def test_score_test_connector_code_filter_keeps_code_outside_tests_by_step():
+    """`code`: a `code/` carrier outside the test directories, at or before
+    the step, on a fact current at it. F-012 carries only a dispatch test,
+    so it is never in; F-001 (retired at c2) and F-002/F-003 (from c2, c4)
+    move in and out with the step; F-013 is there throughout."""
+    at_c1 = score_test_connector([], MINI_ROOT / "truth", "c1", _MINI_COMMITS, "code")
+    at_c4 = score_test_connector([], MINI_ROOT / "truth", "c4", _MINI_COMMITS, "code")
+    assert sorted(m["id"] for m in at_c1["missed"]) == ["F-001", "F-013"]
+    assert sorted(m["id"] for m in at_c4["missed"]) == ["F-002", "F-003", "F-013"]
+    assert {m["id"]: m["test"] for m in at_c4["missed"]}["F-013"] == "PricingClient.fetch_rate"
+    assert set(at_c4["by_tier"]) == {"executed", "code"}
+    assert at_c4["truth_filter"] == "code"
+
+
+def test_has_filter_carrier_by_step_holds_a_code_carrier_to_its_own_version():
+    order = _step_order(_MINI_COMMITS)
+    fact = TruthFact(
+        id="F-x",
+        statement="x",
+        category="business-logic",
+        entities=(),
+        tier="executed",
+        carriers=(
+            Carrier(document="code/tests/test_x.py", version="c1"),
+            Carrier(document="code/farebox/x.py", version="c3"),
+        ),
+    )
+    assert _has_filter_carrier_by_step(fact, "tests", order, order["c2"])
+    assert not _has_filter_carrier_by_step(fact, "code", order, order["c2"])
+    assert _has_filter_carrier_by_step(fact, "code", order, order["c3"])
+    test_only = TruthFact(
+        id="F-t",
+        statement="t",
+        category="business-logic",
+        entities=(),
+        tier="code",
+        carriers=(Carrier(document="code/dispatch/test/x.test.ts", version="c1"),),
+    )
+    assert not _has_filter_carrier_by_step(test_only, "code", order, order["c4"])
+    assert _has_filter_carrier_by_step(test_only, "tests", order, order["c4"])
+    assert _has_filter_carrier_by_step(test_only, "tests", order, order["c4"]) == (
+        _has_test_carrier_by_step(test_only, _TRUTH_FILTER_PREFIXES["tests"], order, order["c4"])
+    )
+
+
+def test_score_test_connector_documents_filter_counts_unversioned_carriers():
+    """`documents`: a wiki, doc, ticket or pull carrier. A wiki/doc version
+    is a page revision and tickets and pulls carry none, so no carrier is
+    held to a step; the seven documented mini facts are all in at c1. A
+    fact with no `code/` carrier is labelled by its own tier, not `code`."""
+    perfect = {
+        "statement": "Refunds are processed within 5 business days.",
+        "category": "operations",
+        "entities": ["farebox"],
+        "tier": "documented",
+        "citations": [{"document": "doc/DOC-1", "version": "1"}],
+    }
+    report = score_test_connector([perfect], MINI_ROOT / "truth", "c1", _MINI_COMMITS, "documents")
+    assert report["expected"] == 7
+    assert report["tp"] == 1
+    assert report["by_tier"]["documented"]["expected"] == 7
+    assert report["by_tier"]["documented"]["tp"] == 1
+    assert report["by_tier"]["code"]["expected"] == 0
+    assert report["tier_confusion"]["confusion"] == {"documented": {"documented": 1}}
+    assert "F-007" in {m["id"] for m in report["missed"]}  # a ticket carrier, no version
+
+
+def _write_step_truth(root) -> None:
+    """A two-step synthetic fixture: F-old holds from c1, F-new from c2, the
+    contradiction pairs them, and the stale page goes stale at c2."""
+    history = root / "system" / "history"
+    history.mkdir(parents=True)
+    (history / "steps.yaml").write_text(
+        '- id: c1\n  date: "2026-01-01T09:00:00-05:00"\n'
+        '- id: c2\n  date: "2026-02-01T09:00:00-05:00"\n'
+    )
+    truth_dir = root / "truth"
+    truth_dir.mkdir()
+    (truth_dir / "entities.yaml").write_text("- id: E-x\n  kind: service\n  name: x\n")
+    (truth_dir / "facts.yaml").write_text(
+        "- id: F-old\n"
+        "  statement: The x window is 3 days.\n"
+        "  category: business-logic\n"
+        "  entities: [E-x]\n"
+        "  tier: documented\n"
+        "  carriers:\n"
+        "    - document: wiki/x\n"
+        "- id: F-new\n"
+        "  statement: The x window is 7 days.\n"
+        "  category: business-logic\n"
+        "  entities: [E-x]\n"
+        "  tier: documented\n"
+        "  valid_from: c2\n"
+        "  carriers:\n"
+        "    - document: wiki/y\n"
+    )
+    (truth_dir / "contradictions.yaml").write_text(
+        "- id: X-1\n  facts: [F-old, F-new]\n  kind: wiki-vs-test\n  winner: F-new\n"
+    )
+    (truth_dir / "stale.yaml").write_text(
+        "- id: S-1\n  document: wiki/x\n  states: F-old\n  changed_by: c2\n"
+    )
+
+
+def _step_results(root, through_step: str | None) -> dict:
+    def query(qid: str, surface: str, params: dict, result) -> dict:
+        return {
+            "id": qid,
+            "surface": surface,
+            "latency_ms": 1.0,
+            "params": params,
+            "result": result,
+        }
+
+    results = {
+        "prototype": "test",
+        "fixture": str(root),
+        "weights": {},
+        "ingest": {},
+        "queries": [
+            query("q-explain", "explain", {"entity": "x"}, []),
+            query("q-search", "search", {"expects": ["F-old", "F-new"]}, []),
+            query("q-ask", "ask", {"expects": ["F-new"]}, {"sentences": []}),
+            query("q-contradictions", "contradictions", {"entity": "x"}, []),
+            query("q-contradictions-all", "contradictions", {}, []),
+            query("q-stale", "stale", {"since": "2025-12-01"}, []),
+        ],
+    }
+    if through_step is not None:
+        results["through_step"] = through_step
+    return results
+
+
+def _expected_by_surface(report: dict) -> dict[str, int]:
+    return {name: s["expected"] for name, s in report["surfaces"].items()}
+
+
+def test_score_holds_later_step_truth_back_from_an_earlier_run(tmp_path):
+    """A fact valid from c2, a contradiction one of whose facts is valid
+    from c2, and a page made stale at c2 are not expected of a run ingested
+    through c1, on any surface; through c2 they are."""
+    _write_step_truth(tmp_path)
+    truth_dir = tmp_path / "truth"
+
+    at_c1 = score(_step_results(tmp_path, "c1"), truth_dir)
+    assert _expected_by_surface(at_c1) == {
+        "explain": 1,
+        "search": 1,
+        "ask": 0,
+        "contradictions": 0,  # both queries, the entity one and the unfiltered one
+        "stale": 0,
+    }
+    at_c2 = score(_step_results(tmp_path, "c2"), truth_dir)
+    assert _expected_by_surface(at_c2) == {
+        "explain": 2,
+        "search": 2,
+        "ask": 1,
+        "contradictions": 2,
+        "stale": 1,
+    }
+
+
+def test_score_without_a_known_through_step_holds_nothing_back(tmp_path):
+    """A results file with no `through_step` (or one naming a step the
+    fixture doesn't have) is scored as before the rule: every truth entry
+    expected, as of the last step."""
+    _write_step_truth(tmp_path)
+    truth_dir = tmp_path / "truth"
+    at_c2 = _expected_by_surface(score(_step_results(tmp_path, "c2"), truth_dir))
+    assert _expected_by_surface(score(_step_results(tmp_path, None), truth_dir)) == at_c2
+    assert _expected_by_surface(score(_step_results(tmp_path, "c9"), truth_dir)) == at_c2
+
+
+def test_run_step_rank_orders_by_step_dates_then_commits():
+    step_dates = {
+        "c2": datetime.fromisoformat("2026-02-01T09:00:00-05:00"),
+        "c1": datetime.fromisoformat("2026-01-01T09:00:00-05:00"),
+    }
+    assert _run_step_rank("c2", step_dates, {}) == ({"c1": 0, "c2": 1}, 1)
+    # no steps.yaml: commits.json's order
+    assert _run_step_rank("c3", {}, _MINI_COMMITS) == (_step_order(_MINI_COMMITS), 2)
+    assert _run_step_rank(None, step_dates, {})[1] is None
+
+
+def test_score_test_connector_documents_filter_is_step_current(tmp_path):
+    """Like `tests`, the documents filter keeps only the facts current at
+    the step: F-new, valid from c2, is not expected at c1."""
+    _write_step_truth(tmp_path)
+    commits = {
+        "c1": {"sha": "sha-c1", "date": "2026-01-01T09:00:00-05:00"},
+        "c2": {"sha": "sha-c2", "date": "2026-02-01T09:00:00-05:00"},
+    }
+    truth_dir = tmp_path / "truth"
+    at_c1 = score_test_connector([], truth_dir, "c1", commits, "documents")
+    at_c2 = score_test_connector([], truth_dir, "c2", commits, "documents")
+    assert [m["id"] for m in at_c1["missed"]] == ["F-old"]
+    assert sorted(m["id"] for m in at_c2["missed"]) == ["F-new", "F-old"]
