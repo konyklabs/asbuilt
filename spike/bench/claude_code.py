@@ -179,8 +179,7 @@ def effort_level() -> str:
     level = os.environ.get(_EFFORT_ENV, "").strip() or DEFAULT_EFFORT
     if level not in EFFORT_LEVELS:
         raise ValueError(
-            f"{_EFFORT_ENV}={level!r} is not an effort the CLI accepts: "
-            + ", ".join(EFFORT_LEVELS)
+            f"{_EFFORT_ENV}={level!r} is not an effort the CLI accepts: " + ", ".join(EFFORT_LEVELS)
         )
     return level
 
