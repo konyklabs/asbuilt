@@ -1,0 +1,248 @@
+{
+  "prototype": "hand-made-fidelity",
+  "fixture": ".",
+  "through_step": "c7",
+  "phase": "full",
+  "weights": {
+    "explain": 1.0,
+    "search": 1.0,
+    "ask": 1.0,
+    "contradictions": 1.0,
+    "stale": 1.0
+  },
+  "ingest": {
+    "seconds": 0.0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "dollars": 0.0,
+    "services": [],
+    "documents": 0
+  },
+  "queries": [
+    {
+      "id": "q-explain-portal",
+      "surface": "explain",
+      "latency_ms": 1.0,
+      "params": {
+        "entity": "rider-portal"
+      },
+      "result": [
+        {
+          "statement": "The fare preview page caps a casual ride at $30.00.",
+          "category": "business-logic",
+          "entities": [
+            "rider-portal",
+            "fare-preview page"
+          ],
+          "tier": "executed",
+          "citations": [
+            {
+              "document": "run/playwright-c7",
+              "location": "fare preview › shows the farebox cap for a 200-minute casual ride",
+              "project": "real"
+            }
+          ],
+          "fidelity": "real"
+        },
+        {
+          "statement": "The fare preview page caps a casual ride at $25.00.",
+          "category": "business-logic",
+          "entities": [
+            "rider-portal",
+            "fare-preview page"
+          ],
+          "tier": "executed",
+          "citations": [
+            {
+              "document": "run/playwright-c7",
+              "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+              "project": "fake"
+            },
+            {
+              "document": "run/playwright-c7",
+              "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+              "project": "real"
+            }
+          ],
+          "fidelity": "real"
+        },
+        {
+          "statement": "The refund request page rejects a ride that ended 15 days earlier as past the refund window.",
+          "category": "business-logic",
+          "entities": [
+            "rider-portal",
+            "refund-request page"
+          ],
+          "tier": "executed",
+          "citations": [
+            {
+              "document": "run/playwright-c7",
+              "location": "refund request › refuses a ride that ended 15 days ago",
+              "project": "real"
+            }
+          ]
+        },
+        {
+          "statement": "The check-out page shows a limit banner when check-out is refused with checkout_limit_reached.",
+          "category": "technical-implementation",
+          "entities": [
+            "rider-portal",
+            "check-out page"
+          ],
+          "tier": "executed",
+          "citations": [
+            {
+              "document": "run/playwright-c7",
+              "location": "check-out › shows a banner when the rider is at the bike limit",
+              "project": "mocked"
+            }
+          ],
+          "fidelity": "fake"
+        }
+      ]
+    },
+    {
+      "id": "q-contradictions-fare-preview",
+      "surface": "contradictions",
+      "latency_ms": 1.0,
+      "params": {
+        "entity": "fare-preview page"
+      },
+      "result": [
+        {
+          "a": {
+            "statement": "The fare preview page caps a casual ride at $25.00.",
+            "category": "business-logic",
+            "entities": [
+              "rider-portal",
+              "fare-preview page"
+            ],
+            "tier": "executed",
+            "citations": [
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+                "project": "fake"
+              },
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+                "project": "real"
+              }
+            ],
+            "fidelity": "real"
+          },
+          "b": {
+            "statement": "The fare preview page caps a casual ride at $30.00.",
+            "category": "business-logic",
+            "entities": [
+              "rider-portal",
+              "fare-preview page"
+            ],
+            "tier": "executed",
+            "citations": [
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the farebox cap for a 200-minute casual ride",
+                "project": "real"
+              }
+            ],
+            "fidelity": "real"
+          },
+          "label": "refutes",
+          "winner": {
+            "statement": "The fare preview page caps a casual ride at $30.00.",
+            "category": "business-logic",
+            "entities": [
+              "rider-portal",
+              "fare-preview page"
+            ],
+            "tier": "executed",
+            "citations": [
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the farebox cap for a 200-minute casual ride",
+                "project": "real"
+              }
+            ],
+            "fidelity": "real"
+          }
+        }
+      ]
+    },
+    {
+      "id": "q-contradictions-portal",
+      "surface": "contradictions",
+      "latency_ms": 1.0,
+      "params": {
+        "entity": "rider-portal"
+      },
+      "result": [
+        {
+          "a": {
+            "statement": "The fare preview page caps a casual ride at $25.00.",
+            "category": "business-logic",
+            "entities": [
+              "rider-portal",
+              "fare-preview page"
+            ],
+            "tier": "executed",
+            "citations": [
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+                "project": "fake"
+              },
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+                "project": "real"
+              }
+            ],
+            "fidelity": "real"
+          },
+          "b": {
+            "statement": "The fare preview page caps a casual ride at $30.00.",
+            "category": "business-logic",
+            "entities": [
+              "rider-portal",
+              "fare-preview page"
+            ],
+            "tier": "executed",
+            "citations": [
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the farebox cap for a 200-minute casual ride",
+                "project": "real"
+              }
+            ],
+            "fidelity": "real"
+          },
+          "label": "refutes",
+          "winner": {
+            "statement": "The fare preview page caps a casual ride at $25.00.",
+            "category": "business-logic",
+            "entities": [
+              "rider-portal",
+              "fare-preview page"
+            ],
+            "tier": "executed",
+            "citations": [
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+                "project": "fake"
+              },
+              {
+                "document": "run/playwright-c7",
+                "location": "fare preview › shows the price-sheet cap for a 200-minute casual ride",
+                "project": "real"
+              }
+            ],
+            "fidelity": "real"
+          }
+        }
+      ]
+    }
+  ]
+}

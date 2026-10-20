@@ -199,7 +199,8 @@ uv sync
    for it: `--through-step c7`, or `--incremental --through-step c7` for c6
    then c7. A query carrying `valid_from` (the portal's five) is asked only
    of a run through that step or later, so a c6 run asks the same 62.
-   Scoring a c7 run's executed tier waits for asbuilt#38's per-fidelity rule.
+   `bench/score.py` scores a c7 run's executed tier per backend fidelity
+   (asbuilt#38; step 4).
 
    Assembles `build/ingest/` — the ingest-root integrity rule (D-013): never
    the raw fixture, only the built repository's content *through*
@@ -316,10 +317,44 @@ uv sync
    `--facts FILE --step STEP` scores a connector's bag of facts instead of
    a results file, against the truth facts current at the step that have a
    carrier of the kind `--truth-filter` names: `tests` (the default, a test
-   file at or before the step), `code` (a `code/` file outside the test
+   file at or before the step: `code/tests/`, `code/dispatch/test/` and,
+   since asbuilt#38, the portal's Playwright specs in `code/web/tests/`), `code` (a `code/` file outside the test
    directories, at or before the step) or `documents` (a wiki page, doc,
    ticket or pull request; their versions are not history steps, so any
    one counts).
+
+   **Backend fidelity** (asbuilt#38, D-014). A returned executed fact
+   names the fidelity it claims in its own `fidelity` field (a name from
+   `truth/fidelities.yaml`), and cites a Playwright run as the truth does:
+   `{"document": "run/playwright-c7", "location": "<title path>",
+   "project": "<project>"}`. A cited run's fidelity is the truth's, by
+   runner and, for Playwright, by `project`; the fact's own say-so never
+   decides it. Explain, search and `--facts` print `tier executed by
+   fidelity` under the tier lines: per fidelity, precision (claims of F
+   that matched an executed truth fact of fidelity F, over every claim of
+   F) and recall, and hard errors (a claim of F with no run citation at
+   F), grouped into the band at or above the real backend (which outranks
+   code) and the band below it (which code outranks), in the file's own
+   order; then `unqualified`, executed facts that claim no fidelity (every
+   results file before asbuilt#38), credited against an executed fact of
+   any fidelity; then a fidelity confusion matrix over matched facts
+   claiming `executed` (row `none`: the truth fact is not executed). Below
+   the distinct line, `executed tier, distinct facts by fidelity` repeats
+   the distinct measure per claimed fidelity, strict and lenient, with n
+   and the Wilson lower bound. `--json` carries these under the surface's
+   `tier.fidelity`, under `fidelity` for `--facts`, and under
+   `distinct_executed_by_fidelity`. Explain and search take a fact's
+   fidelity from the truth's `fidelity`; the distinct measure and `--facts`
+   from the runs that lift it by the run's step, where a Playwright run
+   counts at its project's fidelity and, from the step of the run that
+   demoted a fact, its passes below that run's fidelity do not: at c7 F-123 is `documented`, F-121 and F-124
+   are executed at `real` and F-122 at `mocked`. The contradictions surface
+   prints `kind fake-vs-real`: how many of the truth's fake-versus-real
+   pairs were found and how many winners (the higher-fidelity run's fact)
+   were right; `--facts` scores its contradiction candidates against them
+   too, and at c7 under the default `tests` filter it scores a Playwright
+   connector's facts. `tests/fixtures/fidelity-results.json` is a hand-made run through
+   c7 with one fact per case.
 
 5. **Check the fixture's own consistency** (a library call, not yet a CLI):
 

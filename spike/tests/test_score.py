@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import functools
 import json
 import re
 from datetime import datetime
@@ -21,7 +22,10 @@ from bench.score import (
     _current_at_step,
     _duplicate_count,
     _entity_mention_conflict,
+    _executed_by_step,
+    _expected_fidelity_at_step,
     _expected_tier_at_step,
+    _fidelity_by_step,
     _first_step,
     _flag_state_conflict,
     _flag_states,
@@ -29,6 +33,7 @@ from bench.score import (
     _has_negation,
     _has_test_carrier_by_step,
     _mentioned_entities,
+    _merge_fidelity_counts,
     _normalise_unit,
     _number_tokens,
     _outcome_conflict,
@@ -76,6 +81,7 @@ from bench.score import (
 from bench.truth import (
     Carrier,
     Entity,
+    Fidelities,
     StaleEntry,
     TruthContradiction,
     TruthFact,
@@ -3310,3 +3316,193 @@ def test_a_unit_word_heading_a_hyphenated_modifier_does_not_merge():
     assert _number_tokens("a forty-five-minute ride") == {"45"}
     assert _number_tokens("a fortyfive-minute ride") == {"45"}
     assert _number_tokens("forty five minutes") == {"45"}
+
+
+# --------------------------------------------------------------------------
+# konyklabs/asbuilt#38: executed-tier precision per backend fidelity, and the
+# fake-versus-real contradiction (D-014). tests/fixtures/fidelity-results.json
+# is a hand-made run through c7 against the real truth, one fact per case.
+# --------------------------------------------------------------------------
+
+FIDELITY_RESULTS = SPIKE_ROOT / "tests" / "fixtures" / "fidelity-results.json"
+
+
+@functools.cache
+def _fidelity_report() -> dict:
+    results = json.loads(FIDELITY_RESULTS.read_text())
+    return score({**results, "fixture": str(SPIKE_ROOT)}, SPIKE_ROOT / "truth")
+
+
+def _explain_fidelity() -> dict:
+    return _fidelity_report()["surfaces"]["explain"]["tier"]["fidelity"]
+
+
+@pytest.mark.fixture
+def test_fidelity_case_right_fidelity_is_a_true_positive_at_its_fidelity():
+    """F-124 claimed `real`, citing the real project's run: a hit at `real`,
+    on explain and in the distinct measure (a Playwright run carrier counts
+    at its project's fidelity)."""
+    real = _explain_fidelity()["by_fidelity"]["real"]
+    assert (real["tp"], real["expected"]) == (1, 2)
+    assert _explain_fidelity()["confusion"]["real"]["real"] == 1
+    distinct_real = _fidelity_report()["distinct_executed_by_fidelity"]["by_fidelity"]["real"]
+    assert (distinct_real["strict"]["tp"], distinct_real["strict"]["n"]) == (1, 2)
+
+
+@pytest.mark.fixture
+def test_fidelity_case_claimed_real_but_proven_only_at_fake_is_a_miss_at_real():
+    """F-123's $25 cap claimed `real`, citing the real run (so no hard
+    error): the truth has it passing only against the fake and the mocked
+    routes, demoted by the real run, so it is no executed target at all."""
+    real = _explain_fidelity()["by_fidelity"]["real"]
+    assert (real["tp"], real["returned"], real["precision"]) == (1, 2, 0.5)
+    assert real["hard_errors"] == 0
+    assert _explain_fidelity()["confusion"]["none"] == {"real": 1}
+    distinct = _fidelity_report()["distinct_executed"]["strict"]
+    assert (distinct["tp"], distinct["n"]) == (3, 4)
+    assert distinct["wrong"] == ["The fare preview page caps a casual ride at $25.00."]
+
+
+@pytest.mark.fixture
+def test_fidelity_case_executed_without_fidelity_is_unqualified_not_an_error():
+    """F-121 claimed `executed` with no fidelity: its own bucket, credited
+    against an executed target of any fidelity, and no hard error."""
+    fidelity = _explain_fidelity()
+    assert fidelity["unqualified"] == {"returned": 1, "tp": 1, "precision": 1.0}
+    assert fidelity["confusion"]["real"]["unqualified"] == 1
+    assert sum(row["hard_errors"] for row in fidelity["by_fidelity"].values()) == 1
+    unqualified = _fidelity_report()["distinct_executed_by_fidelity"]["unqualified"]
+    assert (unqualified["strict"]["tp"], unqualified["strict"]["n"]) == (1, 1)
+
+
+@pytest.mark.fixture
+def test_fidelity_case_a_fidelity_with_no_run_at_it_is_a_hard_error():
+    """F-122 claimed `fake`, citing only the mocked project's run: a hard
+    error at `fake`, whatever the fact says of itself; and a miss, since the
+    truth proves it at `mocked`."""
+    fake = _explain_fidelity()["by_fidelity"]["fake"]
+    assert (fake["hard_errors"], fake["returned"], fake["tp"]) == (1, 1, 0)
+    assert _explain_fidelity()["confusion"]["mocked"] == {"fake": 1}
+    assert _explain_fidelity()["bands"]["below"]["hard_errors"] == 1
+
+
+@pytest.mark.fixture
+def test_fidelity_case_fake_vs_real_contradiction_winner_checked():
+    """X-022 returned twice, by two queries: once won by F-124 (the real
+    run's fact, right) and once by F-123 (wrong)."""
+    contradictions = _fidelity_report()["surfaces"]["contradictions"]
+    assert contradictions["by_kind"]["fake-vs-real"] == {
+        "matched": 2,
+        "expected": 2,
+        "winner_checked": 2,
+        "winner_correct": 1,
+    }
+
+
+@pytest.mark.fixture
+def test_fidelity_lines_print_in_bands(capsys):
+    print_report(_fidelity_report())
+    out = capsys.readouterr().out
+    assert (
+        "      at or above the real backend (outranks code): precision=0.500 (1/2) "
+        "recall=0.500 (1/2) hard_errors=0\n"
+        "        real: precision=0.500 (1/2) recall=0.500 (1/2) hard_errors=0\n"
+        "        in-process: precision=n/a (0/0) recall=n/a (0/0) hard_errors=0\n"
+        "      below the real backend (code outranks): precision=0.000 (0/1) "
+        "recall=0.000 (0/1) hard_errors=1\n"
+    ) in out
+    assert "    kind fake-vs-real: matched=2 vs expected=2 recall=1.000 winner=1/2" in out
+
+
+def test_fidelity_bands_follow_the_vocabulary_not_hard_coded_names():
+    """The bands come from `fidelities.yaml`'s order and real backend: here
+    an invented vocabulary whose real backend is its second name."""
+    fidelities = Fidelities(ranked=("gold", "silver", "tin"), real_backend="silver")
+    merged = _merge_fidelity_counts([], fidelities)
+    assert merged["bands"]["at_or_above"]["fidelities"] == ["gold", "silver"]
+    assert merged["bands"]["below"]["fidelities"] == ["tin"]
+    assert list(merged["by_fidelity"]) == ["gold", "silver", "tin"]
+
+
+@pytest.mark.fixture
+def test_step_tier_at_c7_knows_playwright_and_the_demotion():
+    """The deep lens on #37: at c7 F-121 and F-124 are executed at `real`,
+    F-122 at `mocked`; F-123, passing only below the real run that demoted
+    it, is `documented`, not executed and not `code` through its test file.
+    F-011 (demoted at c5 by a pytest run) is still executed at c1."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+    fidelities = truth.fidelities
+
+    def tier(fid: str, step: str = "c7") -> str:
+        return _expected_tier_at_step(truth.facts[fid], step, fidelities, order)
+
+    def fidelity(fid: str) -> str | None:
+        return _expected_fidelity_at_step(truth.facts[fid], "c7", fidelities)
+
+    assert [tier(f) for f in ("F-121", "F-122", "F-123", "F-124")] == [
+        "executed",
+        "executed",
+        "documented",
+        "executed",
+    ]
+    assert [fidelity(f) for f in ("F-121", "F-122", "F-123", "F-124")] == [
+        "real",
+        "mocked",
+        None,
+        "real",
+    ]
+    assert (tier("F-011", "c1"), tier("F-011", "c5")) == ("executed", "code")
+
+
+@pytest.mark.fixture
+def test_facts_at_c7_score_per_fidelity_on_a_hand_made_bag():
+    """`--facts` at c7 on the hand-made file's four facts, under the default
+    `tests` filter, which holds the portal's Playwright specs: the same
+    counts as explain, and F-123 matched but expected `documented`. A spec
+    file is a test carrier, so F-123, carried in code only by its spec, is
+    out of the `code` filter."""
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    bag = json.loads(FIDELITY_RESULTS.read_text())["queries"][0]["result"]
+    report = score_test_connector(bag, SPIKE_ROOT / "truth", "c7", commits)
+    assert report["tp"] == 4
+    assert report["tier_confusion"]["confusion"]["documented"] == {"executed": 1}
+    code = score_test_connector(bag, SPIKE_ROOT / "truth", "c7", commits, "code")
+    assert code["tp"] == 3
+    fidelity = report["fidelity"]
+    assert {f: (r["tp"], r["returned"]) for f, r in fidelity["by_fidelity"].items()} == {
+        "real": (1, 2),
+        "in-process": (0, 0),
+        "fake": (0, 1),
+        "mocked": (0, 0),
+    }
+    assert fidelity["by_fidelity"]["fake"]["hard_errors"] == 1
+    assert fidelity["unqualified"]["tp"] == 1
+    assert report["fake_vs_real_candidates"]["expected"] == 1
+
+
+@pytest.mark.fixture
+def test_a_demotion_applies_from_the_demoting_runs_step_on():
+    """A synthetic fact passing at `fake` at c6 and failing at `real` only at
+    c7: before the real failure exists the fake pass lifts it, so it is an
+    executed target at `fake` through c6; through c7 it is not."""
+    truth = load_truth(SPIKE_ROOT / "truth")
+    fidelities = truth.fidelities
+    commits = {step: {"date": d.isoformat()} for step, d in _step_dates(SPIKE_ROOT).items()}
+    order = _step_order(commits)
+    title = "fare preview › shows an invented cap"
+    tf = TruthFact(
+        id="F-X",
+        statement="The fare preview page shows an invented cap.",
+        category="business-logic",
+        entities=("E-page-fare-preview",),
+        tier="documented",
+        carriers=(Carrier(document="run/playwright-c6", location=title, project="fake"),),
+        demoted_by=Carrier(document="run/playwright-c7", location=title, project="real"),
+    )
+    assert _executed_by_step(tf, order, order["c6"], fidelities)
+    assert _fidelity_by_step(tf, order, order["c6"], fidelities) == "fake"
+    assert not _executed_by_step(tf, order, order["c7"], fidelities)
+    assert _expected_tier_at_step(tf, "c6", fidelities, order) == "executed"
+    assert _expected_tier_at_step(tf, "c7", fidelities, order) == "documented"
