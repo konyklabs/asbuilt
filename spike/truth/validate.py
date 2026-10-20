@@ -389,8 +389,6 @@ for fid, f in facts.items():
     elif tier == "documented" and f.get("demoted_by"):
         # A demoted fact no system code carries rests on the documents it was
         # written from; it keeps its test and its passing runs as carriers.
-        if code_src:
-            fail(f"{fid}: a demoted documented fact carries no code but its test")
         if not any(k in DOC_KINDS for k in kinds):
             fail(f"{fid}: a demoted documented fact needs the documents it rests on")
         check_demotion(fid, f["demoted_by"], runs, code_tests)
@@ -870,24 +868,24 @@ for s in steps_list:
 
 
 # ---------------------------------------------------------------- demotion and fidelity
-def band(tier: str, fidelity: str | None = None) -> int:
-    """A tier's place in D-014's order (see `standing`)."""
-    if tier == "executed":
-        return 4 if fidelity_rank(fidelity) >= fidelity_rank(REAL_BACKEND) else 2
-    return {"code": 3, "documented": 1}.get(tier, 0)
-
-
-# A demotion never raises a fact's standing: it lands below executed at the
-# strongest fidelity its kept passing runs reached.
+# A demoted fact stands on its remaining non-run evidence: code when the
+# system's own code (not a test double) carries it, otherwise documented, on
+# the documents it rests on.
 for fid, f in facts.items():
     if not f.get("demoted_by"):
         continue
-    kept = [c for c in f["carriers"] if c["document"].startswith("run/")]
-    before = max((carrier_fidelity(c) for c in kept), key=fidelity_rank, default=None)
-    if not kept:
+    if not any(c["document"].startswith("run/") for c in f["carriers"]):
         fail(f"{fid}: a demoted fact keeps the passing runs it was executed on")
-    elif band(f["tier"]) >= band("executed", before):
-        fail(f"{fid}: demoted to {f['tier']}, which stands at or above executed at {before}")
+    system_code = [
+        c
+        for c in f["carriers"]
+        if c["document"].startswith("code/")
+        and not is_test(c["document"][5:])
+        and c["document"][5:] not in DOUBLES
+    ]
+    lands = "code" if system_code else "documented"
+    if f["tier"] != lands:
+        fail(f"{fid}: demoted, so it stands on its non-run evidence at {lands}, not {f['tier']}")
 
 # D-014's fail-above-pass rule, for every test and runner: at a step where a
 # test passes at some fidelity and fails at a higher one, a fact citing the

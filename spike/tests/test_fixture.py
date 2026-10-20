@@ -220,10 +220,10 @@ def test_validate_passes_on_the_real_truth(tmp_path: Path):
     assert code == 0, out
 
 
-def test_a_demotion_never_rests_on_a_test_double_or_raises_standing(tmp_path: Path):
+def test_a_demotion_never_rests_on_a_test_double(tmp_path: Path):
     """F-123 back at code tier, carried by the fake's constant (the shape the
-    lens round refused): a test double is not Gearwell's code, and code tier
-    would stand above executed at fake, where the fact was before demotion."""
+    lens round refused): a test double is not Gearwell's code, so the fact
+    stands on its documents."""
     _skip_if_no_real_fixture()
 
     def back_to_code(root: Path) -> None:
@@ -254,7 +254,7 @@ def test_a_demotion_never_rests_on_a_test_double_or_raises_standing(tmp_path: Pa
     code, out = _validate(tmp_path, back_to_code)
     assert code == 1
     assert "F-123: carried at code by a test double alone" in out
-    assert "F-123: demoted to code, which stands at or above executed at fake" in out
+    assert "F-123: demoted, so it stands on its non-run evidence at documented, not code" in out
 
 
 def test_a_pass_below_a_failure_at_a_higher_fidelity_never_stays_executed(tmp_path: Path):
@@ -310,3 +310,77 @@ def test_a_pass_below_a_failure_at_a_higher_fidelity_never_stays_executed(tmp_pa
         "fake-vs-real contradiction",
         "  - audit: covers 33 facts; missing [], extra []; expected 32",  # the 33rd is F-126
     ]
+
+
+def _demoted_by_real_on_portal_code(tier: str) -> Callable[[Path], None]:
+    """A planted-style fact carried by the portal's own code, passing at
+    mocked and failing at real, demoted by the real run, at `tier`; the
+    fake-vs-real pair it needs is X-023 against F-124."""
+    title = "fare preview › shows a fare"
+
+    def mutate(root: Path) -> None:
+        with (root / "truth" / "facts.yaml").open("a") as facts:
+            facts.write(
+                "- id: F-126\n"
+                "  statement: The fare preview page shows a fare once Preview fare is pressed.\n"
+                "  category: technical-implementation\n"
+                "  entities: [E-web-rider-portal, E-page-fare-preview]\n"
+                f"  tier: {tier}\n  valid_from: c7\n  demoted_by:\n"
+                f"    document: run/playwright-c7\n    project: real\n    location: {title}\n"
+                "  carriers:\n"
+                "  - document: code/web/public/portal.js\n    location: formatCents\n"
+                "    version: c7\n"
+                f"  - document: code/web/tests/fare-preview.spec.ts\n    location: {title}\n"
+                "    version: c7\n"
+                f"  - document: run/playwright-c7\n    project: mocked\n    location: {title}\n"
+            )
+        with (root / "truth" / "contradictions.yaml").open("a") as contradictions:
+            contradictions.write(
+                "- id: X-023\n  facts: [F-126, F-124]\n  kind: fake-vs-real\n"
+                "  winner: F-124\n  label: refutes\n  opened_by: c7\n"
+            )
+        with (root / "truth" / "executed-audit.md").open("a") as audit:
+            audit.write(f"| F-126 | `{title}` | a | a preview shows a fare | - | c7 |\n")
+        plan_path = root / "truth" / "PLAN.yaml"
+        plan = yaml.safe_load(plan_path.read_text())
+        portal = next(c for c in plan["code"] if c["path"] == "web/public/portal.js")
+        portal["symbols"].append(
+            {"name": "formatCents", "facts": [{"fact": "F-126", "steps": ["c7"]}]}
+        )
+        plan["tests"].append(
+            {
+                "document": "code/web/tests/fare-preview.spec.ts",
+                "id": title,
+                "framework": "playwright",
+                "asserts": [{"fact": "F-126", "steps": ["c7"]}],
+                "outcomes": {"c7": {"mocked": "passed", "fake": "skipped", "real": "failed"}},
+            }
+        )
+        run = next(r for r in plan["runs"] if r["id"] == "run/playwright-c7")
+        run["projects"]["mocked"]["passes"].append(title)
+        run["projects"]["fake"]["skipped"].append(title)
+        run["projects"]["real"]["failed"].append(title)
+        plan_path.write_text(yaml.safe_dump(plan, sort_keys=False, allow_unicode=True))
+
+    return mutate
+
+
+# The added fact and pair move two exact counts; nothing else may fail.
+_COUNT_ERRORS = [
+    "  - audit: covers 33 facts; missing [], extra []; expected 32",
+    "  - contradictions: 23, expected exactly 22",
+]
+
+
+def test_a_demotion_carried_by_system_code_stands_at_code(tmp_path: Path):
+    """D-014 below the real backend, demoted, carried by the portal's own
+    script: it stands at code, above where its mocked pass ranked it."""
+    _skip_if_no_real_fixture()
+    code, out = _validate(tmp_path / "code", _demoted_by_real_on_portal_code("code"))
+    assert [line for line in out.splitlines() if line.startswith("  - ")] == _COUNT_ERRORS, out
+
+    code, out = _validate(tmp_path / "doc", _demoted_by_real_on_portal_code("documented"))
+    errors = [line for line in out.splitlines() if line.startswith("  - ")]
+    assert "  - F-126: demoted, so it stands on its non-run evidence at code, not documented" in (
+        errors
+    )

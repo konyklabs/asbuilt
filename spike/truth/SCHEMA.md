@@ -113,13 +113,16 @@ Backend fidelity (D-014, asbuilt#37; the vocabulary is `fidelities.yaml`):
   wins. This holds for every test, planted or not, and for any runner whose
   test runs at two fidelities in one step.
 - A failure at a lower fidelity than a pass does not demote.
-- A demotion never raises a fact's standing under D-014's order (below). A
-  test double (`fidelities.yaml` `doubles`: a fake, a mocked route) is not
-  the system's code and cannot carry a fact at `code` tier. So a demoted
-  fact lands at `code` only when the system's own code carries it (F-011);
-  otherwise it is `documented`, carried by the documents it rests on (the
-  pages the double was written from), keeping its test and its passing runs
-  (F-123). Those documents may predate the fact's `valid_from`.
+- A demoted fact stands on its remaining non-run evidence: `code` when the
+  system's own code (not a test double from `fidelities.yaml`'s `doubles`:
+  a fake, a mocked route) carries it (F-011), otherwise `documented`,
+  carried by the documents it rests on (the pages the double was written
+  from), keeping its test and its passing runs (F-123). Those documents may
+  predate the fact's `valid_from`. A test double never carries a fact at
+  `code` tier.
+- The consequence for D-014's ranking: a fact proven only below the real
+  backend that the system's code also carries lands at `code` when demoted,
+  above where its below-backend pass ranked it (raised for Oleg on asbuilt#39).
 
 ## contradictions.yaml
 
